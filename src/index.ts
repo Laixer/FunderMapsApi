@@ -42,15 +42,15 @@ app.route("/api/diag", diagRoutes);
 app.route("/api/app", appRoutes);
 app.route("/api/geocoder", geocoderRoutes);
 
+// Public routes (continued)
+app.route("/api/data/contractor", contractorRoutes);
+
 // Rate-limited public routes
 app.route("/api/incident", incidentRoutes);
 
 // Authenticated routes
 app.use("/api/user/*", authMiddleware);
 app.route("/api/user", userRoutes);
-
-app.use("/api/data/*", authMiddleware);
-app.route("/api/data/contractor", contractorRoutes);
 
 app.use("/api/mapset/*", authMiddleware);
 app.route("/api/mapset", mapsetRoutes);
