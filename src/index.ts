@@ -16,7 +16,6 @@ import contractorRoutes from "./routes/contractor.ts";
 import geocoderRoutes from "./routes/geocoder.ts";
 import userRoutes from "./routes/user.ts";
 import mapsetRoutes from "./routes/mapset.ts";
-import incidentRoutes from "./routes/incident.ts";
 import productRoutes from "./routes/product.ts";
 import reportRoutes from "./routes/report.ts";
 import inquiryRoutes from "./routes/inquiry.ts";
@@ -44,9 +43,6 @@ app.route("/api/geocoder", geocoderRoutes);
 
 // Public routes (continued)
 app.route("/api/data/contractor", contractorRoutes);
-
-// Rate-limited public routes
-app.route("/api/incident", incidentRoutes);
 
 // Authenticated routes
 app.use("/api/user/*", authMiddleware);
