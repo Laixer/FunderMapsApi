@@ -35,7 +35,6 @@ export const user = applicationSchema.table("user", {
   accessFailedCount: integer("access_failed_count").default(0).notNull(),
   role: text().default("user").notNull(),
   lastLogin: timestamp("last_login").defaultNow(),
-  loginCount: integer("login_count").default(0).notNull(),
 });
 
 export const organization = applicationSchema.table("organization", {
