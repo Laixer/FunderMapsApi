@@ -12,14 +12,12 @@ report.get("/", async (c) => {
     db.execute(sql`
       SELECT i.*
       FROM report.incident i
-      JOIN geocoder.building b ON b.id = i.building
-      WHERE b.external_id = ${buildingId}
+      WHERE i.building = ${buildingId}
     `),
     db.execute(sql`
       SELECT s.*
       FROM report.inquiry_sample s
-      JOIN geocoder.building b ON b.id = s.building
-      WHERE b.external_id = ${buildingId}
+      WHERE s.building = ${buildingId}
     `),
     db.execute(sql`
       SELECT s.*

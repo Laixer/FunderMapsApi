@@ -1,9 +1,5 @@
 export const GeocoderDatasource = {
   Unknown: 0,
-  FunderMaps: 1,
-  FundermapsIncidentReport: 2,
-  FundermapsInquiryReport: 3,
-  FundermapsRecoveryReport: 4,
   NlPostcode: 5,
   NlBagBuilding: 6,
   NlBagBerth: 7,
@@ -59,11 +55,6 @@ export function fromIdentifier(input: string): GeocoderDatasource {
     return GeocoderDatasource.NlBagLegacyBerthShort;
   if (id.length === 15 && id.substring(3, 5) === "03")
     return GeocoderDatasource.NlBagLegacyPostingShort;
-
-  if (id.startsWith("GFM-")) return GeocoderDatasource.FunderMaps;
-  if (id.startsWith("FIR")) return GeocoderDatasource.FundermapsIncidentReport;
-  if (id.startsWith("FQR")) return GeocoderDatasource.FundermapsInquiryReport;
-  if (id.startsWith("FRR")) return GeocoderDatasource.FundermapsRecoveryReport;
 
   if (id.length === 10 && id.startsWith("BU"))
     return GeocoderDatasource.NlCbsNeighborhood;

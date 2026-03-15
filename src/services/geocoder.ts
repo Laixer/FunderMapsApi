@@ -7,8 +7,7 @@ import {
 import { NotFoundError, AppError } from "../lib/errors.ts";
 
 export interface BuildingGeocoder {
-  id: string;
-  external_id: string;
+  building_id: string;
   [key: string]: unknown;
 }
 
@@ -17,15 +16,15 @@ export async function getBuildingByGeocoderId(
 ): Promise<BuildingGeocoder> {
   const datasource = fromIdentifier(geocoderId);
 
-  let externalId: string;
+  let buildingId: string;
 
   switch (datasource) {
     case GeocoderDatasource.NlBagBuilding:
-      externalId = geocoderId;
+      buildingId = geocoderId;
       break;
     case GeocoderDatasource.NlBagLegacyBuilding: {
       const normalized = geocoderId.toUpperCase().replaceAll(" ", "");
-      externalId = `NL.IMBAG.PAND.${normalized}`;
+      buildingId = `NL.IMBAG.PAND.${normalized}`;
       break;
     }
     case GeocoderDatasource.NlBagAddress:
@@ -36,14 +35,13 @@ export async function getBuildingByGeocoderId(
         addressId = `NL.IMBAG.NUMMERAANDUIDING.${normalized}`;
       }
       const result = await db.execute(sql`
-        SELECT b.external_id
-        FROM geocoder.building_geocoder b
-        JOIN geocoder.address a ON a.building_id = b.id
+        SELECT a.building_id
+        FROM geocoder.address a
         WHERE a.external_id = ${addressId}
         LIMIT 1
       `);
       if (result.length === 0) throw new NotFoundError("Building not found");
-      externalId = (result[0] as { external_id: string }).external_id;
+      buildingId = (result[0] as { building_id: string }).building_id;
       break;
     }
     default:
@@ -52,22 +50,10 @@ export async function getBuildingByGeocoderId(
 
   const rows = await db.execute(sql`
     SELECT * FROM geocoder.building_geocoder
-    WHERE external_id = ${externalId}
+    WHERE building_id = ${buildingId}
     LIMIT 1
   `);
 
   if (rows.length === 0) throw new NotFoundError("Building not found");
   return rows[0] as BuildingGeocoder;
-}
-
-export async function getOldBuildingId(
-  buildingId: string,
-): Promise<string | null> {
-  const result = await db.execute(sql`
-    SELECT id FROM geocoder.building
-    WHERE external_id = ${buildingId}
-    LIMIT 1
-  `);
-  if (result.length === 0) return null;
-  return (result[0] as { id: string }).id;
 }
