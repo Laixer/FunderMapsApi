@@ -1,9 +1,17 @@
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../../db/client.ts";
-import { user, authKey } from "../../db/schema/application.ts";
+import {
+  user,
+  authKey,
+  account,
+  session,
+  organizationUser,
+} from "../../db/schema/application.ts";
+import { auth } from "../../lib/auth.ts";
+import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
 import type { AppEnv } from "../../types/context.ts";
@@ -18,6 +26,8 @@ users.get("/", async (c) => {
 
 const createUserSchema = z.object({
   email: z.email(),
+  password: z.string().min(8),
+  name: z.string().optional(),
 });
 
 users.post("/", zValidator("json", createUserSchema), async (c) => {
@@ -32,17 +42,16 @@ users.post("/", zValidator("json", createUserSchema), async (c) => {
     .limit(1);
   if (existing.length > 0) throw new ConflictError("User already exists");
 
-  // With ZITADEL, we don't manage passwords — just create the local user record
-  const [created] = await db
-    .insert(user)
-    .values({
+  // Create user via Better Auth (handles password hashing + account creation)
+  const result = await auth.api.signUpEmail({
+    body: {
       email,
-      passwordHash: "", // Not used with ZITADEL
-      role: "user",
-    })
-    .returning();
+      password: data.password,
+      name: data.name ?? email,
+    },
+  });
 
-  return c.json(created, 201);
+  return c.json(result.user, 201);
 });
 
 users.get("/:user_id", async (c) => {
@@ -102,7 +111,7 @@ users.put("/:user_id", zValidator("json", updateUserSchema), async (c) => {
   return c.json(updated);
 });
 
-users.get("/:user_id/api-key", async (c) => {
+users.post("/:user_id/api-key", async (c) => {
   const userId = c.req.param("user_id");
 
   // Verify user exists
@@ -119,6 +128,81 @@ users.get("/:user_id/api-key", async (c) => {
     .returning();
 
   return c.json(key, 201);
+});
+
+const deleteKeySchema = z.object({ key: z.string().min(1) });
+
+users.delete(
+  "/:user_id/api-key",
+  zValidator("json", deleteKeySchema),
+  async (c) => {
+    const userId = c.req.param("user_id");
+    const { key } = c.req.valid("json");
+
+    const deleted = await db
+      .delete(authKey)
+      .where(and(eq(authKey.key, key), eq(authKey.userId, userId)))
+      .returning();
+
+    if (deleted.length === 0) throw new NotFoundError("API key not found");
+    return c.body(null, 204);
+  },
+);
+
+const resetPasswordSchema = z.object({ password: z.string().min(6) });
+
+users.post(
+  "/:user_id/reset-password",
+  zValidator("json", resetPasswordSchema),
+  async (c) => {
+    const userId = c.req.param("user_id");
+    const { password } = c.req.valid("json");
+
+    // Verify user exists
+    const existing = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    if (existing.length === 0) throw new NotFoundError("User not found");
+
+    // Update password hash in Better Auth account table
+    const hash = await hashPassword(password);
+    const updated = await db
+      .update(account)
+      .set({ password: hash, updatedAt: new Date() })
+      .where(
+        and(eq(account.userId, userId), eq(account.providerId, "credential")),
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      throw new NotFoundError("No credential account found for user");
+    }
+
+    return c.body(null, 204);
+  },
+);
+
+users.delete("/:user_id", async (c) => {
+  const userId = c.req.param("user_id");
+
+  // Verify user exists
+  const existing = await db
+    .select()
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  if (existing.length === 0) throw new NotFoundError("User not found");
+
+  // Cascade: remove org memberships, API keys, sessions, then user
+  await db.delete(organizationUser).where(eq(organizationUser.userId, userId));
+  await db.delete(authKey).where(eq(authKey.userId, userId));
+  await db.delete(session).where(eq(session.userId, userId));
+  await db.delete(account).where(eq(account.userId, userId));
+  await db.delete(user).where(eq(user.id, userId));
+
+  return c.body(null, 204);
 });
 
 export default users;

@@ -7,6 +7,7 @@ import {
   organization,
   organizationUser,
   user,
+  mapsetCollection,
   organizationGeolockDistrict,
   organizationGeolockMunicipality,
   organizationGeolockNeighborhood,
@@ -91,6 +92,38 @@ orgs.put("/:org_id", zValidator("json", updateOrgSchema), async (c) => {
   return c.json(updated);
 });
 
+orgs.delete("/:org_id", async (c) => {
+  const orgId = c.req.param("org_id");
+
+  // Verify org exists
+  const existing = await db
+    .select()
+    .from(organization)
+    .where(eq(organization.id, orgId))
+    .limit(1);
+  if (existing.length === 0) throw new NotFoundError("Organization not found");
+
+  // Cascade: remove all associations, then org
+  await db
+    .delete(organizationUser)
+    .where(eq(organizationUser.organizationId, orgId));
+  await db
+    .delete(organizationMapset)
+    .where(eq(organizationMapset.organizationId, orgId));
+  await db
+    .delete(organizationGeolockDistrict)
+    .where(eq(organizationGeolockDistrict.organizationId, orgId));
+  await db
+    .delete(organizationGeolockMunicipality)
+    .where(eq(organizationGeolockMunicipality.organizationId, orgId));
+  await db
+    .delete(organizationGeolockNeighborhood)
+    .where(eq(organizationGeolockNeighborhood.organizationId, orgId));
+  await db.delete(organization).where(eq(organization.id, orgId));
+
+  return c.body(null, 204);
+});
+
 // Organization Users
 orgs.get("/:org_id/user", async (c) => {
   const orgId = c.req.param("org_id");
@@ -169,6 +202,21 @@ orgs.delete("/:org_id/mapset", zValidator("json", mapsetSchema), async (c) => {
     );
 
   return c.body(null, 204);
+});
+
+orgs.get("/:org_id/mapset", async (c) => {
+  const orgId = c.req.param("org_id");
+
+  const rows = await db
+    .select({ mapset: mapsetCollection })
+    .from(mapsetCollection)
+    .innerJoin(
+      organizationMapset,
+      eq(organizationMapset.mapsetId, mapsetCollection.id),
+    )
+    .where(eq(organizationMapset.organizationId, orgId));
+
+  return c.json(rows.map((r) => r.mapset));
 });
 
 // Geolock: Districts
