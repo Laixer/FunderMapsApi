@@ -112,6 +112,24 @@ users.put("/:user_id", zValidator("json", updateUserSchema), async (c) => {
   return c.json(toLegacyUser(updated));
 });
 
+users.get("/:user_id/api-key", async (c) => {
+  const userId = c.req.param("user_id");
+
+  const existing = await db
+    .select()
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  if (existing.length === 0) throw new NotFoundError("User not found");
+
+  const keys = await db
+    .select()
+    .from(authKey)
+    .where(eq(authKey.userId, userId));
+
+  return c.json(keys);
+});
+
 users.post("/:user_id/api-key", async (c) => {
   const userId = c.req.param("user_id");
 
