@@ -185,6 +185,14 @@ export const authKey = applicationSchema.table("auth_key", {
     .references(() => user.id),
   name: text(),
   lastUsed: timestamp("last_used"),
+  // SHA-256(key) — populated by Phase 1 backfill on existing rows and
+  // dual-written by the management route on new rows. Phase 3 switches
+  // the auth lookup to this column. Plaintext `key` stays until the
+  // C# webservice is retired.
+  keyHash: text("key_hash"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const authLog = applicationSchema.table("auth_logs", {

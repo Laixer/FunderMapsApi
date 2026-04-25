@@ -17,6 +17,7 @@ import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
 import { toLegacyUser, toLegacyAuthKey } from "../../lib/user-serializer.ts";
+import { generateApiKey, sha256Hex } from "../../lib/api-key.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const users = new Hono<AppEnv>();
@@ -143,9 +144,13 @@ users.post("/:user_id/api-key", async (c) => {
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("User not found");
 
+  // Dual-write: store both the plaintext (until C# webservice retires)
+  // and the SHA-256 hash (used by Phase 3+ auth lookups).
+  const newKey = generateApiKey();
+  const newKeyHash = await sha256Hex(newKey);
   const [key] = await db
     .insert(authKey)
-    .values({ key: `fmsk.${crypto.randomUUID().replaceAll("-", "")}`, userId })
+    .values({ key: newKey, keyHash: newKeyHash, userId })
     .returning();
 
   return c.json(toLegacyAuthKey(key!), 201);
