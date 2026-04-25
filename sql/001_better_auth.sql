@@ -74,9 +74,18 @@ FROM application."user"
 WHERE password_hash IS NOT NULL AND password_hash != ''
 ON CONFLICT DO NOTHING;
 
--- Grant permissions to existing roles
+-- Grant permissions to existing roles.
+-- fundermaps owns the schema; fundermaps_webapp is the role the deployed
+-- TS API connects as (sign-in flow needs SELECT on account, INSERT into
+-- session, etc.). Without webapp grants every /api/auth call 500s with
+-- "permission denied for table account" — discovered the hard way
+-- 2026-04-25.
 GRANT SELECT, INSERT, UPDATE, DELETE ON application.session TO fundermaps;
 GRANT SELECT, INSERT, UPDATE, DELETE ON application.account TO fundermaps;
 GRANT SELECT, INSERT, UPDATE, DELETE ON application.verification TO fundermaps;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON application.session TO fundermaps_webapp;
+GRANT SELECT, INSERT, UPDATE, DELETE ON application.account TO fundermaps_webapp;
+GRANT SELECT, INSERT, UPDATE, DELETE ON application.verification TO fundermaps_webapp;
 
 COMMIT;

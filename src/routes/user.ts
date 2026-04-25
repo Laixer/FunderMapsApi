@@ -5,12 +5,14 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { user, applicationUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
+import { toLegacyUser } from "../lib/user-serializer.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const users = new Hono<AppEnv>();
 
 users.get("/me", (c) => {
-  return c.json(c.get("user"));
+  const u = c.get("user");
+  return c.json(toLegacyUser(u, u.organizations));
 });
 
 const updateUserSchema = z.object({
@@ -39,13 +41,13 @@ users.put("/me", zValidator("json", updateUserSchema), async (c) => {
     })
     .where(eq(user.id, currentUser.id));
 
-  const updated = await db
+  const [updated] = await db
     .select()
     .from(user)
     .where(eq(user.id, currentUser.id))
     .limit(1);
 
-  return c.json({ ...updated[0], organizations: currentUser.organizations });
+  return c.json(toLegacyUser(updated!, currentUser.organizations));
 });
 
 users.get("/metadata", async (c) => {

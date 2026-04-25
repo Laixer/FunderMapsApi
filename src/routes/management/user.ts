@@ -14,6 +14,7 @@ import { auth } from "../../lib/auth.ts";
 import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
+import { toLegacyUser } from "../../lib/user-serializer.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const users = new Hono<AppEnv>();
@@ -21,7 +22,7 @@ const users = new Hono<AppEnv>();
 users.get("/", async (c) => {
   const { limit, offset } = paginationSchema.parse(c.req.query());
   const rows = await db.select().from(user).limit(limit).offset(offset);
-  return c.json(rows);
+  return c.json(rows.map((u) => toLegacyUser(u)));
 });
 
 const createUserSchema = z.object({
@@ -63,7 +64,7 @@ users.get("/:user_id", async (c) => {
     .limit(1);
 
   if (rows.length === 0) throw new NotFoundError("User not found");
-  return c.json(rows[0]);
+  return c.json(toLegacyUser(rows[0]!));
 });
 
 const updateUserSchema = z.object({
@@ -108,7 +109,7 @@ users.put("/:user_id", zValidator("json", updateUserSchema), async (c) => {
     .returning();
 
   if (!updated) throw new NotFoundError("User not found");
-  return c.json(updated);
+  return c.json(toLegacyUser(updated));
 });
 
 users.post("/:user_id/api-key", async (c) => {
