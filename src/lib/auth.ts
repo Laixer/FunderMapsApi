@@ -16,6 +16,7 @@ import {
   verifyDotnetIdentityV3,
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
+import { sendMail } from "../services/mail.ts";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -46,6 +47,28 @@ export const auth = betterAuth({
         return baVerifyPassword({ hash, password });
       },
     },
+    // Password reset email. The frontend POSTs /api/auth/request-password-reset
+    // with { email, redirectTo: "<frontend>/reset-password" }; Better Auth
+    // generates a one-time token, embeds it in `url`, and invokes this hook.
+    // The link sends the user to <baseURL>/api/auth/reset-password/<token>?
+    // callbackURL=<frontend>, which validates and redirects to the frontend
+    // with ?token=<valid_token> in the query.
+    sendResetPassword: async ({ user, url }) => {
+      await sendMail({
+        from: "FunderMaps <noreply@fundermaps.com>",
+        to: [user.email],
+        subject: "Reset your FunderMaps password",
+        body:
+          `Hi ${user.name || user.email},\n\n` +
+          `A password reset was requested for your FunderMaps account.\n\n` +
+          `Open the link below to set a new password (valid for 1 hour):\n${url}\n\n` +
+          `If you did not request this, ignore this email — your password is unchanged.`,
+      });
+    },
+    // Wipe all active sessions when a user resets their password — defensive
+    // against stolen-credential scenarios where the attacker still has a
+    // valid bearer token from before the reset.
+    revokeSessionsOnPasswordReset: true,
   },
   user: {
     modelName: "user",
