@@ -9,7 +9,7 @@ FunderMaps API — TypeScript rewrite of the Go/C# backend. REST API built with 
 - **Runtime**: Bun
 - **Framework**: Hono
 - **ORM**: Drizzle ORM (PostgreSQL, existing multi-schema database)
-- **Auth**: ZITADEL Cloud (JWT via JWKS) + API key auth (`fmsk.` prefix)
+- **Auth**: Better Auth (email/password + sessions) + API key auth (`fmsk.` prefix)
 - **Validation**: Zod v4 + @hono/zod-validator
 - **Storage**: @aws-sdk/client-s3 (DigitalOcean Spaces compatible)
 - **Email**: Mailgun (direct REST API via fetch)
@@ -42,7 +42,9 @@ Use `bunx drizzle-kit push` to sync schema to a fresh database.
 
 ## Auth
 
-ZITADEL handles login/OAuth2/password flows. The API validates JWTs via ZITADEL JWKS endpoint. API key auth (`X-API-Key` header) falls back to `application.auth_key` table lookup. Admin routes require `role === "administrator"`.
+Better Auth handles email/password login, sessions, and password management. The bearer plugin allows clients to send session tokens as `Authorization: Bearer` headers. API key auth (`X-API-Key` or `Authorization: AuthKey` headers with `fmsk.` prefix) falls back to `application.auth_key` table lookup. Admin routes require `role === "administrator"`.
+
+Better Auth routes are mounted at `/api/auth/*` and provide: sign-up, sign-in, sign-out, session management, password reset.
 
 ## What's Implemented (~70% of full C# parity)
 

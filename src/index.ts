@@ -3,6 +3,7 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { cors } from "hono/cors";
 import { env } from "./config.ts";
+import { auth } from "./lib/auth.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { adminMiddleware } from "./middleware/admin.ts";
@@ -35,6 +36,11 @@ app.onError(errorHandler);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
+
+// Better Auth routes (sign-up, sign-in, sign-out, session, etc.)
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+  return auth.handler(c.req.raw);
+});
 
 // Public routes
 app.route("/api/diag", diagRoutes);

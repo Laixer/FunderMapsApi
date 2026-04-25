@@ -1,21 +1,14 @@
 import { createMiddleware } from "hono/factory";
-import * as jose from "jose";
 import { eq } from "drizzle-orm";
-import { env } from "../config.ts";
+import { auth } from "../lib/auth.ts";
 import { db } from "../db/client.ts";
-import { authKey, user, organization, organizationUser } from "../db/schema/application.ts";
+import {
+  user,
+  authKey,
+  organization,
+  organizationUser,
+} from "../db/schema/application.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
-
-let jwks: jose.JWTVerifyGetKey;
-
-function getJWKS(): jose.JWTVerifyGetKey {
-  if (!jwks) {
-    jwks = jose.createRemoteJWKSet(
-      new URL(`${env.ZITADEL_ISSUER}/oauth/v2/keys`),
-    );
-  }
-  return jwks;
-}
 
 async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
   const rows = await db
@@ -27,40 +20,30 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
   if (rows.length === 0) return null;
 
   const orgs = await db
-    .select({ id: organization.id, name: organization.name, email: organization.email })
+    .select({ id: organization.id, name: organization.name })
     .from(organization)
-    .innerJoin(organizationUser, eq(organization.id, organizationUser.organizationId))
+    .innerJoin(
+      organizationUser,
+      eq(organization.id, organizationUser.organizationId),
+    )
     .where(eq(organizationUser.userId, userId));
 
   return { ...rows[0]!, organizations: orgs };
 }
 
-async function resolveUserByEmail(email: string): Promise<AuthUser | null> {
-  const rows = await db
-    .select()
-    .from(user)
-    .where(eq(user.email, email))
-    .limit(1);
-
-  if (rows.length === 0) return null;
-
-  const orgs = await db
-    .select({ id: organization.id, name: organization.name, email: organization.email })
-    .from(organization)
-    .innerJoin(organizationUser, eq(organization.id, organizationUser.organizationId))
-    .where(eq(organizationUser.userId, rows[0]!.id));
-
-  return { ...rows[0]!, organizations: orgs };
-}
-
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
-  // API key auth (fmsk. prefix)
-  const apiKeyHeader = c.req.header("X-API-Key");
-  if (apiKeyHeader?.startsWith("fmsk.")) {
+  // API key auth — check X-API-Key header and Authorization: AuthKey header
+  const apiKeyValue =
+    c.req.header("X-API-Key") ??
+    (c.req.header("Authorization")?.startsWith("AuthKey ")
+      ? c.req.header("Authorization")!.slice(8)
+      : undefined);
+
+  if (apiKeyValue?.startsWith("fmsk.")) {
     const keyRow = await db
       .select()
       .from(authKey)
-      .where(eq(authKey.key, apiKeyHeader))
+      .where(eq(authKey.key, apiKeyValue))
       .limit(1);
 
     if (keyRow.length === 0) {
@@ -76,34 +59,20 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     return next();
   }
 
-  // JWT auth via ZITADEL
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  // Better Auth session (cookie or Bearer token via bearer plugin)
+  const session = await auth.api
+    .getSession({ headers: c.req.raw.headers })
+    .catch(() => null);
+
+  if (!session?.user) {
     return c.json({ message: "Unauthorized" }, 401);
   }
 
-  const token = authHeader.slice(7);
-  try {
-    const keySet = getJWKS();
-    const { payload } = await jose.jwtVerify(token, keySet, {
-      issuer: env.ZITADEL_ISSUER,
-      ...(env.ZITADEL_CLIENT_ID && { audience: env.ZITADEL_CLIENT_ID }),
-    });
-
-    const email = payload.email as string | undefined;
-    if (!email) {
-      return c.json({ message: "Unauthorized" }, 401);
-    }
-
-    const authUser = await resolveUserByEmail(email);
-    if (!authUser) {
-      return c.json({ message: "Unauthorized" }, 401);
-    }
-
-    c.set("user", authUser);
-  } catch {
+  const authUser = await loadUserWithOrgs(session.user.id);
+  if (!authUser) {
     return c.json({ message: "Unauthorized" }, 401);
   }
 
+  c.set("user", authUser);
   return next();
 });

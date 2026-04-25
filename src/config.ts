@@ -5,9 +5,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   APP_ID: z.string(),
 
-  // ZITADEL
-  ZITADEL_ISSUER: z.url(),
-  ZITADEL_CLIENT_ID: z.string().optional(),
+  // Better Auth
+  AUTH_SECRET: z.string(),
+  BASE_URL: z.url().optional(),
 
   // S3 / DigitalOcean Spaces
   S3_ENDPOINT: z.string().optional(),

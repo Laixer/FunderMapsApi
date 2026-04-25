@@ -25,16 +25,59 @@ export const jobStatusEnum = applicationSchema.enum("job_status", [
 // Tables
 export const user = applicationSchema.table("user", {
   id: uuid().primaryKey().defaultRandom(),
+  name: text(),
   givenName: text("given_name"),
   lastName: text("last_name"),
   email: text().notNull(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
   avatar: text(),
   jobTitle: text("job_title"),
-  passwordHash: text("password_hash").notNull(),
   phoneNumber: text("phone_number"),
   accessFailedCount: integer("access_failed_count").default(0).notNull(),
   role: text().default("user").notNull(),
   lastLogin: timestamp("last_login").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const session = applicationSchema.table("session", {
+  id: text().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  token: text().notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const account = applicationSchema.table("account", {
+  id: text().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+  scope: text(),
+  idToken: text("id_token"),
+  password: text(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const verification = applicationSchema.table("verification", {
+  id: text().primaryKey(),
+  identifier: text().notNull(),
+  value: text().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const organization = applicationSchema.table("organization", {
@@ -85,6 +128,8 @@ export const authKey = applicationSchema.table("auth_key", {
   userId: uuid("user_id")
     .notNull()
     .references(() => user.id),
+  name: text(),
+  lastUsed: timestamp("last_used"),
 });
 
 export const authLog = applicationSchema.table("auth_logs", {
