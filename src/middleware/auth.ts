@@ -11,23 +11,21 @@ import {
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
-  const rows = await db
-    .select()
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
+  // Run user + orgs lookups in parallel — they're independent and this
+  // halves the auth-middleware DB latency.
+  const [rows, orgs] = await Promise.all([
+    db.select().from(user).where(eq(user.id, userId)).limit(1),
+    db
+      .select({ id: organization.id, name: organization.name })
+      .from(organization)
+      .innerJoin(
+        organizationUser,
+        eq(organization.id, organizationUser.organizationId),
+      )
+      .where(eq(organizationUser.userId, userId)),
+  ]);
 
   if (rows.length === 0) return null;
-
-  const orgs = await db
-    .select({ id: organization.id, name: organization.name })
-    .from(organization)
-    .innerJoin(
-      organizationUser,
-      eq(organization.id, organizationUser.organizationId),
-    )
-    .where(eq(organizationUser.userId, userId));
-
   return { ...rows[0]!, organizations: orgs };
 }
 
