@@ -15,6 +15,7 @@ import {
 import { organizationMapset } from "../../db/schema/application.ts";
 import { district, municipality, neighborhood } from "../../db/schema/geocoder.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
+import { toLegacyUser } from "../../lib/user-serializer.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const orgs = new Hono<AppEnv>();
@@ -130,12 +131,17 @@ orgs.get("/:org_id/user", async (c) => {
   const orgId = c.req.param("org_id");
 
   const rows = await db
-    .select({ user })
+    .select({ user, role: organizationUser.role })
     .from(user)
     .innerJoin(organizationUser, eq(user.id, organizationUser.userId))
     .where(eq(organizationUser.organizationId, orgId));
 
-  return c.json(rows.map((r) => r.user));
+  return c.json(
+    rows.map((r) => ({
+      ...toLegacyUser(r.user),
+      organization_role: r.role,
+    })),
+  );
 });
 
 const addUserSchema = z.object({

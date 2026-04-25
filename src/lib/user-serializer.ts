@@ -3,9 +3,10 @@
 // what the Go backend produced. Keeps wire format stable across the
 // Go→TS cutover.
 import type { InferSelectModel } from "drizzle-orm";
-import type { user } from "../db/schema/application.ts";
+import type { user, authKey } from "../db/schema/application.ts";
 
 type UserRow = InferSelectModel<typeof user>;
+type AuthKeyRow = InferSelectModel<typeof authKey>;
 
 export interface LegacyUser {
   id: string;
@@ -35,5 +36,21 @@ export function toLegacyUser(
     role: u.role,
     last_login: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
     ...(organizations !== undefined && { organizations }),
+  };
+}
+
+export interface LegacyAuthKey {
+  key: string;
+  user_id: string;
+  name: string | null;
+  last_used: string | null;
+}
+
+export function toLegacyAuthKey(k: AuthKeyRow): LegacyAuthKey {
+  return {
+    key: k.key,
+    user_id: k.userId,
+    name: k.name ?? null,
+    last_used: k.lastUsed ? new Date(k.lastUsed).toISOString() : null,
   };
 }

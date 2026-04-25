@@ -16,7 +16,7 @@ import { auth } from "../../lib/auth.ts";
 import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
-import { toLegacyUser } from "../../lib/user-serializer.ts";
+import { toLegacyUser, toLegacyAuthKey } from "../../lib/user-serializer.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const users = new Hono<AppEnv>();
@@ -129,7 +129,7 @@ users.get("/:user_id/api-key", async (c) => {
     .from(authKey)
     .where(eq(authKey.userId, userId));
 
-  return c.json(keys);
+  return c.json(keys.map(toLegacyAuthKey));
 });
 
 users.post("/:user_id/api-key", async (c) => {
@@ -148,7 +148,7 @@ users.post("/:user_id/api-key", async (c) => {
     .values({ key: `fmsk.${crypto.randomUUID().replaceAll("-", "")}`, userId })
     .returning();
 
-  return c.json(key, 201);
+  return c.json(toLegacyAuthKey(key!), 201);
 });
 
 const deleteKeySchema = z.object({ key: z.string().min(1) });
