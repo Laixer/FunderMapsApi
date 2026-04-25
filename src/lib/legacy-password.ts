@@ -1,26 +1,70 @@
-// .NET Identity v3 PBKDF2 hash compatibility.
+// Legacy password hash compatibility shims.
 //
-// Format (base64-encoded binary):
-//   [0x01]                  format marker
-//   [PRF u32 BE]            0=HMACSHA1, 1=HMACSHA256, 2=HMACSHA512
-//   [iter u32 BE]           PBKDF2 iterations
-//   [saltLen u32 BE]        salt length in bytes
-//   [salt]                  saltLen bytes
-//   [subkey]                derived key (rest of buffer)
+// Two formats exist among migrated hashes:
 //
-// .NET Identity v2 used a fixed 16-byte salt + 32-byte subkey with marker
-// 0x00; we don't support v2 here because all 272 migrated hashes are v3
-// (verified 2026-04-25; first char 'A' + second char in [Q-Z,a-f] →
-// 0x01 marker).
+// 1. FunderMaps custom format (the one actually in use; 272 users
+//    as of 2026-04-25). Custom PasswordHasher in
+//    FunderMaps.Core.Services with hard-coded params:
+//      [0x01] [16-byte salt] [32-byte subkey]
+//      PRF = HMACSHA256, iter = 10_000
+//    Total 49 bytes → 68 base64 chars (with padding).
+//    Reference: src/FunderMaps.Core/Services/PasswordHasher.cs in the
+//    FunderMaps repo.
+//
+// 2. Standard .NET Identity v3 (kept for completeness, in case any
+//    user was migrated from a different system at some point):
+//      [0x01]                format marker
+//      [PRF u32 BE]          0=HMACSHA1, 1=HMACSHA256, 2=HMACSHA512
+//      [iter u32 BE]
+//      [saltLen u32 BE]
+//      [salt][subkey]        rest of buffer
 import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
 
 const PRF_DIGEST = ["sha1", "sha256", "sha512"] as const;
+
+// FunderMaps custom format constants (mirrors PasswordHasher.cs)
+const FM_TOTAL_BYTES = 49;
+const FM_SALT_LEN = 16;
+const FM_SUBKEY_LEN = 32;
+const FM_ITER = 10_000;
+const FM_DIGEST = "sha256";
 
 /** Heuristic: pure base64 without a colon = legacy .NET Identity hash. */
 export function looksLikeDotnetIdentity(hash: string): boolean {
   if (hash.includes(":")) return false;
   if (!/^[A-Za-z0-9+/]+=*$/.test(hash)) return false;
   return true;
+}
+
+/**
+ * Returns true if the password matches the FunderMaps custom hash format.
+ * (HMACSHA256, 10000 iterations, 16-byte salt, 32-byte subkey.)
+ */
+export function verifyFunderMapsCustom(hashB64: string, password: string): boolean {
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(hashB64, "base64");
+  } catch {
+    return false;
+  }
+  if (buf.length !== FM_TOTAL_BYTES || buf[0] !== 0x01) return false;
+  const salt = buf.subarray(1, 1 + FM_SALT_LEN);
+  const subkey = buf.subarray(1 + FM_SALT_LEN);
+  let derived: Buffer;
+  try {
+    derived = pbkdf2Sync(password, salt, FM_ITER, FM_SUBKEY_LEN, FM_DIGEST);
+  } catch {
+    return false;
+  }
+  return derived.length === subkey.length && timingSafeEqual(derived, subkey);
+}
+
+/** Cheap check for the FunderMaps fixed-size format. */
+export function looksLikeFunderMapsCustom(hash: string): boolean {
+  if (hash.includes(":")) return false;
+  if (!/^[A-Za-z0-9+/]+=*$/.test(hash)) return false;
+  // 49 bytes base64-encoded with one '=' padding = 68 chars exactly.
+  return hash.length === 68;
 }
 
 /** Returns true if the password matches a .NET Identity v3 PBKDF2 hash. */
