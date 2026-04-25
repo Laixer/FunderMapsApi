@@ -83,7 +83,6 @@ export const verification = applicationSchema.table("verification", {
 export const organization = applicationSchema.table("organization", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),
-  email: text(),
 });
 
 export const organizationUser = applicationSchema.table(
