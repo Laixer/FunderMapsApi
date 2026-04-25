@@ -4,6 +4,27 @@ import { zValidator } from "@hono/zod-validator";
 import { createJob, getAllJobs, getJobById, cancelJob } from "../../services/job.ts";
 import type { AppEnv } from "../../types/context.ts";
 
+// Map Drizzle's camelCase shape to the snake_case wire format the
+// legacy ManagementFront IJob expects — same Go-compat treatment as
+// toLegacyUser does for users.
+type JobRow = Awaited<ReturnType<typeof getJobById>>;
+
+function toLegacyJob(j: JobRow) {
+  return {
+    id: j.id,
+    job_type: j.jobType,
+    payload: j.payload ?? null,
+    status: j.status,
+    priority: j.priority,
+    retry_count: j.retryCount,
+    max_retries: j.maxRetries,
+    last_error: j.lastError ?? null,
+    process_after: j.processAfter ? new Date(j.processAfter).toISOString() : null,
+    created_at: j.createdAt ? new Date(j.createdAt).toISOString() : null,
+    updated_at: j.updatedAt ? new Date(j.updatedAt).toISOString() : null,
+  };
+}
+
 const jobs = new Hono<AppEnv>();
 
 jobs.get("/", async (c) => {
@@ -13,7 +34,7 @@ jobs.get("/", async (c) => {
   const offset = parseInt(c.req.query("offset") ?? "0");
 
   const rows = await getAllJobs({ jobType, status, limit, offset });
-  return c.json(rows);
+  return c.json(rows.map(toLegacyJob));
 });
 
 const createJobSchema = z.object({
@@ -35,19 +56,19 @@ jobs.post("/", zValidator("json", createJobSchema), async (c) => {
     processAfter: data.process_after ? new Date(data.process_after) : undefined,
   });
 
-  return c.json(job, 201);
+  return c.json(toLegacyJob(job), 201);
 });
 
 jobs.get("/:id", async (c) => {
   const id = parseInt(c.req.param("id"));
   const job = await getJobById(id);
-  return c.json(job);
+  return c.json(toLegacyJob(job));
 });
 
 jobs.post("/:id/cancel", async (c) => {
   const id = parseInt(c.req.param("id"));
   const job = await cancelJob(id);
-  return c.json(job);
+  return c.json(toLegacyJob(job));
 });
 
 export default jobs;
