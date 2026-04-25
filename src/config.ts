@@ -8,6 +8,20 @@ const envSchema = z.object({
   // Better Auth
   AUTH_SECRET: z.string(),
   BASE_URL: z.url().optional(),
+  // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
+  // Required when the frontend is on a different domain than BASE_URL,
+  // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.
+  TRUSTED_ORIGINS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [],
+    ),
 
   // S3 / DigitalOcean Spaces
   S3_ENDPOINT: z.string().optional(),

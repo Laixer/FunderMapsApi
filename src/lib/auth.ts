@@ -21,6 +21,7 @@ export const auth = betterAuth({
   baseURL: env.BASE_URL,
   basePath: "/api/auth",
   secret: env.AUTH_SECRET,
+  trustedOrigins: env.TRUSTED_ORIGINS,
   emailAndPassword: {
     enabled: true,
     password: {
