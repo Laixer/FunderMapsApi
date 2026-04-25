@@ -261,3 +261,21 @@ export const organizationGeolockNeighborhood = applicationSchema.table(
     primaryKey({ columns: [table.organizationId, table.neighborhoodId] }),
   ],
 );
+
+// Lives in the application schema (was renamed/moved from maplayer
+// during the 2026-04 constraint sweep). Junction table between
+// organization and mapset.
+export const organizationMapset = applicationSchema.table(
+  "organization_mapset",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id),
+    mapsetId: text("mapset_id")
+      .notNull()
+      .references(() => mapsetCollection.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizationId, table.mapsetId] }),
+  ],
+);

@@ -12,7 +12,7 @@ import {
   organizationGeolockMunicipality,
   organizationGeolockNeighborhood,
 } from "../../db/schema/application.ts";
-import { organizationMapset } from "../../db/schema/maplayer.ts";
+import { organizationMapset } from "../../db/schema/application.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
 import type { AppEnv } from "../../types/context.ts";
 

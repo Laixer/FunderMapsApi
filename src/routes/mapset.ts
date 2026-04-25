@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { mapsetCollection } from "../db/schema/application.ts";
-import { organizationMapset } from "../db/schema/maplayer.ts";
+import { organizationMapset } from "../db/schema/application.ts";
 import { NotFoundError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
