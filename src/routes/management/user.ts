@@ -9,7 +9,9 @@ import {
   account,
   session,
   organizationUser,
+  attribution,
 } from "../../db/schema/application.ts";
+import { or } from "drizzle-orm";
 import { auth } from "../../lib/auth.ts";
 import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
@@ -213,6 +215,27 @@ users.delete("/:user_id", async (c) => {
     .where(eq(user.id, userId))
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("User not found");
+
+  // Block deletion if the user appears as reviewer/creator/owner on any
+  // attribution row — those are immutable audit references on inquiry
+  // and recovery records. FK action is NO ACTION by design; instead of
+  // a generic 500 from the FK violation, return a clear 409.
+  const refs = await db
+    .select({ id: attribution.id })
+    .from(attribution)
+    .where(
+      or(
+        eq(attribution.reviewer, userId),
+        eq(attribution.creator, userId),
+        eq(attribution.owner, userId),
+      ),
+    )
+    .limit(1);
+  if (refs.length > 0) {
+    throw new ConflictError(
+      "User has historic attribution records (reviewer/creator/owner of inquiries or recoveries) and cannot be deleted.",
+    );
+  }
 
   // Cascade: remove org memberships, API keys, sessions, then user
   await db.delete(organizationUser).where(eq(organizationUser.userId, userId));
