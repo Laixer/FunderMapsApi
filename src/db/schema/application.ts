@@ -155,6 +155,28 @@ export const contractor = applicationSchema.table("contractor", {
   name: text().notNull(),
 });
 
+// Underlying mapset table — source of truth for layer IDs.
+// mapsetCollection (below) is a VIEW that joins this with mapset_layer.
+export const mapset = applicationSchema.table("mapset", {
+  id: text().primaryKey(),
+  name: text(),
+  style: text().notNull(),
+  layers: text().array(),
+  public: boolean().default(false).notNull(),
+  consent: text(),
+  note: text(),
+  icon: text(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
+  order: integer().default(0).notNull(),
+});
+
+export const mapsetLayer = applicationSchema.table("mapset_layer", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  fields: jsonb().notNull(),
+  order: integer().default(0).notNull(),
+});
+
 export const mapsetCollection = applicationSchema.table("mapset_collection", {
   id: text().primaryKey(),
   name: text().notNull(),
