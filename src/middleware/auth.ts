@@ -8,6 +8,7 @@ import {
   organization,
   organizationUser,
 } from "../db/schema/application.ts";
+import { sha256Hex } from "../lib/api-key.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
@@ -38,10 +39,15 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
       : undefined);
 
   if (apiKeyValue?.startsWith("fmsk.")) {
+    // Hash-only lookup. Every existing key was backfilled in phase 1
+    // and every new key is dual-written by the management route. The
+    // plaintext column stays for the C# webservice on ws.fundermaps.com,
+    // which authenticates via a separate read path.
+    const incomingHash = await sha256Hex(apiKeyValue);
     const keyRow = await db
       .select()
       .from(authKey)
-      .where(eq(authKey.key, apiKeyValue))
+      .where(eq(authKey.keyHash, incomingHash))
       .limit(1);
 
     if (keyRow.length === 0) {
