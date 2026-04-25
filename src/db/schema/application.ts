@@ -99,10 +99,10 @@ export const authLog = applicationSchema.table("auth_logs", {
 
 export const attribution = applicationSchema.table("attribution", {
   id: bigserial({ mode: "number" }).primaryKey(),
-  reviewer: uuid().notNull(),
-  creator: uuid().notNull(),
-  owner: uuid().notNull(),
-  contractor: integer().notNull(),
+  reviewer: uuid("reviewer_id").notNull(),
+  creator: uuid("creator_id").notNull(),
+  owner: uuid("owner_id").notNull(),
+  contractor: integer("contractor_id").notNull(),
 });
 
 export const contractor = applicationSchema.table("contractor", {
@@ -115,8 +115,7 @@ export const mapsetCollection = applicationSchema.table("mapset_collection", {
   name: text().notNull(),
   slug: text().notNull(),
   style: text().notNull(),
-  layers: text().array(),
-  options: jsonb().$type<Record<string, unknown>>(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
   public: boolean().default(false),
   consent: text(),
   note: text(),

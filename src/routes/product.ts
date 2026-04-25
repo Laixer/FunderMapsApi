@@ -143,7 +143,7 @@ product.get("/subsidence/historic", async (c) => {
 
   const result = await db.execute(sql`
     SELECT building_id, velocity, mark_at
-    FROM data.subsidence_history
+    FROM data.building_subsidence_history
     WHERE building_id = ${buildingId}
   `);
 

@@ -19,7 +19,7 @@ export const incident = reportSchema.table("incident", {
   chainedBuilding: boolean("chained_building").default(false),
   owner: boolean().default(false),
   foundationRecovery: boolean("foundation_recovery").default(false),
-  neightborRecovery: boolean("neightbor_recovery").default(false),
+  neighborRecovery: boolean("neighbor_recovery").default(false),
   foundationDamageCause: text("foundation_damage_cause"),
   fileResourceKey: text("file_resource_key"),
   documentFile: text("document_file").array(),
@@ -33,7 +33,7 @@ export const incident = reportSchema.table("incident", {
   foundationDamageCharacteristics: text(
     "foundation_damage_characteristics",
   ).array(),
-  building: text().notNull(),
+  building: text("building_id").notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
 });
 
@@ -49,7 +49,7 @@ export const inquiry = reportSchema.table("inquiry", {
   note: text(),
   documentDate: date("document_date").notNull(),
   documentFile: text("document_file").notNull(),
-  attribution: integer()
+  attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
   accessPolicy: text("access_policy").default("private"),
@@ -60,7 +60,7 @@ export const inquiry = reportSchema.table("inquiry", {
 
 export const inquirySample = reportSchema.table("inquiry_sample", {
   id: serial().primaryKey(),
-  inquiry: integer()
+  inquiry: integer("inquiry_id")
     .notNull()
     .references(() => inquiry.id),
   createDate: timestamp("create_date").defaultNow(),
@@ -100,7 +100,7 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   damageCharacteristics: text("damage_characteristics").array(),
   constructionPile: text("construction_pile"),
   woodType: text("wood_type"),
-  woodEncroachment: text("wood_encroachement"),
+  woodEncroachment: text("wood_encroachment"),
   crackIndoorRestored: boolean("crack_indoor_restored"),
   crackIndoorType: text("crack_indoor_type"),
   crackIndoorSize: text("crack_indoor_size"),
@@ -126,7 +126,7 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   settlementSpeed: real("settlement_speed"),
   skewedWindowFrame: boolean("skewed_window_frame"),
   skewedPerpendicularFacade: text("skewed_perpendicular_facade"),
-  building: text().notNull(),
+  building: text("building_id").notNull(),
   facadeScanRisk: text("facade_scan_risk"),
   metadata: jsonb().$type<Record<string, unknown>>(),
 });
@@ -137,7 +137,7 @@ export const recovery = reportSchema.table("recovery", {
   updateDate: timestamp("update_date"),
   deleteDate: timestamp("delete_date"),
   note: text(),
-  attribution: integer()
+  attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
   accessPolicy: text("access_policy").default("private"),
@@ -150,7 +150,7 @@ export const recovery = reportSchema.table("recovery", {
 
 export const recoverySample = reportSchema.table("recovery_sample", {
   id: serial().primaryKey(),
-  recovery: integer()
+  recovery: integer("recovery_id")
     .notNull()
     .references(() => recovery.id),
   createDate: timestamp("create_date").defaultNow(),
@@ -164,7 +164,7 @@ export const recoverySample = reportSchema.table("recovery_sample", {
   permit: text(),
   permitDate: timestamp("permit_date"),
   recoveryDate: timestamp("recovery_date"),
-  contractor: integer(),
+  contractor: integer("contractor_id"),
   buildingId: text("building_id").notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
 });

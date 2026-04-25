@@ -12,12 +12,12 @@ report.get("/", async (c) => {
     db.execute(sql`
       SELECT i.*
       FROM report.incident i
-      WHERE i.building = ${buildingId}
+      WHERE i.building_id = ${buildingId}
     `),
     db.execute(sql`
       SELECT s.*
       FROM report.inquiry_sample s
-      WHERE s.building = ${buildingId}
+      WHERE s.building_id = ${buildingId}
     `),
     db.execute(sql`
       SELECT s.*
