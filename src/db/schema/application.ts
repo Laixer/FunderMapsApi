@@ -80,6 +80,62 @@ export const verification = applicationSchema.table("verification", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// JWKS — signing keypairs for the Better Auth `jwt` plugin. Used to sign
+// ID tokens issued by the OIDC provider plugin (Grafana SSO, etc.).
+export const jwks = applicationSchema.table("jwks", {
+  id: text().primaryKey(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
+// OAuth2 / OIDC client registrations (e.g. Grafana). Issued by the
+// Better Auth `oidc-provider` plugin.
+export const oauthApplication = applicationSchema.table("oauth_application", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  icon: text(),
+  metadata: text(),
+  clientId: text("client_id").notNull().unique(),
+  clientSecret: text("client_secret"),
+  redirectUrls: text("redirect_urls").notNull(),
+  type: text().notNull(),
+  disabled: boolean().default(false),
+  userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const oauthAccessToken = applicationSchema.table("oauth_access_token", {
+  id: text().primaryKey(),
+  accessToken: text("access_token").notNull().unique(),
+  refreshToken: text("refresh_token").notNull().unique(),
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at").notNull(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+  scopes: text().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const oauthConsent = applicationSchema.table("oauth_consent", {
+  id: text().primaryKey(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  scopes: text().notNull(),
+  consentGiven: boolean("consent_given").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const organization = applicationSchema.table("organization", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),

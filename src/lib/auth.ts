@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
 import { bearer } from "better-auth/plugins/bearer";
+import { jwt } from "better-auth/plugins/jwt";
+import { oidcProvider } from "better-auth/plugins/oidc-provider";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
   hashPassword as baHashPassword,
@@ -87,5 +89,19 @@ export const auth = betterAuth({
   },
   plugins: [
     bearer(),
+    jwt(),
+    // OIDC/OAuth2 authorization server. Used by Grafana SSO (replaces the
+    // Go OAuth2 server). loginPage points at ManagementFront's login —
+    // when an unauthenticated user hits /api/auth/oauth2/authorize, the
+    // plugin redirects there and ManagementFront completes the flow by
+    // posting back the credentials. requirePKCE=false because Grafana's
+    // generic_oauth client doesn't send code_verifier.
+    oidcProvider({
+      loginPage: "https://admin.fundermaps.com/login",
+      requirePKCE: false,
+      getAdditionalUserInfoClaim: (u) => ({
+        role: (u as { role?: string }).role ?? "user",
+      }),
+    }),
   ],
 });
