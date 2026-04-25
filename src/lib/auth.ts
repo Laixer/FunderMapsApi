@@ -10,7 +10,9 @@ import { env } from "../config.ts";
 import * as schema from "../db/schema/index.ts";
 import {
   looksLikeDotnetIdentity,
+  looksLikeFunderMapsCustom,
   verifyDotnetIdentityV3,
+  verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 
 export const auth = betterAuth({
@@ -27,8 +29,13 @@ export const auth = betterAuth({
     password: {
       hash: baHashPassword,
       verify: async ({ hash, password }) => {
-        // Legacy .NET Identity v3 hashes (migrated from C# era — base64,
-        // no colon). 272 of these exist as of 2026-04-25.
+        // FunderMaps custom PBKDF2 format (272 migrated users from C# era).
+        // Fixed-size 49-byte payload — try this first since it's the
+        // dominant legacy format.
+        if (looksLikeFunderMapsCustom(hash)) {
+          return verifyFunderMapsCustom(hash, password);
+        }
+        // Standard .NET Identity v3 (variable-size); kept for completeness.
         if (looksLikeDotnetIdentity(hash)) {
           return verifyDotnetIdentityV3(hash, password);
         }
