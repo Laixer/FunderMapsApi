@@ -14,12 +14,30 @@ import type { AppEnv } from "../../types/context.ts";
 
 const mapsets = new Hono<AppEnv>();
 
+// Returned shape adds `layers` (the array of layer IDs from the
+// underlying mapset table). The mapset_collection view exposes
+// `layerset` (rich object array) but not the raw IDs — admin
+// frontend needs the IDs to drive the "manage layers" UI.
 mapsets.get("/", async (c) => {
   const { limit, offset } = paginationSchema.parse(c.req.query());
 
   const rows = await db
-    .select()
+    .select({
+      id: mapsetCollection.id,
+      name: mapsetCollection.name,
+      slug: mapsetCollection.slug,
+      style: mapsetCollection.style,
+      metadata: mapsetCollection.metadata,
+      public: mapsetCollection.public,
+      consent: mapsetCollection.consent,
+      note: mapsetCollection.note,
+      icon: mapsetCollection.icon,
+      order: mapsetCollection.order,
+      layerset: mapsetCollection.layerset,
+      layers: mapset.layers,
+    })
     .from(mapsetCollection)
+    .leftJoin(mapset, eq(mapset.id, mapsetCollection.id))
     .orderBy(asc(mapsetCollection.name))
     .limit(limit)
     .offset(offset);
@@ -30,8 +48,22 @@ mapsets.get("/", async (c) => {
 mapsets.get("/:mapset_id", async (c) => {
   const mapsetId = c.req.param("mapset_id");
   const rows = await db
-    .select()
+    .select({
+      id: mapsetCollection.id,
+      name: mapsetCollection.name,
+      slug: mapsetCollection.slug,
+      style: mapsetCollection.style,
+      metadata: mapsetCollection.metadata,
+      public: mapsetCollection.public,
+      consent: mapsetCollection.consent,
+      note: mapsetCollection.note,
+      icon: mapsetCollection.icon,
+      order: mapsetCollection.order,
+      layerset: mapsetCollection.layerset,
+      layers: mapset.layers,
+    })
     .from(mapsetCollection)
+    .leftJoin(mapset, eq(mapset.id, mapsetCollection.id))
     .where(eq(mapsetCollection.id, mapsetId))
     .limit(1);
 
