@@ -226,11 +226,11 @@ const districtSchema = z.object({ district_id: z.string() });
 orgs.get("/:org_id/district", async (c) => {
   const orgId = c.req.param("org_id");
   const rows = await db
-    .select({ id: district.id, name: district.name })
+    .select({ id: district.externalId, name: district.name })
     .from(organizationGeolockDistrict)
     .innerJoin(
       district,
-      eq(district.id, organizationGeolockDistrict.districtId),
+      eq(district.externalId, organizationGeolockDistrict.districtId),
     )
     .where(eq(organizationGeolockDistrict.organizationId, orgId));
   return c.json(rows);
@@ -271,11 +271,11 @@ const municipalitySchema = z.object({ municipality_id: z.string() });
 orgs.get("/:org_id/municipality", async (c) => {
   const orgId = c.req.param("org_id");
   const rows = await db
-    .select({ id: municipality.id, name: municipality.name })
+    .select({ id: municipality.externalId, name: municipality.name })
     .from(organizationGeolockMunicipality)
     .innerJoin(
       municipality,
-      eq(municipality.id, organizationGeolockMunicipality.municipalityId),
+      eq(municipality.externalId, organizationGeolockMunicipality.municipalityId),
     )
     .where(eq(organizationGeolockMunicipality.organizationId, orgId));
   return c.json(rows);
@@ -316,11 +316,11 @@ const neighborhoodSchema = z.object({ neighborhood_id: z.string() });
 orgs.get("/:org_id/neighborhood", async (c) => {
   const orgId = c.req.param("org_id");
   const rows = await db
-    .select({ id: neighborhood.id, name: neighborhood.name })
+    .select({ id: neighborhood.externalId, name: neighborhood.name })
     .from(organizationGeolockNeighborhood)
     .innerJoin(
       neighborhood,
-      eq(neighborhood.id, organizationGeolockNeighborhood.neighborhoodId),
+      eq(neighborhood.externalId, organizationGeolockNeighborhood.neighborhoodId),
     )
     .where(eq(organizationGeolockNeighborhood.organizationId, orgId));
   return c.json(rows);

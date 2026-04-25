@@ -12,19 +12,25 @@ export const address = geocoderSchema.table("address", {
   city: text(),
 });
 
-// Geographic hierarchy — only id + name modelled here; the full row
-// has more (geom, etc.) but management UIs only need name resolution.
+// Geographic hierarchy. Only id, external_id, and name modelled here;
+// the actual rows have more (geom, etc.) but management UIs only need
+// name resolution. Note: junction tables (organization_geolock_*)
+// store BAG codes which match the *external_id* column, not the
+// gfm-* UUID id.
 export const district = geocoderSchema.table("district", {
   id: text().primaryKey(),
+  externalId: text("external_id"),
   name: text(),
 });
 
 export const municipality = geocoderSchema.table("municipality", {
   id: text().primaryKey(),
+  externalId: text("external_id"),
   name: text(),
 });
 
 export const neighborhood = geocoderSchema.table("neighborhood", {
   id: text().primaryKey(),
+  externalId: text("external_id"),
   name: text(),
 });
