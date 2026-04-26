@@ -17,7 +17,11 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
   const [rows, orgs] = await Promise.all([
     db.select().from(user).where(eq(user.id, userId)).limit(1),
     db
-      .select({ id: organization.id, name: organization.name })
+      .select({
+        id: organization.id,
+        name: organization.name,
+        role: organizationUser.role,
+      })
       .from(organization)
       .innerJoin(
         organizationUser,
