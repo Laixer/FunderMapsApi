@@ -13,22 +13,6 @@ import { attribution } from "./application.ts";
 
 export const reportSchema = pgSchema("report");
 
-// Declared so Drizzle/postgres.js serialize damageCharacteristics arrays
-// with the correct PG type tag — otherwise the enum-array column rejects
-// the text-literal fallback.
-export const foundationDamageCharacteristicsEnum = reportSchema.enum(
-  "foundation_damage_characteristics",
-  [
-    "jamming_door_window",
-    "crack",
-    "skewed",
-    "crawlspace_flooding",
-    "threshold_above_subsurface",
-    "threshold_below_subsurface",
-    "crooked_floor_wall",
-  ],
-);
-
 export const incident = reportSchema.table("incident", {
   id: text().primaryKey(),
   foundationType: text("foundation_type"),
@@ -114,9 +98,7 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   enforcementTerm: text("enforcement_term"),
   recoveryAdvised: boolean("recovery_advised"),
   damageCause: text("damage_cause"),
-  damageCharacteristics: foundationDamageCharacteristicsEnum(
-    "damage_characteristics",
-  ).array(),
+  damageCharacteristics: text("damage_characteristics"),
   constructionPile: text("construction_pile"),
   woodType: text("wood_type"),
   woodEncroachment: text("wood_encroachment"),

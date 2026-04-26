@@ -4,13 +4,10 @@ import { zValidator } from "@hono/zod-validator";
 import { and, count, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
-import type { foundationDamageCharacteristicsEnum } from "../db/schema/report.ts";
-
-type FoundationDamageCharacteristic = (typeof foundationDamageCharacteristicsEnum.enumValues)[number];
 import { attribution } from "../db/schema/application.ts";
 import { assertCanWrite } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
-import { intToEnum, intsToEnums } from "../lib/inquiry-enums.ts";
+import { intToEnum } from "../lib/inquiry-enums.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
 import { activeOrgId, loadInquiryScoped, requireWritable } from "./inquiry.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -107,7 +104,7 @@ const sampleBodySchema = z.object({
   enforcementTerm: z.number().int().nullish(),
   recoveryAdvised: z.boolean().nullish(),
   damageCause: z.number().int().nullish(),
-  damageCharacteristics: z.array(z.number().int()).nullish(),
+  damageCharacteristics: z.number().int().nullish(),
   constructionPile: z.number().int().nullish(),
   woodType: z.number().int().nullish(),
   woodEncroachment: z.number().int().nullish(),
@@ -203,21 +200,10 @@ function toDbValues(
     enforcementTerm: intToEnum("enforcement_term", input.enforcementTerm),
     recoveryAdvised: input.recoveryAdvised ?? null,
     damageCause: intToEnum("foundation_damage_cause", input.damageCause),
-    // postgres.js doesn't know how to serialize a JS array for the
-    // foundation_damage_characteristics[] column type — it falls back to
-    // the text-array literal '{"foo"}' and PG then tries to cast that to
-    // a single enum value. Hand-build the PG array literal and add an
-    // explicit ::text[] cast so PG parses it as an array, then auto-coerces
-    // to the enum element type.
-    damageCharacteristics: (() => {
-      const arr = intsToEnums(
-        "foundation_damage_characteristics",
-        input.damageCharacteristics ?? null,
-      );
-      if (!arr) return null;
-      const literal = `{${arr.map((v) => `"${v}"`).join(",")}}`;
-      return sql`${literal}::text[]` as unknown as FoundationDamageCharacteristic[];
-    })(),
+    damageCharacteristics: intToEnum(
+      "foundation_damage_characteristics",
+      input.damageCharacteristics,
+    ),
     constructionPile: intToEnum("construction_pile", input.constructionPile),
     woodType: intToEnum("wood_type", input.woodType),
     woodEncroachment: intToEnum("wood_encroachment", input.woodEncroachment),

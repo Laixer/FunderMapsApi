@@ -8,7 +8,7 @@
 
 import type { InferSelectModel } from "drizzle-orm";
 import type { inquiry, inquirySample } from "../db/schema/report.ts";
-import { enumToInt, enumsToInts } from "./inquiry-enums.ts";
+import { enumToInt } from "./inquiry-enums.ts";
 
 type InquiryRow = InferSelectModel<typeof inquiry>;
 type InquirySampleRow = InferSelectModel<typeof inquirySample>;
@@ -91,7 +91,7 @@ export function toLegacyInquirySample(row: InquirySampleRow): Record<string, unk
     enforcementTerm: enumToInt("enforcement_term", row.enforcementTerm),
     recoveryAdvised: row.recoveryAdvised,
     damageCause: enumToInt("foundation_damage_cause", row.damageCause),
-    damageCharacteristics: enumsToInts(
+    damageCharacteristics: enumToInt(
       "foundation_damage_characteristics",
       row.damageCharacteristics,
     ),
