@@ -4,9 +4,15 @@ import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/client.ts";
 import { attribution } from "../db/schema/application.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
+import { handleDocumentUpload } from "../lib/upload-handler.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const inquiries = new Hono<AppEnv>();
+
+inquiries.post("/upload-document", async (c) => {
+  const result = await handleDocumentUpload(c, "inquiry-report");
+  return c.json(result);
+});
 
 const createInquirySchema = z.object({
   note: z.string().optional(),
