@@ -8,6 +8,12 @@ import type { user, authKey } from "../db/schema/application.ts";
 type UserRow = InferSelectModel<typeof user>;
 type AuthKeyRow = InferSelectModel<typeof authKey>;
 
+export interface LegacyOrg {
+  id: string;
+  name: string;
+  role?: string | null;
+}
+
 export interface LegacyUser {
   id: string;
   given_name: string | null;
@@ -18,12 +24,12 @@ export interface LegacyUser {
   phone_number: string | null;
   role: string;
   last_login: string | null;
-  organizations?: { id: string; name: string }[];
+  organizations?: LegacyOrg[];
 }
 
 export function toLegacyUser(
   u: UserRow,
-  organizations?: { id: string; name: string }[],
+  organizations?: LegacyOrg[],
 ): LegacyUser {
   return {
     id: u.id,
