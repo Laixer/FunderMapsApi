@@ -1,5 +1,6 @@
 export const GeocoderDatasource = {
   Unknown: 0,
+  FunderMaps: 1,
   NlPostcode: 5,
   NlBagBuilding: 6,
   NlBagBerth: 7,
@@ -26,6 +27,10 @@ export type GeocoderDatasource =
 const postcodeRegex = /^\d{4}[a-zA-Z]{2}$/;
 
 export function fromIdentifier(input: string): GeocoderDatasource {
+  // FunderMaps internal IDs are lowercase `gfm-{uuid-no-dashes}` — keep
+  // the prefix check before the upper-casing line below.
+  if (input.startsWith("gfm-")) return GeocoderDatasource.FunderMaps;
+
   const id = input.replaceAll(" ", "").toUpperCase();
 
   if (id.startsWith("NL.IMBAG.PAND.")) return GeocoderDatasource.NlBagBuilding;
