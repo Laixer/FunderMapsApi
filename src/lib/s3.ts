@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config.ts";
 
 let _client: S3Client | null = null;
@@ -76,5 +77,26 @@ export async function putObject(
       Body: body,
       ContentType: contentType,
     }),
+  );
+}
+
+// Presigned GET URL — used by the inquiry/recovery /download endpoints to
+// hand out short-lived links for the original document. Mirrors C#
+// IBlobStorageService.GetAccessLinkAsync.
+//
+// The `as never` cast is a known dual-package-instance issue: the presigner
+// brings its own @smithy/types peer, which TS sees as structurally distinct
+// from the one client-s3 uses. Behaviourally identical at runtime.
+export async function getDownloadUrl(
+  key: string,
+  hoursValid = 1,
+): Promise<string> {
+  return await getSignedUrl(
+    client() as never,
+    new GetObjectCommand({
+      Bucket: env.S3_BUCKET!,
+      Key: key,
+    }) as never,
+    { expiresIn: hoursValid * 3600 },
   );
 }
