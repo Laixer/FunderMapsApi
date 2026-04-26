@@ -5,38 +5,9 @@ import {
   putObject,
   uniqueFileName,
 } from "./s3.ts";
-import { ValidationError, ForbiddenError } from "./errors.ts";
+import { ValidationError } from "./errors.ts";
+import { assertCanWrite } from "./auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
-
-// Roles allowed to upload report documents — mirrors C# WriterAdministratorPolicy
-// (writer, verifier, superuser). Excludes "reader".
-const WRITE_ROLES = new Set(["writer", "verifier", "superuser"]);
-
-import { db } from "../db/client.ts";
-import { eq, and } from "drizzle-orm";
-import { organizationUser } from "../db/schema/application.ts";
-
-async function assertCanWrite(
-  userId: string,
-  orgId: string | undefined,
-): Promise<void> {
-  if (!orgId) {
-    throw new ForbiddenError("User is not a member of any organization");
-  }
-  const [row] = await db
-    .select({ role: organizationUser.role })
-    .from(organizationUser)
-    .where(
-      and(
-        eq(organizationUser.userId, userId),
-        eq(organizationUser.organizationId, orgId),
-      ),
-    )
-    .limit(1);
-  if (!row || !row.role || !WRITE_ROLES.has(row.role)) {
-    throw new ForbiddenError("Write permission required");
-  }
-}
 
 // Mirrors C# `[FormFile(AllowedFileMimes)] IFormFile input` + StoreFileAsync.
 // Returns the storage key (folder + unique name) and the unique filename,
