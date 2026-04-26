@@ -62,15 +62,19 @@ export async function handleDocumentUpload(
     ]);
   }
 
-  const contentType = file.type || "application/octet-stream";
-  if (!ALLOWED_UPLOAD_MIMES.has(contentType)) {
-    throw new ValidationError([`Unsupported content type: ${contentType}`]);
+  // file.type may include parameters (e.g. "text/plain;charset=utf-8"); strip
+  // them before checking the whitelist so the stored object still records a
+  // clean media type and validation matches by media type alone.
+  const fullContentType = file.type || "application/octet-stream";
+  const baseContentType = fullContentType.split(";")[0]!.trim().toLowerCase();
+  if (!ALLOWED_UPLOAD_MIMES.has(baseContentType)) {
+    throw new ValidationError([`Unsupported content type: ${fullContentType}`]);
   }
 
-  const filename = uniqueFileName(file.name, contentType);
+  const filename = uniqueFileName(file.name, baseContentType);
   const key = `${folder}/${filename}`;
   const body = new Uint8Array(await file.arrayBuffer());
-  await putObject(key, body, contentType);
+  await putObject(key, body, baseContentType);
 
   return { name: filename };
 }
