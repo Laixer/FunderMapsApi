@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and } from "drizzle-orm";
@@ -10,10 +10,13 @@ import type { AppEnv } from "../types/context.ts";
 
 const users = new Hono<AppEnv>();
 
-users.get("/me", (c) => {
+const getSelf = (c: Context<AppEnv>) => {
   const u = c.get("user");
   return c.json(toLegacyUser(u, u.organizations));
-});
+};
+
+users.get("/", getSelf);
+users.get("/me", getSelf);
 
 const updateUserSchema = z.object({
   given_name: z.string().optional(),
@@ -21,33 +24,51 @@ const updateUserSchema = z.object({
   picture: z.string().optional(),
   job_title: z.string().optional(),
   phone_number: z.string().optional(),
+  // ClientApp uses Go-style camelCase. Accept both shapes.
+  givenName: z.string().optional(),
+  lastName: z.string().optional(),
+  avatar: z.string().optional(),
+  jobTitle: z.string().optional(),
+  phoneNumber: z.string().optional(),
 });
 
-users.put("/me", zValidator("json", updateUserSchema), async (c) => {
-  const input = c.req.valid("json");
-  const currentUser = c.get("user");
-
+async function applySelfUpdate(
+  userId: string,
+  input: z.infer<typeof updateUserSchema>,
+) {
   const toNullable = (v: string | undefined) =>
     v === undefined ? undefined : v === "" ? null : v;
 
   await db
     .update(user)
     .set({
-      givenName: toNullable(input.given_name),
-      lastName: toNullable(input.family_name),
-      avatar: toNullable(input.picture),
-      jobTitle: toNullable(input.job_title),
-      phoneNumber: toNullable(input.phone_number),
+      givenName: toNullable(input.given_name ?? input.givenName),
+      lastName: toNullable(input.family_name ?? input.lastName),
+      avatar: toNullable(input.picture ?? input.avatar),
+      jobTitle: toNullable(input.job_title ?? input.jobTitle),
+      phoneNumber: toNullable(input.phone_number ?? input.phoneNumber),
     })
-    .where(eq(user.id, currentUser.id));
+    .where(eq(user.id, userId));
 
   const [updated] = await db
     .select()
     .from(user)
-    .where(eq(user.id, currentUser.id))
+    .where(eq(user.id, userId))
     .limit(1);
 
-  return c.json(toLegacyUser(updated!, currentUser.organizations));
+  return updated!;
+}
+
+users.put("/", zValidator("json", updateUserSchema), async (c) => {
+  const currentUser = c.get("user");
+  const updated = await applySelfUpdate(currentUser.id, c.req.valid("json"));
+  return c.json(toLegacyUser(updated, currentUser.organizations));
+});
+
+users.put("/me", zValidator("json", updateUserSchema), async (c) => {
+  const currentUser = c.get("user");
+  const updated = await applySelfUpdate(currentUser.id, c.req.valid("json"));
+  return c.json(toLegacyUser(updated, currentUser.organizations));
 });
 
 users.get("/metadata", async (c) => {
