@@ -1,12 +1,12 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution } from "../db/schema/application.ts";
 import { assertCanWrite } from "../lib/auth-helpers.ts";
-import { NotFoundError } from "../lib/errors.ts";
+import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum, intsToEnums } from "../lib/inquiry-enums.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
 import { activeOrgId, loadInquiryScoped, requireWritable } from "./inquiry.ts";
@@ -86,9 +86,12 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 // enums). Only fields known to the schema are mapped; unknown keys ignored.
 // ─────────────────────────────────────────────────────────────────────────
 
+// `address` is the input identifier (gfm-* / BAG NUMMERAANDUIDING / BAG PAND).
+// The route resolves it server-side to the canonical address row and the
+// resulting (id, building_id) tuple, mirroring C# `GetAddressIdAsync`. Callers
+// don't need to send `building` separately — derived here.
 const sampleBodySchema = z.object({
-  address: z.string().optional(),
-  building: z.string(),
+  address: z.string(),
   note: z.string().nullish(),
   builtYear: z.string().nullish(),
   substructure: z.number().int().nullish(),
@@ -154,12 +157,37 @@ const sampleBodySchema = z.object({
 
 type SampleInput = z.infer<typeof sampleBodySchema>;
 
-// Convert validated input → DB-shaped values (snake_case enum strings).
-function toDbValues(input: SampleInput, inqId: number) {
+// Resolve the input address identifier to the canonical (id, building_id)
+// tuple from geocoder.address. Mirrors C# GeocoderTranslation.GetAddressIdAsync.
+// Accepts gfm-* (FunderMaps internal id), BAG NUMMERAANDUIDING (external_id),
+// or BAG PAND (building_id — picks one address; see address↔building N:1 note).
+async function resolveAddress(input: string): Promise<{ id: string; building: string }> {
+  const rows = await db.execute(sql`
+    SELECT a.id, a.building_id
+    FROM geocoder.address a
+    WHERE a.id = ${input}
+       OR a.external_id = ${input.replaceAll(" ", "").toUpperCase()}
+       OR a.building_id = ${input.replaceAll(" ", "").toUpperCase()}
+    LIMIT 1
+  `);
+  if (rows.length === 0) {
+    throw new ValidationError([`Address not found: ${input}`]);
+  }
+  const row = rows[0] as { id: string; building_id: string };
+  return { id: row.id, building: row.building_id };
+}
+
+// Convert validated input + resolved address → DB-shaped values
+// (snake_case enum strings).
+function toDbValues(
+  input: SampleInput,
+  inqId: number,
+  resolved: { id: string; building: string },
+) {
   return {
     inquiry: inqId,
-    address: input.address ?? null,
-    building: input.building,
+    address: resolved.id,
+    building: resolved.building,
     note: input.note?.trim() || null,
     builtYear: input.builtYear ?? null,
     substructure: intToEnum("substructure", input.substructure),
@@ -234,11 +262,12 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   requireWritable(parent);
 
   const data = c.req.valid("json");
+  const resolved = await resolveAddress(data.address);
 
   const created = await db.transaction(async (tx) => {
     const [s] = await tx
       .insert(inquirySample)
-      .values(toDbValues(data, inqId))
+      .values(toDbValues(data, inqId, resolved))
       .returning();
     // Mirrors C# auto-transition: any sample creation moves inquiry to pending.
     await tx
@@ -263,11 +292,12 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   await loadSampleScoped(sid, inqId, orgId);
 
   const data = c.req.valid("json");
+  const resolved = await resolveAddress(data.address);
 
   await db.transaction(async (tx) => {
     await tx
       .update(inquirySample)
-      .set({ ...toDbValues(data, inqId), updateDate: new Date() })
+      .set({ ...toDbValues(data, inqId, resolved), updateDate: new Date() })
       .where(eq(inquirySample.id, sid));
     await tx
       .update(inquiry)
