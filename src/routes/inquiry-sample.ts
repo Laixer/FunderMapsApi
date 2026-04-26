@@ -4,6 +4,9 @@ import { zValidator } from "@hono/zod-validator";
 import { and, count, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
+import type { foundationDamageCharacteristicsEnum } from "../db/schema/report.ts";
+
+type FoundationDamageCharacteristic = (typeof foundationDamageCharacteristicsEnum.enumValues)[number];
 import { attribution } from "../db/schema/application.ts";
 import { assertCanWrite } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
@@ -200,7 +203,10 @@ function toDbValues(
     enforcementTerm: intToEnum("enforcement_term", input.enforcementTerm),
     recoveryAdvised: input.recoveryAdvised ?? null,
     damageCause: intToEnum("foundation_damage_cause", input.damageCause),
-    damageCharacteristics: intsToEnums("foundation_damage_characteristics", input.damageCharacteristics ?? null),
+    damageCharacteristics: intsToEnums(
+      "foundation_damage_characteristics",
+      input.damageCharacteristics ?? null,
+    ) as FoundationDamageCharacteristic[] | null,
     constructionPile: intToEnum("construction_pile", input.constructionPile),
     woodType: intToEnum("wood_type", input.woodType),
     woodEncroachment: intToEnum("wood_encroachment", input.woodEncroachment),
