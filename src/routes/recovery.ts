@@ -4,9 +4,15 @@ import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/client.ts";
 import { attribution } from "../db/schema/application.ts";
 import { recovery, recoverySample } from "../db/schema/report.ts";
+import { handleDocumentUpload } from "../lib/upload-handler.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const recoveries = new Hono<AppEnv>();
+
+recoveries.post("/upload-document", async (c) => {
+  const result = await handleDocumentUpload(c, "recovery-report");
+  return c.json(result);
+});
 
 const createRecoverySchema = z.object({
   note: z.string().optional(),
