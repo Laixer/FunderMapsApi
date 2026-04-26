@@ -203,10 +203,21 @@ function toDbValues(
     enforcementTerm: intToEnum("enforcement_term", input.enforcementTerm),
     recoveryAdvised: input.recoveryAdvised ?? null,
     damageCause: intToEnum("foundation_damage_cause", input.damageCause),
-    damageCharacteristics: intsToEnums(
-      "foundation_damage_characteristics",
-      input.damageCharacteristics ?? null,
-    ) as FoundationDamageCharacteristic[] | null,
+    // postgres.js doesn't know how to serialize a JS array for the
+    // foundation_damage_characteristics[] column type — it falls back to
+    // the text-array literal '{"foo"}' and PG then tries to cast that to
+    // a single enum value. Hand-build the PG array literal and add an
+    // explicit ::text[] cast so PG parses it as an array, then auto-coerces
+    // to the enum element type.
+    damageCharacteristics: (() => {
+      const arr = intsToEnums(
+        "foundation_damage_characteristics",
+        input.damageCharacteristics ?? null,
+      );
+      if (!arr) return null;
+      const literal = `{${arr.map((v) => `"${v}"`).join(",")}}`;
+      return sql`${literal}::text[]` as unknown as FoundationDamageCharacteristic[];
+    })(),
     constructionPile: intToEnum("construction_pile", input.constructionPile),
     woodType: intToEnum("wood_type", input.woodType),
     woodEncroachment: intToEnum("wood_encroachment", input.woodEncroachment),
