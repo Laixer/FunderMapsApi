@@ -19,24 +19,30 @@ mapset.get("/:mapset_id?", async (c) => {
 
     if (orgIds.length === 0) return c.json([]);
 
+    // Fence subqueries union all geolocks across every org the user is in,
+    // not just whichever org-mapset row survives DISTINCT ON. Rationale: if
+    // ANY of the user's orgs locks them to a region, that lock should apply
+    // (most-restrictive). For Yorick (FunderMaps no-lock + Laixer locked to
+    // GM0606), the previous correlated-subquery approach could pick either
+    // org's fence depending on dedupe order — frequently null.
     const rows = await db.execute(sql`
       SELECT DISTINCT ON (c.id)
         c.id, c.name, c.slug, c.style, c.metadata, c.public, c.consent,
         c.note, c.icon, c."order", c.layerset,
         (
-          SELECT array_agg(neighborhood_id)
+          SELECT array_agg(DISTINCT neighborhood_id)
           FROM application.organization_geolock_neighborhood
-          WHERE organization_id = om.organization_id
+          WHERE ${inArray(sql`organization_id`, orgIds)}
         ) AS fence_neighborhood,
         (
-          SELECT array_agg(district_id)
+          SELECT array_agg(DISTINCT district_id)
           FROM application.organization_geolock_district
-          WHERE organization_id = om.organization_id
+          WHERE ${inArray(sql`organization_id`, orgIds)}
         ) AS fence_district,
         (
-          SELECT array_agg(municipality_id)
+          SELECT array_agg(DISTINCT municipality_id)
           FROM application.organization_geolock_municipality
-          WHERE organization_id = om.organization_id
+          WHERE ${inArray(sql`organization_id`, orgIds)}
         ) AS fence_municipality
       FROM application.mapset_collection c
       JOIN application.organization_mapset om ON om.mapset_id = c.id
