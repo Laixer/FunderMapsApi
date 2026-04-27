@@ -32,9 +32,8 @@ product.get("/subsidence/historic", async (c) => {
     WHERE building_id = ${buildingId}
   `);
 
-  if (result.length === 0)
-    throw new NotFoundError("Historic subsidence data not found");
-
+  // Most buildings have no subsidence history rows. Empty array is a valid
+  // result for a list endpoint, not a 404.
   return c.json(result);
 });
 
