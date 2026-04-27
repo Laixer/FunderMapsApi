@@ -29,7 +29,7 @@ pdf.get("/:id", async (c) => {
   }
 
   const result = (await response.json()) as { url: string };
-  return c.json({ url: result.url });
+  return c.json({ accessLink: result.url });
 });
 
 export default pdf;

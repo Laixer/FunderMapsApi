@@ -1,4 +1,4 @@
-import { pgSchema, text } from "drizzle-orm/pg-core";
+import { pgSchema, text, boolean, date } from "drizzle-orm/pg-core";
 
 export const geocoderSchema = pgSchema("geocoder");
 
@@ -33,4 +33,30 @@ export const neighborhood = geocoderSchema.table("neighborhood", {
   id: text().primaryKey(),
   externalId: text("external_id"),
   name: text(),
+});
+
+// New snake_case-native declarations (do not use building_active — slated for removal).
+// Apply WHERE building.active = true AND building.geom IS NOT NULL inline at call sites
+// when active-only filtering is needed.
+export const building = geocoderSchema.table("building", {
+  id: text().primaryKey(),
+  external_id: text().notNull(),
+  built_year: date(),
+  active: boolean().notNull(),
+  building_type: text(),
+  neighborhood_id: text(),
+});
+
+export const residence = geocoderSchema.table("residence", {
+  id: text().primaryKey(),
+  address_id: text().notNull(),
+  building_id: text().notNull(),
+});
+
+export const state = geocoderSchema.table("state", {
+  id: text().primaryKey(),
+  external_id: text().notNull(),
+  country_id: text().notNull(),
+  name: text().notNull(),
+  water: boolean().notNull(),
 });
