@@ -36,8 +36,13 @@ const envSchema = z.object({
   MAILGUN_API_BASE: z.string().default("https://api.eu.mailgun.net/v3"),
   EMAIL_RECEIVERS: z.string().optional(),
 
-  // PDF service
-  PDF_SERVICE_URL: z.string().optional(),
+  // PDF service (pdf.co). PDFCO_API_KEY is the x-api-key value;
+  // PDFCO_REPORT_URL is the base URL of the report renderer that pdf.co
+  // turns into a PDF (defaults to the existing whale-app DO instance).
+  PDFCO_API_KEY: z.string().optional(),
+  PDFCO_REPORT_URL: z
+    .string()
+    .default("https://whale-app-nm9uv.ondigitalocean.app"),
 
   // Proxy
   PROXY_ENABLED: z
