@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { mapsetCollection } from "../db/schema/application.ts";
 import { NotFoundError } from "../lib/errors.ts";
@@ -40,7 +40,7 @@ mapset.get("/:mapset_id?", async (c) => {
         ) AS fence_municipality
       FROM application.mapset_collection c
       JOIN application.organization_mapset om ON om.mapset_id = c.id
-      WHERE om.organization_id = ANY(${orgIds})
+      WHERE ${inArray(sql`om.organization_id`, orgIds)}
     `);
 
     return c.json(rows);
