@@ -1,8 +1,7 @@
 import { Hono } from "hono";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { mapsetCollection } from "../db/schema/application.ts";
-import { organizationMapset } from "../db/schema/application.ts";
 import { NotFoundError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -12,25 +11,43 @@ mapset.get("/:mapset_id?", async (c) => {
   const mapsetId = c.req.param("mapset_id");
 
   if (!mapsetId) {
-    // Get mapsets for user's organizations
+    // List the user's org's private mapsets, with geofence external_ids
+    // joined in. The frontend uses fence_* arrays as Mapbox layer filters
+    // so the user only sees buildings within their org's geolocked area.
     const currentUser = c.get("user");
     const orgIds = currentUser.organizations.map((o) => o.id);
 
     if (orgIds.length === 0) return c.json([]);
 
-    const rows = await db
-      .selectDistinctOn([mapsetCollection.id])
-      .from(mapsetCollection)
-      .innerJoin(
-        organizationMapset,
-        eq(mapsetCollection.id, organizationMapset.mapsetId),
-      )
-      .where(inArray(organizationMapset.organizationId, orgIds));
+    const rows = await db.execute(sql`
+      SELECT DISTINCT ON (c.id)
+        c.id, c.name, c.slug, c.style, c.metadata, c.public, c.consent,
+        c.note, c.icon, c."order", c.layerset,
+        (
+          SELECT array_agg(neighborhood_id)
+          FROM application.organization_geolock_neighborhood
+          WHERE organization_id = om.organization_id
+        ) AS fence_neighborhood,
+        (
+          SELECT array_agg(district_id)
+          FROM application.organization_geolock_district
+          WHERE organization_id = om.organization_id
+        ) AS fence_district,
+        (
+          SELECT array_agg(municipality_id)
+          FROM application.organization_geolock_municipality
+          WHERE organization_id = om.organization_id
+        ) AS fence_municipality
+      FROM application.mapset_collection c
+      JOIN application.organization_mapset om ON om.mapset_id = c.id
+      WHERE om.organization_id = ANY(${orgIds})
+    `);
 
-    return c.json(rows.map((r) => r.mapset_collection));
+    return c.json(rows);
   }
 
-  // Query by ID or slug
+  // Public-only lookup by ID or slug. No fence join — public mapsets are
+  // not geolocked.
   const isId = mapsetId.startsWith("cl") || mapsetId.startsWith("ck");
   const rows = await db
     .select()
