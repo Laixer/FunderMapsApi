@@ -24,7 +24,7 @@ report.get("/", async (c) => {
         ORDER BY create_date DESC
       `),
       db.execute(sql`
-        SELECT DISTINCT
+        SELECT
           i.id,
           i.document_name,
           i.type,
@@ -48,14 +48,15 @@ report.get("/", async (c) => {
           o.name AS attribution_owner_name,
           a.contractor_id AS attribution_contractor,
           ct.name AS attribution_contractor_name
-        FROM report.inquiry_sample s
-        JOIN report.inquiry i ON i.id = s.inquiry_id
+        FROM report.inquiry i
         JOIN application.attribution a ON a.id = i.attribution_id
         LEFT JOIN application."user" ru ON ru.id = a.reviewer_id
         LEFT JOIN application."user" cu ON cu.id = a.creator_id
         LEFT JOIN application.organization o ON o.id = a.owner_id
         LEFT JOIN application.contractor ct ON ct.id = a.contractor_id
-        WHERE s.building_id = ${buildingId}
+        WHERE i.id IN (
+          SELECT inquiry_id FROM report.inquiry_sample WHERE building_id = ${buildingId}
+        )
           AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
         ORDER BY COALESCE(i.update_date, i.create_date) DESC
       `),
@@ -68,7 +69,7 @@ report.get("/", async (c) => {
           AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
       `),
       db.execute(sql`
-        SELECT DISTINCT
+        SELECT
           r.id,
           r.document_name,
           r.type,
@@ -88,14 +89,15 @@ report.get("/", async (c) => {
           o.name AS attribution_owner_name,
           a.contractor_id AS attribution_contractor,
           ct.name AS attribution_contractor_name
-        FROM report.recovery_sample s
-        JOIN report.recovery r ON r.id = s.recovery_id
+        FROM report.recovery r
         JOIN application.attribution a ON a.id = r.attribution_id
         LEFT JOIN application."user" ru ON ru.id = a.reviewer_id
         LEFT JOIN application."user" cu ON cu.id = a.creator_id
         LEFT JOIN application.organization o ON o.id = a.owner_id
         LEFT JOIN application.contractor ct ON ct.id = a.contractor_id
-        WHERE s.building_id = ${buildingId}
+        WHERE r.id IN (
+          SELECT recovery_id FROM report.recovery_sample WHERE building_id = ${buildingId}
+        )
           AND (r.access_policy = 'public' OR a.owner_id = ${orgId})
         ORDER BY COALESCE(r.update_date, r.create_date) DESC
       `),

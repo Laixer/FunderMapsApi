@@ -125,12 +125,14 @@ product.get("/statistics", async (c) => {
     `),
   ]);
 
-  const orgId = c.get("user").organizations[0]?.id;
+  const currentUser = c.get("user");
+  const orgId = currentUser.organizations[0]?.id;
   if (orgId) {
     c.set("tracker", {
-      name: "statistics",
+      product: "statistics",
       buildingId,
-      identifier: orgId,
+      organizationId: orgId,
+      identifier: currentUser.id,
     });
   }
 
@@ -191,12 +193,14 @@ product.get("/analysis", async (c) => {
   if (result.length === 0)
     throw new NotFoundError("Analysis data not found");
 
-  const orgId = c.get("user").organizations[0]?.id;
+  const currentUser = c.get("user");
+  const orgId = currentUser.organizations[0]?.id;
   if (orgId) {
     c.set("tracker", {
-      name: "analysis",
+      product: "analysis",
       buildingId,
-      identifier: orgId,
+      organizationId: orgId,
+      identifier: currentUser.id,
     });
   }
 
