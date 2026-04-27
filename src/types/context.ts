@@ -10,6 +10,11 @@ export type AuthUser = InferSelectModel<typeof user> & {
 export type AppEnv = {
   Variables: {
     user: AuthUser;
-    tracker?: { name: string; buildingId: string; identifier: string };
+    tracker?: {
+      product: string;
+      buildingId: string;
+      organizationId: string;
+      identifier: string;
+    };
   };
 };
