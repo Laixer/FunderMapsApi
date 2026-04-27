@@ -1,34 +1,136 @@
-import { pgSchema, text, integer, real } from "drizzle-orm/pg-core";
+import {
+  pgSchema,
+  text,
+  integer,
+  real,
+  bigint,
+  numeric,
+  doublePrecision,
+} from "drizzle-orm/pg-core";
 
 export const dataSchema = pgSchema("data");
 
-// This is a view, used for SELECT only
-export const modelRiskStatic = dataSchema.table("model_risk_static", {
-  buildingId: text("building_id"),
-  neighborhoodId: text("neighborhood_id"),
-  constructionYear: integer("construction_year"),
-  constructionYearReliability: text("construction_year_reliability"),
-  recoveryType: text("recovery_type"),
-  restorationCosts: real("restoration_costs"),
+export const building_precomputed = dataSchema.table("building_precomputed", {
+  building_id: text().notNull(),
+  neighborhood_id: text(),
+  surface_area: numeric({ precision: 10, scale: 2 }),
+  address_count: integer().notNull().default(0),
+  construction_year_bag: integer(),
+  height: doublePrecision(),
+  ground_level: numeric({ precision: 5, scale: 2 }),
+});
+
+// Materialized view. Columns mirror data.model_risk_static in schema.sql.
+// NOTE: the *_risk_reliability columns are the actual PG names; do not
+// shorten to *_reliability — the C# wire format aliased them but PG didn't.
+export const model_risk_static = dataSchema.table("model_risk_static", {
+  building_id: text(),
+  address_count: integer(),
+  neighborhood_id: text(),
+  construction_year: integer(),
+  construction_year_reliability: text(),
+  foundation_type: text(),
+  foundation_type_reliability: text(),
+  restoration_costs: real(),
+  drystand: real(),
+  drystand_risk: text(),
+  drystand_risk_reliability: text(),
+  bio_infection_risk: text(),
+  bio_infection_risk_reliability: text(),
+  dewatering_depth: real(),
+  dewatering_depth_risk: text(),
+  dewatering_depth_risk_reliability: text(),
+  unclassified_risk: text(),
   height: real(),
   velocity: real(),
-  groundWaterLevel: real("ground_water_level"),
-  groundLevel: real("ground_level"),
+  ground_water_level: real(),
+  ground_level: real(),
   soil: text(),
-  surfaceArea: real("surface_area"),
-  damageCause: text("damage_cause"),
-  enforcementTerm: text("enforcement_term"),
-  overallQuality: text("overall_quality"),
-  inquiryType: text("inquiry_type"),
-  foundationType: text("foundation_type"),
-  foundationTypeReliability: text("foundation_type_reliability"),
-  drystand: real(),
-  drystandReliability: text("drystand_reliability"),
-  drystandRisk: text("drystand_risk"),
-  dewateringDepth: real("dewatering_depth"),
-  dewateringDepthReliability: text("dewatering_depth_reliability"),
-  dewateringDepthRisk: text("dewatering_depth_risk"),
-  bioInfectionReliability: text("bio_infection_reliability"),
-  bioInfectionRisk: text("bio_infection_risk"),
-  unclassifiedRisk: text("unclassified_risk"),
+  surface_area: real(),
+  owner: text(),
+  inquiry_id: integer(),
+  inquiry_type: text(),
+  damage_cause: text(),
+  enforcement_term: text(),
+  overall_quality: text(),
+  recovery_type: text(),
 });
+
+export const statistics_product_buildings_restored = dataSchema.table(
+  "statistics_product_buildings_restored",
+  {
+    neighborhood_id: text(),
+    count: bigint({ mode: "number" }),
+  },
+);
+
+export const statistics_product_construction_years = dataSchema.table(
+  "statistics_product_construction_years",
+  {
+    neighborhood_id: text(),
+    year_from: integer(),
+    count: bigint({ mode: "number" }),
+  },
+);
+
+export const statistics_product_data_collected = dataSchema.table(
+  "statistics_product_data_collected",
+  {
+    neighborhood_id: text(),
+    percentage: doublePrecision(),
+  },
+);
+
+export const statistics_product_foundation_risk = dataSchema.table(
+  "statistics_product_foundation_risk",
+  {
+    neighborhood_id: text(),
+    foundation_risk: text(),
+    percentage: numeric(),
+  },
+);
+
+export const statistics_product_foundation_type = dataSchema.table(
+  "statistics_product_foundation_type",
+  {
+    neighborhood_id: text(),
+    foundation_type: text(),
+    percentage: numeric(),
+  },
+);
+
+export const statistics_product_incidents = dataSchema.table(
+  "statistics_product_incidents",
+  {
+    neighborhood_id: text(),
+    year: integer(),
+    count: bigint({ mode: "number" }),
+  },
+);
+
+export const statistics_product_incident_municipality = dataSchema.table(
+  "statistics_product_incident_municipality",
+  {
+    municipality_id: text(),
+    year: integer(),
+    count: bigint({ mode: "number" }),
+  },
+);
+
+export const statistics_product_inquiries = dataSchema.table(
+  "statistics_product_inquiries",
+  {
+    neighborhood_id: text(),
+    year: integer(),
+    count: bigint({ mode: "number" }),
+  },
+);
+
+export const statistics_product_inquiry_municipality = dataSchema.table(
+  "statistics_product_inquiry_municipality",
+  {
+    municipality_id: text(),
+    year: integer(),
+    count: bigint({ mode: "number" }),
+  },
+);

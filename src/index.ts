@@ -24,6 +24,7 @@ import reportRoutes from "./routes/report.ts";
 import inquiryRoutes from "./routes/inquiry.ts";
 import inquirySampleRoutes from "./routes/inquiry-sample.ts";
 import recoveryRoutes from "./routes/recovery.ts";
+import incidentRoutes from "./routes/incident.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -69,7 +70,7 @@ app.route("/api/reviewer", reviewerRoutes);
 app.use("/api/mapset/*", authMiddleware);
 app.route("/api/mapset", mapsetRoutes);
 
-app.use("/api/product/*", authMiddleware);
+app.use("/api/product/*", authMiddleware, trackerMiddleware);
 app.route("/api/product/:building_id", productRoutes);
 
 app.use("/api/report/*", authMiddleware);
@@ -81,6 +82,9 @@ app.route("/api/inquiry", inquiryRoutes);
 
 app.use("/api/recovery/*", authMiddleware);
 app.route("/api/recovery", recoveryRoutes);
+
+app.use("/api/incident/*", authMiddleware);
+app.route("/api/incident", incidentRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);

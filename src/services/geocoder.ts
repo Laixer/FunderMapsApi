@@ -11,27 +11,24 @@ export interface BuildingGeocoder {
   [key: string]: unknown;
 }
 
-export async function getBuildingByGeocoderId(
-  geocoderId: string,
-): Promise<BuildingGeocoder> {
-  const datasource = fromIdentifier(geocoderId);
-
-  let buildingId: string;
+// Resolve any input identifier (gfm-, BAG PAND, BAG NUMMERAANDUIDING, BAG legacy)
+// to a canonical BAG building external_id (NL.IMBAG.PAND.*).
+// Used by endpoints that key off building_id without needing the full geocoder row.
+export async function resolveToBuildingId(input: string): Promise<string> {
+  const datasource = fromIdentifier(input);
 
   switch (datasource) {
     case GeocoderDatasource.NlBagBuilding:
-      buildingId = geocoderId;
-      break;
+      return input;
     case GeocoderDatasource.NlBagLegacyBuilding: {
-      const normalized = geocoderId.toUpperCase().replaceAll(" ", "");
-      buildingId = `NL.IMBAG.PAND.${normalized}`;
-      break;
+      const normalized = input.toUpperCase().replaceAll(" ", "");
+      return `NL.IMBAG.PAND.${normalized}`;
     }
     case GeocoderDatasource.NlBagAddress:
     case GeocoderDatasource.NlBagLegacyAddress: {
-      let addressId = geocoderId;
+      let addressId = input;
       if (datasource === GeocoderDatasource.NlBagLegacyAddress) {
-        const normalized = geocoderId.toUpperCase().replaceAll(" ", "");
+        const normalized = input.toUpperCase().replaceAll(" ", "");
         addressId = `NL.IMBAG.NUMMERAANDUIDING.${normalized}`;
       }
       const result = await db.execute(sql`
@@ -41,12 +38,17 @@ export async function getBuildingByGeocoderId(
         LIMIT 1
       `);
       if (result.length === 0) throw new NotFoundError("Building not found");
-      buildingId = (result[0] as { building_id: string }).building_id;
-      break;
+      return (result[0] as { building_id: string }).building_id;
     }
     default:
       throw new AppError(400, "Unknown geocoder identifier");
   }
+}
+
+export async function getBuildingByGeocoderId(
+  geocoderId: string,
+): Promise<BuildingGeocoder> {
+  const buildingId = await resolveToBuildingId(geocoderId);
 
   const rows = await db.execute(sql`
     SELECT * FROM geocoder.building_geocoder
