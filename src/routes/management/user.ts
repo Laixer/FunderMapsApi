@@ -16,7 +16,11 @@ import { auth } from "../../lib/auth.ts";
 import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
-import { toLegacyUser, toLegacyAuthKey } from "../../lib/user-serializer.ts";
+import {
+  toLegacyUser,
+  toLegacyAuthKey,
+  toLegacyAuthKeyCreated,
+} from "../../lib/user-serializer.ts";
 import { generateApiKey, sha256Hex } from "../../lib/api-key.ts";
 import type { AppEnv } from "../../types/context.ts";
 
@@ -144,30 +148,28 @@ users.post("/:user_id/api-key", async (c) => {
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("User not found");
 
-  // Dual-write: store both the plaintext (until C# webservice retires)
-  // and the SHA-256 hash (used by Phase 3+ auth lookups).
   const newKey = generateApiKey();
   const newKeyHash = await sha256Hex(newKey);
-  const [key] = await db
+  const [row] = await db
     .insert(authKey)
-    .values({ key: newKey, keyHash: newKeyHash, userId })
+    .values({ keyHash: newKeyHash, userId })
     .returning();
 
-  return c.json(toLegacyAuthKey(key!), 201);
+  return c.json(toLegacyAuthKeyCreated(row!, newKey), 201);
 });
 
-const deleteKeySchema = z.object({ key: z.string().min(1) });
+const deleteKeySchema = z.object({ id: z.uuid() });
 
 users.delete(
   "/:user_id/api-key",
   zValidator("json", deleteKeySchema),
   async (c) => {
     const userId = c.req.param("user_id");
-    const { key } = c.req.valid("json");
+    const { id } = c.req.valid("json");
 
     const deleted = await db
       .delete(authKey)
-      .where(and(eq(authKey.key, key), eq(authKey.userId, userId)))
+      .where(and(eq(authKey.id, id), eq(authKey.userId, userId)))
       .returning();
 
     if (deleted.length === 0) throw new NotFoundError("API key not found");
