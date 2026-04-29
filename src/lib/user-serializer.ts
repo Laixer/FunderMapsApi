@@ -46,7 +46,7 @@ export function toLegacyUser(
 }
 
 export interface LegacyAuthKey {
-  key: string;
+  id: string;
   user_id: string;
   name: string | null;
   last_used: string | null;
@@ -54,9 +54,23 @@ export interface LegacyAuthKey {
 
 export function toLegacyAuthKey(k: AuthKeyRow): LegacyAuthKey {
   return {
-    key: k.key,
+    id: k.id,
     user_id: k.userId,
     name: k.name ?? null,
     last_used: k.lastUsed ? new Date(k.lastUsed).toISOString() : null,
   };
+}
+
+// One-time creation response: includes the freshly generated plaintext
+// key so the user can copy it. The plaintext is NOT stored — only its
+// SHA-256 hash lives in the DB — so this is the only chance to surface it.
+export interface LegacyAuthKeyCreated extends LegacyAuthKey {
+  key: string;
+}
+
+export function toLegacyAuthKeyCreated(
+  k: AuthKeyRow,
+  plaintextKey: string,
+): LegacyAuthKeyCreated {
+  return { ...toLegacyAuthKey(k), key: plaintextKey };
 }
