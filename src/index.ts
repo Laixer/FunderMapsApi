@@ -67,7 +67,8 @@ app.use("/api/reviewer", authMiddleware);
 app.use("/api/reviewer/*", authMiddleware);
 app.route("/api/reviewer", reviewerRoutes);
 
-app.use("/api/mapset/*", authMiddleware);
+// /api/mapset auth is per-route inside mapsetRoutes — list requires auth,
+// /:mapset_id slug lookup is public.
 app.route("/api/mapset", mapsetRoutes);
 
 app.use("/api/product/*", authMiddleware, trackerMiddleware);
