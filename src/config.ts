@@ -8,6 +8,11 @@ const envSchema = z.object({
   // Better Auth
   AUTH_SECRET: z.string(),
   BASE_URL: z.url().optional(),
+  // Grafana OIDC client secret. When set, the OIDC provider registers
+  // Grafana as a trusted client (skipConsent=true) — first-party SSO
+  // shouldn't show a consent screen. Mirrors the DB row in
+  // application.oauth_application; trustedClients takes precedence.
+  GRAFANA_OIDC_SECRET: z.string().optional(),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
   // Required when the frontend is on a different domain than BASE_URL,
   // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.

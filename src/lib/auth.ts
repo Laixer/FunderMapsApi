@@ -122,6 +122,26 @@ export const auth = betterAuth({
     oidcProvider({
       loginPage: "https://admin.fundermaps.com/login",
       requirePKCE: false,
+      // Grafana is a first-party SSO consumer — skip the consent screen.
+      // trustedClients short-circuits the DB lookup, so the matching row in
+      // application.oauth_application is kept for record-keeping but the
+      // values here are what BA actually uses at request time.
+      trustedClients: env.GRAFANA_OIDC_SECRET
+        ? [
+            {
+              clientId: "grafana",
+              clientSecret: env.GRAFANA_OIDC_SECRET,
+              name: "Grafana",
+              type: "web",
+              redirectUrls: [
+                "https://analytics.fundermaps.com/login/generic_oauth",
+              ],
+              metadata: null,
+              disabled: false,
+              skipConsent: true,
+            },
+          ]
+        : [],
       getAdditionalUserInfoClaim: (u) => ({
         role: (u as { role?: string }).role ?? "user",
       }),
