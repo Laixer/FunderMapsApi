@@ -90,6 +90,15 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 // The route resolves it server-side to the canonical address row and the
 // resulting (id, building_id) tuple, mirroring C# `GetAddressIdAsync`. Callers
 // don't need to send `building` separately — derived here.
+
+// DB columns backed by report.length / report.height / report.diameter domains
+// are numeric(5,2) — max abs 999.99. Bound zod here so out-of-range values
+// surface as 400, not as a postgres "numeric field overflow" 500. Bounds match
+// the legacy C# `InquirySample` `[Range(...)]` attributes — levels (depths,
+// can be negative) vs lengths (sizes, strictly non-negative).
+const numericLevel = z.number().gte(-999.99).lte(999.99).nullish();
+const numericLength = z.number().gte(0).lte(999.99).nullish();
+
 const sampleBodySchema = z.object({
   address: z.string(),
   note: z.string().nullish(),
@@ -97,9 +106,9 @@ const sampleBodySchema = z.object({
   substructure: z.number().int().nullish(),
   cpt: z.string().nullish(),
   monitoringWell: z.string().nullish(),
-  groundwaterLevelTemp: z.number().nullish(),
-  groundLevel: z.number().nullish(),
-  groundwaterLevelNet: z.number().nullish(),
+  groundwaterLevelTemp: numericLevel,
+  groundLevel: numericLevel,
+  groundwaterLevelNet: numericLevel,
   foundationType: z.number().int().nullish(),
   enforcementTerm: z.number().int().nullish(),
   recoveryAdvised: z.boolean().nullish(),
@@ -108,17 +117,17 @@ const sampleBodySchema = z.object({
   constructionPile: z.number().int().nullish(),
   woodType: z.number().int().nullish(),
   woodEncroachment: z.number().int().nullish(),
-  constructionLevel: z.number().nullish(),
-  woodLevel: z.number().nullish(),
-  pileDiameterTop: z.number().nullish(),
-  pileDiameterBottom: z.number().nullish(),
-  pileHeadLevel: z.number().nullish(),
-  pileTipLevel: z.number().nullish(),
-  foundationDepth: z.number().nullish(),
-  masonLevel: z.number().nullish(),
-  concreteChargerLength: z.number().nullish(),
-  pileDistanceLength: z.number().nullish(),
-  woodPenetrationDepth: z.number().nullish(),
+  constructionLevel: numericLevel,
+  woodLevel: numericLevel,
+  pileDiameterTop: numericLength,
+  pileDiameterBottom: numericLength,
+  pileHeadLevel: numericLevel,
+  pileTipLevel: numericLevel,
+  foundationDepth: numericLength,
+  masonLevel: numericLevel,
+  concreteChargerLength: numericLength,
+  pileDistanceLength: numericLength,
+  woodPenetrationDepth: numericLength,
   overallQuality: z.number().int().nullish(),
   woodQuality: z.number().int().nullish(),
   constructionQuality: z.number().int().nullish(),
@@ -144,11 +153,11 @@ const sampleBodySchema = z.object({
   crackFacadeRightSize: z.number().int().nullish(),
   deformedFacade: z.boolean().nullish(),
   thresholdUpdownSkewed: z.boolean().nullish(),
-  thresholdFrontLevel: z.number().nullish(),
-  thresholdBackLevel: z.number().nullish(),
-  skewedParallel: z.number().nullish(),
+  thresholdFrontLevel: numericLevel,
+  thresholdBackLevel: numericLevel,
+  skewedParallel: numericLength,
   skewedParallelFacade: z.number().int().nullish(),
-  skewedPerpendicular: z.number().nullish(),
+  skewedPerpendicular: numericLength,
   skewedPerpendicularFacade: z.number().int().nullish(),
   settlementSpeed: z.number().nullish(),
   skewedWindowFrame: z.boolean().nullish(),

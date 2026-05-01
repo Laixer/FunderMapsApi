@@ -7,11 +7,17 @@ import {
   jsonb,
   date,
   real,
+  numeric,
   serial,
 } from "drizzle-orm/pg-core";
 import { attribution } from "./application.ts";
 
 export const reportSchema = pgSchema("report");
+
+// `report.length`, `report.height`, `report.diameter` domains in the DB are
+// all numeric(5,2) — max abs value 999.99. Declare once so Drizzle reflects it.
+const numeric52 = (name: string) =>
+  numeric(name, { precision: 5, scale: 2, mode: "number" });
 
 export const incident = reportSchema.table("incident", {
   id: text().primaryKey(),
@@ -78,22 +84,22 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   carryingCapacityQuality: text("carrying_capacity_quality"),
   masonQuality: text("mason_quality"),
   woodQualityNecessity: boolean("wood_quality_necessity"),
-  constructionLevel: real("construction_level"),
-  woodLevel: real("wood_level"),
-  pileDiameterTop: real("pile_diameter_top"),
-  pileDiameterBottom: real("pile_diameter_bottom"),
-  pileHeadLevel: real("pile_head_level"),
-  pileTipLevel: real("pile_tip_level"),
-  foundationDepth: real("foundation_depth"),
-  masonLevel: real("mason_level"),
-  concreteChargerLength: real("concrete_charger_length"),
-  pileDistanceLength: real("pile_distance_length"),
-  woodPenetrationDepth: real("wood_penetration_depth"),
+  constructionLevel: numeric52("construction_level"),
+  woodLevel: numeric52("wood_level"),
+  pileDiameterTop: numeric52("pile_diameter_top"),
+  pileDiameterBottom: numeric52("pile_diameter_bottom"),
+  pileHeadLevel: numeric52("pile_head_level"),
+  pileTipLevel: numeric52("pile_tip_level"),
+  foundationDepth: numeric52("foundation_depth"),
+  masonLevel: numeric52("mason_level"),
+  concreteChargerLength: numeric52("concrete_charger_length"),
+  pileDistanceLength: numeric52("pile_distance_length"),
+  woodPenetrationDepth: numeric52("wood_penetration_depth"),
   cpt: text(),
   monitoringWell: text("monitoring_well"),
-  groundwaterLevelTemp: real("groundwater_level_temp"),
-  groundLevel: real("groundlevel"),
-  groundwaterLevelNet: real("groundwater_level_net"),
+  groundwaterLevelTemp: numeric52("groundwater_level_temp"),
+  groundLevel: numeric52("groundlevel"),
+  groundwaterLevelNet: numeric52("groundwater_level_net"),
   foundationType: text("foundation_type"),
   enforcementTerm: text("enforcement_term"),
   recoveryAdvised: boolean("recovery_advised"),
@@ -119,10 +125,10 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   crackFacadeRightSize: integer("crack_facade_right_size"),
   deformedFacade: boolean("deformed_facade"),
   thresholdUpdownSkewed: boolean("threshold_updown_skewed"),
-  thresholdFrontLevel: real("threshold_front_level"),
-  thresholdBackLevel: real("threshold_back_level"),
-  skewedParallel: real("skewed_parallel"),
-  skewedPerpendicular: real("skewed_perpendicular"),
+  thresholdFrontLevel: numeric52("threshold_front_level"),
+  thresholdBackLevel: numeric52("threshold_back_level"),
+  skewedParallel: numeric52("skewed_parallel"),
+  skewedPerpendicular: numeric52("skewed_perpendicular"),
   skewedParallelFacade: text("skewed_parallel_facade"),
   settlementSpeed: real("settlement_speed"),
   skewedWindowFrame: boolean("skewed_window_frame"),
