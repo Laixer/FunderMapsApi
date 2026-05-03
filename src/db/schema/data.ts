@@ -2,7 +2,6 @@ import {
   pgSchema,
   text,
   integer,
-  real,
   bigint,
   numeric,
   doublePrecision,
@@ -23,6 +22,12 @@ export const building_precomputed = dataSchema.table("building_precomputed", {
 // Materialized view. Columns mirror data.model_risk_static in schema.sql.
 // NOTE: the *_risk_reliability columns are the actual PG names; do not
 // shorten to *_reliability — the C# wire format aliased them but PG didn't.
+//
+// numeric vs double precision: the matview projects round((... )::numeric, 2)
+// for velocity/ground_water_level and bare numeric(p,s) for height/ground_level/
+// surface_area; postgres.js returns these as STRINGS by default. drystand /
+// dewatering_depth / enforcement_term are double precision (returned as
+// numbers). Don't downgrade these to real() — that loses the distinction.
 export const model_risk_static = dataSchema.table("model_risk_static", {
   building_id: text(),
   address_count: integer(),
@@ -31,27 +36,27 @@ export const model_risk_static = dataSchema.table("model_risk_static", {
   construction_year_reliability: text(),
   foundation_type: text(),
   foundation_type_reliability: text(),
-  restoration_costs: real(),
-  drystand: real(),
+  restoration_costs: integer(),
+  drystand: doublePrecision(),
   drystand_risk: text(),
   drystand_risk_reliability: text(),
   bio_infection_risk: text(),
   bio_infection_risk_reliability: text(),
-  dewatering_depth: real(),
+  dewatering_depth: doublePrecision(),
   dewatering_depth_risk: text(),
   dewatering_depth_risk_reliability: text(),
   unclassified_risk: text(),
-  height: real(),
-  velocity: real(),
-  ground_water_level: real(),
-  ground_level: real(),
+  height: numeric({ precision: 10, scale: 2 }),
+  velocity: numeric(),
+  ground_water_level: numeric(),
+  ground_level: numeric({ precision: 5, scale: 2 }),
   soil: text(),
-  surface_area: real(),
+  surface_area: numeric({ precision: 10, scale: 2 }),
   owner: text(),
   inquiry_id: integer(),
   inquiry_type: text(),
   damage_cause: text(),
-  enforcement_term: text(),
+  enforcement_term: doublePrecision(),
   overall_quality: text(),
   recovery_type: text(),
 });
