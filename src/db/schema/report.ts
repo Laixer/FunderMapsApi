@@ -46,22 +46,24 @@ export const incident = reportSchema.table("incident", {
 export const inquiry = reportSchema.table("inquiry", {
   id: serial().primaryKey(),
   documentName: text("document_name").notNull(),
-  inspection: boolean().default(false),
-  jointMeasurement: boolean("joint_measurement").default(false),
-  floorMeasurement: boolean("floor_measurement").default(false),
-  createDate: timestamp("create_date").defaultNow(),
-  updateDate: timestamp("update_date"),
-  deleteDate: timestamp("delete_date"),
+  inspection: boolean().default(false).notNull(),
+  jointMeasurement: boolean("joint_measurement").default(false).notNull(),
+  floorMeasurement: boolean("floor_measurement").default(false).notNull(),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updateDate: timestamp("update_date", { withTimezone: true }),
+  deleteDate: timestamp("delete_date", { withTimezone: true }),
   note: text(),
   documentDate: date("document_date").notNull(),
   documentFile: text("document_file").notNull(),
   attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
-  accessPolicy: text("access_policy").default("private"),
+  accessPolicy: text("access_policy").default("private").notNull(),
   type: text().notNull(),
-  standardF3o: boolean("standard_f3o").default(false),
-  auditStatus: text("audit_status").default("todo"),
+  standardF3o: boolean("standard_f3o").default(false).notNull(),
+  auditStatus: text("audit_status").default("todo").notNull(),
 });
 
 export const inquirySample = reportSchema.table("inquiry_sample", {
@@ -70,9 +72,11 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
     .notNull()
     .references(() => inquiry.id),
   address: text(),
-  createDate: timestamp("create_date").defaultNow(),
-  updateDate: timestamp("update_date"),
-  deleteDate: timestamp("delete_date"),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updateDate: timestamp("update_date", { withTimezone: true }),
+  deleteDate: timestamp("delete_date", { withTimezone: true }),
   note: text(),
   builtYear: date("built_year"),
   substructure: text(),
@@ -140,18 +144,20 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
 
 export const recovery = reportSchema.table("recovery", {
   id: serial().primaryKey(),
-  createDate: timestamp("create_date").defaultNow(),
-  updateDate: timestamp("update_date"),
-  deleteDate: timestamp("delete_date"),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updateDate: timestamp("update_date", { withTimezone: true }),
+  deleteDate: timestamp("delete_date", { withTimezone: true }),
   note: text(),
   attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
-  accessPolicy: text("access_policy").default("private"),
-  type: text().default("unknown"),
+  accessPolicy: text("access_policy").default("private").notNull(),
+  type: text().default("unknown").notNull(),
   documentDate: date("document_date").notNull(),
   documentFile: text("document_file").notNull(),
-  auditStatus: text("audit_status").default("todo"),
+  auditStatus: text("audit_status").default("todo").notNull(),
   documentName: text("document_name").notNull(),
 });
 
@@ -160,17 +166,19 @@ export const recoverySample = reportSchema.table("recovery_sample", {
   recovery: integer("recovery_id")
     .notNull()
     .references(() => recovery.id),
-  createDate: timestamp("create_date").defaultNow(),
-  updateDate: timestamp("update_date"),
-  deleteDate: timestamp("delete_date"),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updateDate: timestamp("update_date", { withTimezone: true }),
+  deleteDate: timestamp("delete_date", { withTimezone: true }),
   note: text(),
   status: text(),
-  type: text().default("unknown"),
+  type: text().default("unknown").notNull(),
   pileType: text("pile_type"),
   facade: text().array(),
   permit: text(),
-  permitDate: timestamp("permit_date"),
-  recoveryDate: timestamp("recovery_date"),
+  permitDate: date("permit_date"),
+  recoveryDate: date("recovery_date"),
   contractor: integer("contractor_id"),
   buildingId: text("building_id").notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
