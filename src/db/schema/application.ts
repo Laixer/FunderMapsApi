@@ -247,10 +247,13 @@ export const mapsetLayer = applicationSchema.table("mapset_layer", {
   order: integer().default(0).notNull(),
 });
 
+// VIEW. `name` and `slug` follow mapset.name (nullable in DB), so they
+// are nullable here too — slug is computed as
+// lower(regexp_replace(name, '\s+', '-', 'g')).
 export const mapsetCollection = applicationSchema.table("mapset_collection", {
   id: text().primaryKey(),
-  name: text().notNull(),
-  slug: text().notNull(),
+  name: text(),
+  slug: text(),
   style: text().notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
   public: boolean().default(false),
