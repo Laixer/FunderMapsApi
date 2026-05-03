@@ -30,6 +30,7 @@ export const incident = reportSchema.table("incident", {
   fileResourceKey: text("file_resource_key"),
   documentFile: text("document_file").array(),
   note: text(),
+  internalNote: text("internal_note"),
   contact: text().notNull(),
   contactName: text("contact_name"),
   contactPhoneNumber: text("contact_phone_number"),
@@ -41,6 +42,13 @@ export const incident = reportSchema.table("incident", {
   ).array(),
   building: text("building_id").notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
+  auditStatus: text("audit_status").default("todo").notNull(),
+  questionType: text("question_type").default("other").notNull(),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updateDate: timestamp("update_date", { withTimezone: true }),
+  deleteDate: timestamp("delete_date", { withTimezone: true }),
 });
 
 export const inquiry = reportSchema.table("inquiry", {
