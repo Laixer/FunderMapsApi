@@ -159,14 +159,16 @@ export const organizationUser = applicationSchema.table(
 );
 
 export const application = applicationSchema.table("application", {
-  applicationId: text("application_id").primaryKey(),
+  applicationId: text("application_id")
+    .primaryKey()
+    .default(sql`concat('app-', application.random_string(8))`),
   name: text().notNull(),
   data: jsonb().$type<Record<string, unknown>>(),
   secret: text()
     .notNull()
     .default(sql`concat('app-sk-', application.random_string(32))`),
   redirectUrl: text("redirect_url"),
-  public: boolean().default(false),
+  public: boolean().default(false).notNull(),
   userId: uuid("user_id").references(() => user.id),
 });
 
@@ -368,3 +370,97 @@ export const organizationMapset = applicationSchema.table(
     primaryKey({ columns: [table.organizationId, table.mapsetId] }),
   ],
 );
+
+// product_tracker_mismatch — TimescaleDB hypertable, populated by a
+// trigger when product_tracker rows mismatch organization geolock.
+export const productTrackerMismatch = applicationSchema.table(
+  "product_tracker_mismatch",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id),
+    identifier: text().notNull(),
+    createDate: timestamp("create_date", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+);
+
+// Legacy OAuth2 tables — superseded by Better Auth's oauth_* tables
+// but retained because the C# Webservice (still in production) reads
+// them. Will be dropped after C# Webservice retirement.
+export const authAccessToken = applicationSchema.table("auth_access_token", {
+  accessToken: text("access_token").primaryKey(),
+  ipAddress: text("ip_address").notNull(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => application.applicationId),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  expiredAt: timestamp("expired_at", { withTimezone: true }).notNull(),
+});
+
+export const authCode = applicationSchema.table("auth_code", {
+  code: text().primaryKey(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => application.applicationId),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  expiredAt: timestamp("expired_at", { withTimezone: true }).notNull(),
+  codeChallenge: text("code_challenge"),
+  codeChallengeMethod: text("code_challenge_method"),
+});
+
+export const authRefreshToken = applicationSchema.table("auth_refresh_token", {
+  token: text().primaryKey(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => application.applicationId),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  expiredAt: timestamp("expired_at", { withTimezone: true }),
+});
+
+// Generic key/value store — legacy.
+export const keyStore = applicationSchema.table("key_store", {
+  name: text().primaryKey(),
+  value: text().notNull(),
+});
+
+// Legacy portal table. id is plain integer in DB (no sequence) — INSERTs
+// would have to supply id explicitly, but the table is unused.
+export const portal = applicationSchema.table("portal", {
+  id: integer().primaryKey(),
+  name: text(),
+});
+
+// Legacy password reset — superseded by Better Auth's verification
+// table. Kept until the C# Webservice retires.
+export const resetKey = applicationSchema.table("reset_key", {
+  key: uuid().primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// Other views in the application schema not modeled here:
+//   file_resources_orphaned (VIEW) — maintenance/cleanup view over
+//     file_resources rows whose key has no S3 object behind it.
+//     Not queried via Drizzle; add a table declaration if needed.
