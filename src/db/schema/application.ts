@@ -16,8 +16,8 @@ export const applicationSchema = pgSchema("application");
 // Enums
 export const jobStatusEnum = applicationSchema.enum("job_status", [
   "pending",
-  "running",
-  "complete",
+  "processing",
+  "completed",
   "failed",
   "retry",
 ]);
