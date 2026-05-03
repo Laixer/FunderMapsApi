@@ -10,6 +10,7 @@ import {
   bigserial,
   primaryKey,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const applicationSchema = pgSchema("application");
 
@@ -156,10 +157,12 @@ export const organizationUser = applicationSchema.table(
 );
 
 export const application = applicationSchema.table("application", {
-  applicationId: text("id").primaryKey(),
+  applicationId: text("application_id").primaryKey(),
   name: text().notNull(),
   data: jsonb().$type<Record<string, unknown>>(),
-  secret: text(),
+  secret: text()
+    .notNull()
+    .default(sql`concat('app-sk-', application.random_string(32))`),
   redirectUrl: text("redirect_url"),
   public: boolean().default(false),
   userId: uuid("user_id").references(() => user.id),
@@ -263,8 +266,14 @@ export const fileResource = applicationSchema.table("file_resources", {
 });
 
 export const productTracker = applicationSchema.table("product_tracker", {
-  name: text().notNull(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organization.id),
+  product: text().notNull(),
   buildingId: text("building_id").notNull(),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
   identifier: text().notNull(),
 });
 
