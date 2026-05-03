@@ -8,6 +8,7 @@ import {
   jsonb,
   bigint,
   bigserial,
+  serial,
   primaryKey,
 } from "drizzle-orm/pg-core";
 
@@ -32,10 +33,11 @@ export const user = applicationSchema.table("user", {
   emailVerified: boolean("email_verified").default(false).notNull(),
   avatar: text(),
   jobTitle: text("job_title"),
+  passwordHash: text("password_hash"),
   phoneNumber: text("phone_number"),
   accessFailedCount: integer("access_failed_count").default(0).notNull(),
   role: text().default("user").notNull(),
-  lastLogin: timestamp("last_login").defaultNow(),
+  lastLogin: timestamp("last_login", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -150,7 +152,7 @@ export const organizationUser = applicationSchema.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organization.id),
-    role: text(),
+    role: text().default("reader").notNull(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.organizationId] })],
 );
@@ -168,10 +170,14 @@ export const application = applicationSchema.table("application", {
 export const applicationUser = applicationSchema.table(
   "application_user",
   {
-    userId: text("user_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id),
     applicationId: text("application_id").notNull(),
     metadata: jsonb().$type<Record<string, unknown>>(),
-    updateDate: timestamp("update_date"),
+    updateDate: timestamp("update_date", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.userId, table.applicationId] }),
@@ -184,25 +190,27 @@ export const authKey = applicationSchema.table("auth_key", {
     .notNull()
     .references(() => user.id),
   name: text(),
-  lastUsed: timestamp("last_used"),
+  lastUsed: timestamp("last_used", { withTimezone: true }),
   keyHash: text("key_hash").notNull(),
-  expiresAt: timestamp("expires_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 export const authLog = applicationSchema.table("auth_logs", {
   logId: bigserial("log_id", { mode: "number" }).primaryKey(),
-  userId: uuid("user_id").references(() => user.id),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id),
   actionType: text("action_type").notNull(),
-  ipAddress: text("ip_address"),
+  ipAddress: text("ip_address").notNull(),
   userAgent: text("user_agent"),
-  timestamp: timestamp().defaultNow(),
+  timestamp: timestamp({ withTimezone: true }).defaultNow().notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
 });
 
 export const attribution = applicationSchema.table("attribution", {
-  id: bigserial({ mode: "number" }).primaryKey(),
+  id: serial().primaryKey(),
   reviewer: uuid("reviewer_id").notNull(),
   creator: uuid("creator_id").notNull(),
   owner: uuid("owner_id").notNull(),
@@ -210,8 +218,8 @@ export const attribution = applicationSchema.table("attribution", {
 });
 
 export const contractor = applicationSchema.table("contractor", {
-  id: integer().primaryKey(),
-  name: text().notNull(),
+  id: serial().primaryKey(),
+  name: text(),
 });
 
 // Underlying mapset table — source of truth for layer IDs.
@@ -254,12 +262,16 @@ export const fileResource = applicationSchema.table("file_resources", {
   id: uuid().primaryKey().defaultRandom(),
   key: text().notNull().unique(),
   originalFilename: text("original_filename").notNull(),
-  status: text().default("uploaded"),
+  status: text().default("uploaded").notNull(),
   sizeBytes: bigint("size_bytes", { mode: "number" }),
   mimeType: text("mime_type"),
   metadata: jsonb().$type<Record<string, unknown>>(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const productTracker = applicationSchema.table("product_tracker", {
@@ -277,9 +289,13 @@ export const workerJob = applicationSchema.table("worker_jobs", {
   retryCount: integer("retry_count").default(0).notNull(),
   maxRetries: integer("max_retries").default(3).notNull(),
   lastError: text("last_error"),
-  processAfter: timestamp("process_after"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  processAfter: timestamp("process_after", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // Geolock junction tables
@@ -333,7 +349,8 @@ export const organizationMapset = applicationSchema.table(
       .references(() => organization.id),
     mapsetId: text("mapset_id")
       .notNull()
-      .references(() => mapsetCollection.id),
+      .references(() => mapset.id),
+    metadata: jsonb().$type<Record<string, unknown>>(),
   },
   (table) => [
     primaryKey({ columns: [table.organizationId, table.mapsetId] }),
