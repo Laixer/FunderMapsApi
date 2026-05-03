@@ -4,35 +4,35 @@ export const geocoderSchema = pgSchema("geocoder");
 
 export const address = geocoderSchema.table("address", {
   id: text().primaryKey(),
-  externalId: text("external_id"),
+  externalId: text("external_id").notNull(),
   buildingId: text("building_id"),
-  buildingNumber: text("building_number"),
+  buildingNumber: text("building_number").notNull(),
   postalCode: text("postal_code"),
-  street: text(),
-  city: text(),
+  street: text().notNull(),
+  city: text().notNull(),
 });
 
 // Geographic hierarchy. Only id, external_id, and name modelled here;
-// the actual rows have more (geom, etc.) but management UIs only need
-// name resolution. Note: junction tables (organization_geolock_*)
+// the actual rows have more (geom, water, FK refs) but management UIs
+// only need name resolution. Note: junction tables (organization_geolock_*)
 // store BAG codes which match the *external_id* column, not the
 // gfm-* UUID id.
 export const district = geocoderSchema.table("district", {
   id: text().primaryKey(),
-  externalId: text("external_id"),
-  name: text(),
+  externalId: text("external_id").notNull(),
+  name: text().notNull(),
 });
 
 export const municipality = geocoderSchema.table("municipality", {
   id: text().primaryKey(),
-  externalId: text("external_id"),
-  name: text(),
+  externalId: text("external_id").notNull(),
+  name: text().notNull(),
 });
 
 export const neighborhood = geocoderSchema.table("neighborhood", {
   id: text().primaryKey(),
-  externalId: text("external_id"),
-  name: text(),
+  externalId: text("external_id").notNull(),
+  name: text().notNull(),
 });
 
 // New snake_case-native declarations (do not use building_active — slated for removal).
