@@ -157,7 +157,9 @@ export const organizationUser = applicationSchema.table(
 );
 
 export const application = applicationSchema.table("application", {
-  applicationId: text("application_id").primaryKey(),
+  applicationId: text("application_id")
+    .primaryKey()
+    .default(sql`concat('app-', application.random_string(8))`),
   name: text().notNull(),
   data: jsonb().$type<Record<string, unknown>>(),
   secret: text()
