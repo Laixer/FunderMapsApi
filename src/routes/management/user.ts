@@ -190,12 +190,22 @@ users.put("/:user_id/api-key/:key_id/reset", async (c) => {
   return c.json(toLegacyAuthKeyCreated(updated, newKey));
 });
 
+const deleteKeySchema = z.object({ id: z.string() });
+
 users.delete(
   "/:user_id/api-key",
   zValidator("json", deleteKeySchema),
   async (c) => {
     const userId = c.req.param("user_id");
     const { id } = c.req.valid("json");
+
+    // Verify user exists
+    const existingUser = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    if (existingUser.length === 0) throw new NotFoundError("User not found");
 
     const deleted = await db
       .delete(authKey)
