@@ -158,7 +158,37 @@ users.post("/:user_id/api-key", async (c) => {
   return c.json(toLegacyAuthKeyCreated(row!, newKey), 201);
 });
 
-const deleteKeySchema = z.object({ id: z.uuid() });
+users.put("/:user_id/api-key/:key_id/reset", async (c) => {
+  const userId = c.req.param("user_id");
+  const keyId = c.req.param("key_id");
+
+  // Verify user exists
+  const existingUser = await db
+    .select()
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  if (existingUser.length === 0) throw new NotFoundError("User not found");
+
+  // Verify key exists
+  const existingKey = await db
+    .select()
+    .from(authKey)
+    .where(and(eq(authKey.id, keyId), eq(authKey.userId, userId)))
+    .limit(1);
+  if (existingKey.length === 0) throw new NotFoundError("API key not found");
+
+  const newKey = generateApiKey();
+  const newKeyHash = await sha256Hex(newKey);
+  const [updated] = await db
+    .update(authKey)
+    .set({ keyHash: newKeyHash, updatedAt: new Date() })
+    .where(and(eq(authKey.id, keyId), eq(authKey.userId, userId)))
+    .returning();
+
+  if (!updated) throw new NotFoundError("API key not found");
+  return c.json(toLegacyAuthKeyCreated(updated, newKey));
+});
 
 users.delete(
   "/:user_id/api-key",
