@@ -12,7 +12,6 @@ import {
   attribution,
 } from "../../db/schema/application.ts";
 import { or } from "drizzle-orm";
-import { auth } from "../../lib/auth.ts";
 import { hashPassword } from "better-auth/crypto";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
@@ -50,16 +49,32 @@ users.post("/", zValidator("json", createUserSchema), async (c) => {
     .limit(1);
   if (existing.length > 0) throw new ConflictError("User already exists");
 
-  // Create user via Better Auth (handles password hashing + account creation)
-  const result = await auth.api.signUpEmail({
-    body: {
-      email,
-      password: data.password,
+  // Insert user directly — avoids auth.api.signUpEmail which requires an
+  // HTTP request context and triggers email-verification flows unsuitable
+  // for admin-initiated user creation.
+  const [created] = await db
+    .insert(user)
+    .values({
       name: data.name ?? email,
-    },
+      email,
+      emailVerified: true,
+      role: "user",
+    })
+    .returning();
+
+  if (!created) throw new Error("Failed to create user");
+
+  // Create the credential account row so the user can log in with a password.
+  const passwordHash = await hashPassword(data.password);
+  await db.insert(account).values({
+    id: crypto.randomUUID(),
+    userId: created.id,
+    accountId: created.id,
+    providerId: "credential",
+    password: passwordHash,
   });
 
-  return c.json(result.user, 201);
+  return c.json(toLegacyUser(created), 201);
 });
 
 users.get("/:user_id", async (c) => {
