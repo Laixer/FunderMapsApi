@@ -24,6 +24,8 @@ geocoder.get("/building-info/:id", async (c) => {
   const rows = await db.execute(sql`
     SELECT
       b.external_id AS building_id,
+      public.ST_Y(r.geom) AS residence_lat,
+      public.ST_X(r.geom) AS residence_lon,
       a.id AS address_id,
       a.external_id AS address_external_id,
       a.street,
@@ -44,6 +46,7 @@ geocoder.get("/building-info/:id", async (c) => {
       s.name AS state_name
     FROM geocoder.building b
     LEFT JOIN geocoder.address a ON a.building_id = b.external_id
+    LEFT JOIN geocoder.residence r ON r.building_id = b.external_id
     LEFT JOIN geocoder.neighborhood n ON n.id = b.neighborhood_id
     LEFT JOIN geocoder.district d ON d.id = n.district_id
     LEFT JOIN geocoder.municipality m ON m.id = d.municipality_id
