@@ -10,6 +10,10 @@ const WRITE_ROLES = new Set(["writer", "verifier", "superuser"]);
 // (and the global "administrator" app role) can approve/reject reports.
 const REVIEW_ROLES = new Set(["verifier", "superuser"]);
 
+// Org-level admin: only superusers. Used to gate destructive operations
+// (e.g. inquiry delete with cascade).
+const ADMIN_ROLES = new Set(["superuser"]);
+
 async function getOrgRole(
   userId: string,
   orgId: string,
@@ -50,5 +54,18 @@ export async function assertCanReview(
   const role = await getOrgRole(userId, orgId);
   if (!role || !REVIEW_ROLES.has(role)) {
     throw new ForbiddenError("Verifier permission required");
+  }
+}
+
+export async function assertCanAdmin(
+  userId: string,
+  orgId: string | undefined,
+): Promise<void> {
+  if (!orgId) {
+    throw new ForbiddenError("User is not a member of any organization");
+  }
+  const role = await getOrgRole(userId, orgId);
+  if (!role || !ADMIN_ROLES.has(role)) {
+    throw new ForbiddenError("Administrator permission required");
   }
 }
