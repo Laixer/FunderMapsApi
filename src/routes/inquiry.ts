@@ -12,7 +12,7 @@ import {
 } from "../db/schema/application.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
-import { assertCanWrite, assertCanReview } from "../lib/auth-helpers.ts";
+import { assertCanWrite, assertCanReview, assertCanAdmin } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
   toLegacyInquiry,
@@ -335,7 +335,7 @@ inquiries.delete("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertCanAdmin(u.id, orgId);
 
   const { row } = await loadInquiryScoped(id, orgId);
 
