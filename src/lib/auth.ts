@@ -7,9 +7,11 @@ import {
   hashPassword as baHashPassword,
   verifyPassword as baVerifyPassword,
 } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { env } from "../config.ts";
 import * as schema from "../db/schema/index.ts";
+import { account } from "../db/schema/application.ts";
 import {
   looksLikeDotnetIdentity,
   looksLikeFunderMapsCustom,
@@ -17,6 +19,24 @@ import {
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
+
+// Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
+// BA scrypt so the next login takes the native path. Account.password is
+// unique per user (16-byte salt), so WHERE password = oldHash is exact.
+function upgradeLegacyHash(oldHash: string, password: string): void {
+  void (async () => {
+    try {
+      const newHash = await baHashPassword(password);
+      await db
+        .update(account)
+        .set({ password: newHash, updatedAt: new Date() })
+        .where(eq(account.password, oldHash));
+    } catch (error) {
+      // Non-fatal: next login will retry the upgrade.
+      console.warn("Failed to upgrade legacy password hash", error);
+    }
+  })();
+}
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -36,11 +56,15 @@ export const auth = betterAuth({
         // Fixed-size 49-byte payload — try this first since it's the
         // dominant legacy format.
         if (looksLikeFunderMapsCustom(hash)) {
-          return verifyFunderMapsCustom(hash, password);
+          const ok = verifyFunderMapsCustom(hash, password);
+          if (ok) upgradeLegacyHash(hash, password);
+          return ok;
         }
         // Standard .NET Identity v3 (variable-size); kept for completeness.
         if (looksLikeDotnetIdentity(hash)) {
-          return verifyDotnetIdentityV3(hash, password);
+          const ok = verifyDotnetIdentityV3(hash, password);
+          if (ok) upgradeLegacyHash(hash, password);
+          return ok;
         }
         // Anything else is treated as Better Auth's native scrypt format
         // ("salt:hex(key)"). New users land here from day 1.
