@@ -202,18 +202,6 @@ export const authKey = applicationSchema.table("auth_key", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const authLog = applicationSchema.table("auth_logs", {
-  logId: bigserial("log_id", { mode: "number" }).primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id),
-  actionType: text("action_type").notNull(),
-  ipAddress: text("ip_address").notNull(),
-  userAgent: text("user_agent"),
-  timestamp: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  metadata: jsonb().$type<Record<string, unknown>>(),
-});
-
 export const attribution = applicationSchema.table("attribution", {
   id: serial().primaryKey(),
   reviewer: uuid("reviewer_id").notNull(),
@@ -446,18 +434,6 @@ export const keyStore = applicationSchema.table("key_store", {
 export const portal = applicationSchema.table("portal", {
   id: integer().primaryKey(),
   name: text(),
-});
-
-// Legacy password reset — superseded by Better Auth's verification
-// table. Kept until the C# Webservice retires.
-export const resetKey = applicationSchema.table("reset_key", {
-  key: uuid().primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id),
-  createDate: timestamp("create_date", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
 });
 
 // Other views in the application schema not modeled here:
