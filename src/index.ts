@@ -24,6 +24,7 @@ import reportRoutes from "./routes/report.ts";
 import inquiryRoutes from "./routes/inquiry.ts";
 import inquirySampleRoutes from "./routes/inquiry-sample.ts";
 import recoveryRoutes from "./routes/recovery.ts";
+import recoverySampleRoutes from "./routes/recovery-sample.ts";
 import incidentRoutes from "./routes/incident.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
@@ -82,6 +83,7 @@ app.route("/api/inquiry/:inquiry_id/sample", inquirySampleRoutes);
 app.route("/api/inquiry", inquiryRoutes);
 
 app.use("/api/recovery/*", authMiddleware);
+app.route("/api/recovery/:recovery_id/sample", recoverySampleRoutes);
 app.route("/api/recovery", recoveryRoutes);
 
 app.use("/api/incident/*", authMiddleware);

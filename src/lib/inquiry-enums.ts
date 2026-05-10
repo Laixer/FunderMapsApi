@@ -172,6 +172,37 @@ const ENUMS = {
     [3, "d"],
     [4, "e"],
   ]),
+  recovery_document_type: bimap([
+    [0, "permit"],
+    [1, "foundation_report"],
+    [2, "archive_report"],
+    [3, "owner_evidence"],
+    [4, "unknown"],
+  ]),
+  recovery_status: bimap([
+    [0, "planned"],
+    [1, "requested"],
+    [2, "executed"],
+  ]),
+  recovery_type: bimap([
+    [0, "table"],
+    [1, "beam_on_pile"],
+    [2, "pile_lowering"],
+    [3, "pile_in_wall"],
+    [4, "injection"],
+    [5, "unknown"],
+  ]),
+  pile_type: bimap([
+    [0, "press"],
+    [1, "internally_driven"],
+    [2, "segment"],
+  ]),
+  facade: bimap([
+    [0, "front"],
+    [1, "sidewall_left"],
+    [2, "sidewall_right"],
+    [3, "rear"],
+  ]),
 } as const;
 
 export type EnumName = keyof typeof ENUMS;
