@@ -31,8 +31,9 @@ function upgradeLegacyHash(oldHash: string, password: string): void {
         .update(account)
         .set({ password: newHash, updatedAt: new Date() })
         .where(eq(account.password, oldHash));
-    } catch {
+    } catch (error) {
       // Non-fatal: next login will retry the upgrade.
+      console.warn("Failed to upgrade legacy password hash", error);
     }
   })();
 }
