@@ -29,11 +29,7 @@ export const incident = reportSchema.table("incident", {
   foundationDamageCause: text("foundation_damage_cause"),
   fileResourceKey: text("file_resource_key"),
   documentFile: text("document_file").array(),
-  note: text(),
   internalNote: text("internal_note"),
-  contact: text().notNull(),
-  contactName: text("contact_name"),
-  contactPhoneNumber: text("contact_phone_number"),
   environmentDamageCharacteristics: text(
     "environment_damage_characteristics",
   ).array(),
