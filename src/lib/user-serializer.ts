@@ -23,7 +23,6 @@ export interface LegacyUser {
   job_title: string | null;
   phone_number: string | null;
   role: string;
-  last_login: string | null;
   organizations?: LegacyOrg[];
 }
 
@@ -40,7 +39,6 @@ export function toLegacyUser(
     job_title: u.jobTitle ?? null,
     phone_number: u.phoneNumber ?? null,
     role: u.role,
-    last_login: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
     ...(organizations !== undefined && { organizations }),
   };
 }
