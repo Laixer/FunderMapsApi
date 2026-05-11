@@ -18,7 +18,7 @@ export const bundle = maplayerSchema.table("bundle", {
 // Other views in the maplayer schema not modeled here:
 //   analysis_building, analysis_foundation, analysis_full,
 //     analysis_monitoring, analysis_report, analysis_risk
-//   boundry_district, boundry_municipality, boundry_neighborhood
+//   boundary_district, boundary_municipality, boundary_neighborhood
 //   building_cluster, building_supercluster
 //   facade_scan
 //   incident, incident_district, incident_municipality, incident_neighborhood
