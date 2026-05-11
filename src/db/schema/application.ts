@@ -34,11 +34,8 @@ export const user = applicationSchema.table("user", {
   emailVerified: boolean("email_verified").default(false).notNull(),
   avatar: text(),
   jobTitle: text("job_title"),
-  passwordHash: text("password_hash"),
   phoneNumber: text("phone_number"),
-  accessFailedCount: integer("access_failed_count").default(0).notNull(),
   role: text().default("user").notNull(),
-  lastLogin: timestamp("last_login", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
