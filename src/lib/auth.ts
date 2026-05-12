@@ -5,6 +5,7 @@ import {
   defaultStatements,
   userAc,
 } from "better-auth/plugins/admin/access";
+import { apiKey } from "@better-auth/api-key";
 import { bearer } from "better-auth/plugins/bearer";
 import { jwt } from "better-auth/plugins/jwt";
 import { oidcProvider } from "better-auth/plugins/oidc-provider";
@@ -163,6 +164,28 @@ export const auth = betterAuth({
       },
       adminRoles: ["administrator"],
       defaultRole: "user",
+    }),
+    // API-key plugin — mounted but not yet read by any auth middleware.
+    // New `fmsk.`-prefixed keys are written into application.apikey via
+    // the plugin's /api/auth/api-key/* endpoints; the legacy custom
+    // middleware (src/middleware/auth.ts) and management routes still
+    // run against application.auth_key. Dual-validate cutover lands in a
+    // follow-up PR (Phase B of the apiKey migration in
+    // project_better_auth_migration.md). The `fmsk.` prefix matches our
+    // existing keys' visual format; BA's docs recommend an underscore
+    // suffix but the literal stays as-is for customer continuity.
+    //
+    // Rate-limit is OFF at the plugin level: BA's default is 10
+    // requests/day, which would lock out paying billable customers
+    // instantly. The TS Webservice serves >>10 calls/day per key by
+    // design (every request is a billable product call). If we ever
+    // want per-key throttling, it's an opt-in at key-creation time, not
+    // a global default.
+    apiKey({
+      defaultPrefix: "fmsk.",
+      rateLimit: {
+        enabled: false,
+      },
     }),
     // OIDC/OAuth2 authorization server. Used by Grafana SSO (replaces the
     // Go OAuth2 server). loginPage points at ManagementFront's login —
