@@ -205,6 +205,38 @@ export const authKey = applicationSchema.table("auth_key", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// Better Auth `@better-auth/api-key` plugin. New `fmsk.`-prefixed keys
+// flow through this table; the legacy `application.auth_key` table stays
+// the read source for keys created before the plugin landed. The two
+// tables coexist until the C# Webservice retires (Dec 2026) and customers
+// rotate to BA-issued keys; see project_better_auth_migration.md.
+export const apikey = applicationSchema.table("apikey", {
+  id: text().primaryKey(),
+  configId: text("config_id").default("default").notNull(),
+  name: text(),
+  start: text(),
+  referenceId: uuid("reference_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  prefix: text(),
+  key: text().notNull(),
+  refillInterval: integer("refill_interval"),
+  refillAmount: integer("refill_amount"),
+  lastRefillAt: timestamp("last_refill_at", { withTimezone: true }),
+  enabled: boolean().default(true),
+  rateLimitEnabled: boolean("rate_limit_enabled").default(true),
+  rateLimitTimeWindow: integer("rate_limit_time_window"),
+  rateLimitMax: integer("rate_limit_max"),
+  requestCount: integer("request_count").default(0),
+  remaining: integer(),
+  lastRequest: timestamp("last_request", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  permissions: text(),
+  metadata: text(),
+});
+
 export const attribution = applicationSchema.table("attribution", {
   id: serial().primaryKey(),
   reviewer: uuid("reviewer_id").notNull(),

@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
     "@aws-sdk/s3-request-presigner": "^3.1037.0",
+    "@better-auth/api-key": "^1.6.10",
     "@hono/zod-validator": "^0.7.6",
     "better-auth": "^1.6.10",
     "drizzle-orm": "^0.45.2",
