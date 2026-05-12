@@ -36,6 +36,9 @@ export const user = applicationSchema.table("user", {
   jobTitle: text("job_title"),
   phoneNumber: text("phone_number"),
   role: text().default("user").notNull(),
+  banned: boolean(),
+  banReason: text("ban_reason"),
+  banExpires: timestamp("ban_expires"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -49,6 +52,9 @@ export const session = applicationSchema.table("session", {
   expiresAt: timestamp("expires_at").notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
+  impersonatedBy: uuid("impersonated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
