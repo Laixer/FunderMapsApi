@@ -1,7 +1,14 @@
 import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins/admin";
+import {
+  adminAc,
+  defaultStatements,
+  userAc,
+} from "better-auth/plugins/admin/access";
 import { bearer } from "better-auth/plugins/bearer";
 import { jwt } from "better-auth/plugins/jwt";
 import { oidcProvider } from "better-auth/plugins/oidc-provider";
+import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
   hashPassword as baHashPassword,
@@ -137,6 +144,26 @@ export const auth = betterAuth({
   plugins: [
     bearer(),
     jwt(),
+    // Admin plugin — adopted in *supplementing* mode. The existing
+    // /api/management/* surface (gated by src/middleware/admin.ts) stays
+    // as-is; the plugin layers on top to provide server-side ban
+    // enforcement (user.banned / ban_reason / ban_expires), session
+    // impersonation (session.impersonated_by), and a standard
+    // setRole/listUserSessions/banUser surface under /api/auth/admin/*.
+    //
+    // The plugin's built-in role names are `admin` and `user`; we keep
+    // the existing FunderMaps `administrator` literal by aliasing
+    // adminAc's permission set under that name via the access-control
+    // system. No data migration on application.user.role is needed.
+    admin({
+      ac: createAccessControl(defaultStatements),
+      roles: {
+        administrator: adminAc,
+        user: userAc,
+      },
+      adminRoles: ["administrator"],
+      defaultRole: "user",
+    }),
     // OIDC/OAuth2 authorization server. Used by Grafana SSO (replaces the
     // Go OAuth2 server). loginPage points at ManagementFront's login —
     // when an unauthenticated user hits /api/auth/oauth2/authorize, the
