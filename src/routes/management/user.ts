@@ -6,6 +6,7 @@ import { db } from "../../db/client.ts";
 import {
   user,
   authKey,
+  apikey,
   account,
   session,
   organizationUser,
@@ -13,12 +14,15 @@ import {
 } from "../../db/schema/application.ts";
 import { or } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
+import { auth } from "../../lib/auth.ts";
 import { paginationSchema } from "../../lib/pagination.ts";
 import { NotFoundError, ConflictError } from "../../lib/errors.ts";
 import {
   toLegacyUser,
   toLegacyAuthKey,
   toLegacyAuthKeyCreated,
+  toLegacyAuthKeyBa,
+  toLegacyAuthKeyCreatedBa,
 } from "../../lib/user-serializer.ts";
 import { generateApiKey, sha256Hex } from "../../lib/api-key.ts";
 import type { AppEnv } from "../../types/context.ts";
@@ -144,12 +148,21 @@ users.get("/:user_id/api-key", async (c) => {
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("User not found");
 
-  const keys = await db
-    .select()
-    .from(authKey)
-    .where(eq(authKey.userId, userId));
+  // Merge keys from both tables during the dual-stack transition.
+  // Legacy keys live in application.auth_key; BA-issued keys live in
+  // application.apikey. ManagementFront's wire shape (LegacyAuthKey)
+  // is identical for both. We can't use auth.api.listApiKeys here —
+  // it's session-scoped to the caller, but admin routes list keys for
+  // an arbitrary :user_id, so we go through Drizzle directly.
+  const [legacy, baKeys] = await Promise.all([
+    db.select().from(authKey).where(eq(authKey.userId, userId)),
+    db.select().from(apikey).where(eq(apikey.referenceId, userId)),
+  ]);
 
-  return c.json(keys.map(toLegacyAuthKey));
+  return c.json([
+    ...legacy.map(toLegacyAuthKey),
+    ...baKeys.map(toLegacyAuthKeyBa),
+  ]);
 });
 
 users.post("/:user_id/api-key", async (c) => {
@@ -163,14 +176,21 @@ users.post("/:user_id/api-key", async (c) => {
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("User not found");
 
-  const newKey = generateApiKey();
-  const newKeyHash = await sha256Hex(newKey);
-  const [row] = await db
-    .insert(authKey)
-    .values({ keyHash: newKeyHash, userId })
-    .returning();
+  // New keys go through Better Auth's api-key plugin. Calling
+  // auth.api.createApiKey() server-side (no HTTP request context) lets
+  // us pass `userId` without hitting the plugin's admin-session check
+  // (see node_modules/@better-auth/api-key/dist/index.mjs:726). The
+  // legacy application.auth_key table is no longer written to; existing
+  // rows there continue to work via the dual-read middleware (Phase B.1)
+  // and via the C# Webservice's direct SQL until Dec 2026.
+  //
+  // We deliberately do NOT pass `prefix: "fmsk."` in the body — BA's
+  // body validator (`/^[a-zA-Z0-9_-]+$/`) rejects the trailing `.`. The
+  // plugin's configured `defaultPrefix` in lib/auth.ts applies `fmsk.`
+  // automatically and bypasses that regex.
+  const created = await auth.api.createApiKey({ body: { userId } });
 
-  return c.json(toLegacyAuthKeyCreated(row!, newKey), 201);
+  return c.json(toLegacyAuthKeyCreatedBa(created, created.key), 201);
 });
 
 users.put("/:user_id/api-key/:key_id/reset", async (c) => {
@@ -222,10 +242,22 @@ users.delete(
       .limit(1);
     if (existingUser.length === 0) throw new NotFoundError("User not found");
 
-    const deleted = await db
-      .delete(authKey)
-      .where(and(eq(authKey.id, id), eq(authKey.userId, userId)))
-      .returning();
+    // Format-detect to route to the right table. Legacy auth_key.id is
+    // a UUID (contains hyphens); BA apikey.id is a hyphen-free 32-char
+    // alphanumeric (BA's generateRandomString). We can't use
+    // auth.api.deleteApiKey here — it's session-scoped to the caller's
+    // own keys, but admins delete on behalf of other users, so we go
+    // through Drizzle directly.
+    const isLegacyId = id.includes("-");
+    const deleted = isLegacyId
+      ? await db
+          .delete(authKey)
+          .where(and(eq(authKey.id, id), eq(authKey.userId, userId)))
+          .returning()
+      : await db
+          .delete(apikey)
+          .where(and(eq(apikey.id, id), eq(apikey.referenceId, userId)))
+          .returning();
 
     if (deleted.length === 0) throw new NotFoundError("API key not found");
     return c.body(null, 204);
@@ -299,9 +331,12 @@ users.delete("/:user_id", async (c) => {
     );
   }
 
-  // Cascade: remove org memberships, API keys, sessions, then user
+  // Cascade: remove org memberships, API keys (legacy + BA), sessions, then user.
+  // The BA apikey FK is ON DELETE CASCADE so this DELETE is technically redundant,
+  // but matches the explicit-pattern the legacy authKey block needs (its FK is NO ACTION).
   await db.delete(organizationUser).where(eq(organizationUser.userId, userId));
   await db.delete(authKey).where(eq(authKey.userId, userId));
+  await db.delete(apikey).where(eq(apikey.referenceId, userId));
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(account).where(eq(account.userId, userId));
   await db.delete(user).where(eq(user.id, userId));

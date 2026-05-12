@@ -3,10 +3,11 @@
 // what the Go backend produced. Keeps wire format stable across the
 // Go→TS cutover.
 import type { InferSelectModel } from "drizzle-orm";
-import type { user, authKey } from "../db/schema/application.ts";
+import type { user, authKey, apikey } from "../db/schema/application.ts";
 
 type UserRow = InferSelectModel<typeof user>;
 type AuthKeyRow = InferSelectModel<typeof authKey>;
+type ApiKeyRow = InferSelectModel<typeof apikey>;
 
 export interface LegacyOrg {
   id: string;
@@ -71,4 +72,25 @@ export function toLegacyAuthKeyCreated(
   plaintextKey: string,
 ): LegacyAuthKeyCreated {
   return { ...toLegacyAuthKey(k), key: plaintextKey };
+}
+
+// Mappers for the Better Auth `apikey` row shape onto the same legacy
+// wire shape the management routes used to return for legacy auth_key
+// rows. ManagementFront treats both indistinguishably; the wire format
+// is the contract, not the underlying table. `lastRequest` is BA's
+// equivalent of legacy `last_used`.
+export function toLegacyAuthKeyBa(k: ApiKeyRow): LegacyAuthKey {
+  return {
+    id: k.id,
+    user_id: k.referenceId,
+    name: k.name ?? null,
+    last_used: k.lastRequest ? k.lastRequest.toISOString() : null,
+  };
+}
+
+export function toLegacyAuthKeyCreatedBa(
+  k: ApiKeyRow,
+  plaintextKey: string,
+): LegacyAuthKeyCreated {
+  return { ...toLegacyAuthKeyBa(k), key: plaintextKey };
 }
