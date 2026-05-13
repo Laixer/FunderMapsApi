@@ -56,11 +56,6 @@ All Go backend routes are ported:
 
 ## What's NOT Yet Implemented (C# features)
 
-High priority:
-- Inquiry/Recovery audit workflow (state machine: Todo→Pending→Review→Done/Rejected + emails at each transition)
-- Inquiry/Recovery full CRUD (GET by ID, list, update, delete) — currently create-only
-- Document download (pre-signed S3 URLs with time-limited access)
-
 Medium priority:
 - Organization controller for regular users (GET session org, list org users)
 - Reviewer list endpoint (users with Verifier/Superuser role)

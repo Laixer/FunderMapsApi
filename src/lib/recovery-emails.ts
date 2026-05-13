@@ -1,15 +1,14 @@
-// Inquiry audit-workflow emails. Mirrors C# InquiryController + Mailgun
-// templates `report-reviewer`, `report-declined`, `report-approved`. The
-// template variables (id, creatorName, organizationName, reviewerName,
-// documentName, motivation) must match the names baked into the Mailgun
-// template HTML — do not rename without updating Mailgun.
+// Recovery audit-workflow emails. The C# RecoveryController reuses the same
+// Mailgun templates (`report-reviewer`, `report-declined`, `report-approved`)
+// as inquiry — the templates are generic enough that the only field
+// difference is `id` semantics (recovery vs inquiry row id, both ints).
 
 import { sendMail } from "../services/mail.ts";
 
 const FROM = "FunderMaps <noreply@fundermaps.com>";
 
-export interface InquiryEmailContext {
-  inquiryId: number;
+export interface RecoveryEmailContext {
+  recoveryId: number;
   documentName: string;
   creatorEmail: string;
   creatorName: string;
@@ -23,7 +22,7 @@ function recipient(email: string, name: string): string {
 }
 
 export async function sendReviewRequestedEmail(
-  ctx: InquiryEmailContext,
+  ctx: RecoveryEmailContext,
 ): Promise<void> {
   await sendMail({
     from: FROM,
@@ -31,7 +30,7 @@ export async function sendReviewRequestedEmail(
     subject: "FunderMaps - Rapportage ter review",
     template: "report-reviewer",
     variables: {
-      id: ctx.inquiryId,
+      id: ctx.recoveryId,
       creatorName: ctx.creatorName,
       organizationName: ctx.organizationName,
       reviewerName: ctx.reviewerName,
@@ -41,7 +40,7 @@ export async function sendReviewRequestedEmail(
 }
 
 export async function sendApprovedEmail(
-  ctx: InquiryEmailContext,
+  ctx: RecoveryEmailContext,
 ): Promise<void> {
   await sendMail({
     from: FROM,
@@ -52,7 +51,7 @@ export async function sendApprovedEmail(
     subject: "FunderMaps - Rapportage is goedgekeurd",
     template: "report-approved",
     variables: {
-      id: ctx.inquiryId,
+      id: ctx.recoveryId,
       reviewerName: ctx.reviewerName,
       documentName: ctx.documentName,
     },
@@ -60,7 +59,7 @@ export async function sendApprovedEmail(
 }
 
 export async function sendRejectedEmail(
-  ctx: InquiryEmailContext & { motivation: string },
+  ctx: RecoveryEmailContext & { motivation: string },
 ): Promise<void> {
   await sendMail({
     from: FROM,
@@ -71,7 +70,7 @@ export async function sendRejectedEmail(
     subject: "FunderMaps - Rapportage is afgekeurd",
     template: "report-declined",
     variables: {
-      id: ctx.inquiryId,
+      id: ctx.recoveryId,
       reviewerName: ctx.reviewerName,
       documentName: ctx.documentName,
       motivation: ctx.motivation,
