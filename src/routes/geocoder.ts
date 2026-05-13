@@ -100,6 +100,125 @@ geocoder.get("/address/:id", async (c) => {
   return c.json(rows[0]);
 });
 
+// Residence by identifier. Accepts FunderMaps internal gfm-* (residence.id),
+// BAG PAND IDs (resolved to residence via building_id), or BAG legacy
+// building IDs. C# parity: /api/geocoder/residence/{id} — the C# call site
+// in GeocoderController.GetAsync feeds it the building external_id, so the
+// PAND-path is the common case.
+geocoder.get("/residence/:id", async (c) => {
+  const input = c.req.param("id");
+  const ds = fromIdentifier(input);
+
+  let where: ReturnType<typeof sql>;
+  switch (ds) {
+    case GeocoderDatasource.FunderMaps:
+      where = sql`r.id = ${input}`;
+      break;
+    case GeocoderDatasource.NlBagBuilding:
+      where = sql`r.building_id = ${input.replaceAll(" ", "").toUpperCase()}`;
+      break;
+    case GeocoderDatasource.NlBagLegacyBuilding:
+      where = sql`r.building_id = ${"NL.IMBAG.PAND." + input.replaceAll(" ", "").toUpperCase()}`;
+      break;
+    default:
+      throw new AppError(400, "Unsupported residence identifier");
+  }
+
+  const rows = await db.execute(sql`
+    SELECT r.id, r.address_id, r.building_id
+    FROM geocoder.residence r
+    WHERE ${where}
+    LIMIT 1
+  `);
+
+  if (rows.length === 0) throw new NotFoundError("Residence not found");
+
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(rows[0]);
+});
+
+// Generic single-row lookup for the geographic-hierarchy entities. Accepts
+// gfm-* (matches PK) or the CBS code (matches external_id). The caller passes
+// the entity-specific datasource enum value used for CBS classification.
+async function lookupHierarchy(
+  table: "neighborhood" | "district" | "municipality" | "state",
+  input: string,
+  cbsDatasource: GeocoderDatasource,
+): Promise<Record<string, unknown>> {
+  const ds = fromIdentifier(input);
+
+  let where: ReturnType<typeof sql>;
+  if (ds === GeocoderDatasource.FunderMaps) {
+    where = sql`id = ${input}`;
+  } else if (ds === cbsDatasource) {
+    where = sql`external_id = ${input.toUpperCase()}`;
+  } else {
+    throw new AppError(400, `Unsupported ${table} identifier`);
+  }
+
+  // Common shape across all four tables: id, external_id, name, water,
+  // plus parent FK. Geom is omitted — clients that need polygons read
+  // the tile service.
+  const cols =
+    table === "state"
+      ? sql`id, external_id, name, water, country_id`
+      : table === "municipality"
+        ? sql`id, external_id, name, water, state_id`
+        : table === "district"
+          ? sql`id, external_id, name, water, municipality_id`
+          : sql`id, external_id, name, water, district_id`;
+
+  const rows = await db.execute(sql`
+    SELECT ${cols}
+    FROM ${sql.identifier("geocoder")}.${sql.identifier(table)}
+    WHERE ${where}
+    LIMIT 1
+  `);
+
+  if (rows.length === 0) throw new NotFoundError(`${table} not found`);
+  return rows[0] as Record<string, unknown>;
+}
+
+geocoder.get("/neighborhood/:id", async (c) => {
+  const row = await lookupHierarchy(
+    "neighborhood",
+    c.req.param("id"),
+    GeocoderDatasource.NlCbsNeighborhood,
+  );
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(row);
+});
+
+geocoder.get("/district/:id", async (c) => {
+  const row = await lookupHierarchy(
+    "district",
+    c.req.param("id"),
+    GeocoderDatasource.NlCbsDistrict,
+  );
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(row);
+});
+
+geocoder.get("/municipality/:id", async (c) => {
+  const row = await lookupHierarchy(
+    "municipality",
+    c.req.param("id"),
+    GeocoderDatasource.NlCbsMunicipality,
+  );
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(row);
+});
+
+geocoder.get("/state/:id", async (c) => {
+  const row = await lookupHierarchy(
+    "state",
+    c.req.param("id"),
+    GeocoderDatasource.NlCbsState,
+  );
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(row);
+});
+
 geocoder.get("/:geocoder_id", async (c) => {
   const geocoderId = c.req.param("geocoder_id");
 

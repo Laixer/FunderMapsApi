@@ -57,9 +57,6 @@ All Go backend routes are ported:
 ## What's NOT Yet Implemented (C# features)
 
 Medium priority:
-- Organization controller for regular users (GET session org, list org users)
-- Reviewer list endpoint (users with Verifier/Superuser role)
-- Extended geocoder endpoints (neighborhood, district, municipality, state, residence)
 - PDOK Dutch address lookup/autocomplete integration
 - Per-org role authorization hierarchy (Reader/Writer/Verifier/Superuser)
 - Incident full CRUD + status reset (currently create-only)
