@@ -48,12 +48,7 @@ Better Auth handles email/password login, sessions, password reset, and an OIDC 
 1. Try `auth.api.verifyApiKey({ key })` against `application.apikey` (BA-issued keys, prefix `fmsk.`).
 2. On `INVALID_API_KEY` miss, fall back to a SHA-256 hex lookup against the legacy `application.auth_key` table.
 
-Accepted header shapes (all three are interchangeable):
-- `X-API-Key: fmsk.…`
-- `Authorization: AuthKey fmsk.…`
-- `Authorization: Bearer fmsk.…` — also accepted by FunderMapsWebservice, so one header works against both surfaces.
-
-Bearer-without-`fmsk.` falls through to the BA session path (session tokens via the bearer plugin).
+**Single accepted delivery: `Authorization: Bearer fmsk.…`**. Same shape as FunderMapsWebservice — one header works against both surfaces. The pre-2026-05-13 alternatives (`X-API-Key`, `Authorization: AuthKey`) were dropped to match the Webservice. Bearer-without-`fmsk.` falls through to the BA session path (session tokens via the bearer plugin).
 
 `KEY_DISABLED`/`KEY_EXPIRED`/`RATE_LIMIT_EXCEEDED` are hard rejects with no fallback. The legacy path will be removed in Phase D after the C# Webservice retires end of December 2026 and `auth_key` drains.
 
