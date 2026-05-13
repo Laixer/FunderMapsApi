@@ -19,6 +19,12 @@ import {
 } from "../lib/recovery-serializer.ts";
 import type { AttributionView } from "../lib/inquiry-serializer.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
+import {
+  type RecoveryEmailContext,
+  sendApprovedEmail,
+  sendRejectedEmail,
+  sendReviewRequestedEmail,
+} from "../lib/recovery-emails.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -100,6 +106,22 @@ function transitionStatus(
     ]);
   }
   return target;
+}
+
+async function emailContext(
+  rec: typeof recovery.$inferSelect,
+  attr: AttributionView,
+): Promise<RecoveryEmailContext> {
+  // Stub helper kept for future Mailgun wiring; current emails are no-ops.
+  return {
+    recoveryId: rec.id,
+    documentName: rec.documentName,
+    creatorEmail: attr.creatorName ?? "",
+    creatorName: attr.creatorName ?? "",
+    reviewerEmail: attr.reviewerName ?? "",
+    reviewerName: attr.reviewerName ?? "",
+    organizationName: attr.ownerName ?? "",
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -319,9 +341,11 @@ recoveries.post("/:id{[0-9]+}/status_review", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanWrite(u.id, orgId);
 
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row, attr } = await loadRecoveryScoped(id, orgId);
   const next = transitionStatus(row.auditStatus, "pending_review");
   await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+
+  await sendReviewRequestedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
 });
 
@@ -334,14 +358,19 @@ recoveries.post(
   zValidator("json", statusChangeSchema),
   async (c) => {
     const id = parseInt(c.req.param("id"));
+    const { message } = c.req.valid("json");
     const u = c.get("user");
     const orgId = activeOrgId(c);
     await assertCanReview(u.id, orgId);
 
-    const { row } = await loadRecoveryScoped(id, orgId);
+    const { row, attr } = await loadRecoveryScoped(id, orgId);
     const next = transitionStatus(row.auditStatus, "rejected");
     await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
-    // motivation message accepted but not yet emailed (parity with inquiry stub)
+
+    await sendRejectedEmail({
+      ...(await emailContext({ ...row, auditStatus: next }, attr)),
+      motivation: message,
+    });
     return c.body(null, 204);
   },
 );
@@ -352,9 +381,11 @@ recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanReview(u.id, orgId);
 
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row, attr } = await loadRecoveryScoped(id, orgId);
   const next = transitionStatus(row.auditStatus, "done");
   await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+
+  await sendApprovedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
 });
 
