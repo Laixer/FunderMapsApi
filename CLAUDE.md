@@ -56,9 +56,6 @@ All Go backend routes are ported:
 
 ## What's NOT Yet Implemented (C# features)
 
-High priority:
-- Email delivery for inquiry/recovery audit-workflow transitions. The state machine (`status_review`/`status_approved`/`status_rejected`/`reset`) and the call sites are wired on both `routes/inquiry.ts` and `routes/recovery.ts`, but `lib/inquiry-emails.ts` and `lib/recovery-emails.ts` are still no-op stubs — Mailgun integration is the remaining piece. Mirrors C# templates `report-reviewer`, `report-declined`, `report-approved`.
-
 Medium priority:
 - Organization controller for regular users (GET session org, list org users)
 - Reviewer list endpoint (users with Verifier/Superuser role)

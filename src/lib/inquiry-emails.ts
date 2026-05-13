@@ -1,6 +1,12 @@
-// No-op stubs for the inquiry status-transition emails the C# WebApi sends
-// via Mailgun. Wave 3 ships without sending — single place to wire later.
-// Mirrors C# templates `report-reviewer`, `report-declined`, `report-approved`.
+// Inquiry audit-workflow emails. Mirrors C# InquiryController + Mailgun
+// templates `report-reviewer`, `report-declined`, `report-approved`. The
+// template variables (id, creatorName, organizationName, reviewerName,
+// documentName, motivation) must match the names baked into the Mailgun
+// template HTML — do not rename without updating Mailgun.
+
+import { sendMail } from "../services/mail.ts";
+
+const FROM = "FunderMaps <noreply@fundermaps.com>";
 
 export interface InquiryEmailContext {
   inquiryId: number;
@@ -12,20 +18,63 @@ export interface InquiryEmailContext {
   organizationName: string;
 }
 
+function recipient(email: string, name: string): string {
+  return name ? `${name} <${email}>` : email;
+}
+
 export async function sendReviewRequestedEmail(
-  _ctx: InquiryEmailContext,
+  ctx: InquiryEmailContext,
 ): Promise<void> {
-  // intentionally no-op — wire when product wants email back
+  await sendMail({
+    from: FROM,
+    to: [recipient(ctx.reviewerEmail, ctx.reviewerName)],
+    subject: "FunderMaps - Rapportage ter review",
+    template: "report-reviewer",
+    variables: {
+      id: ctx.inquiryId,
+      creatorName: ctx.creatorName,
+      organizationName: ctx.organizationName,
+      reviewerName: ctx.reviewerName,
+      documentName: ctx.documentName,
+    },
+  });
 }
 
 export async function sendApprovedEmail(
-  _ctx: InquiryEmailContext,
+  ctx: InquiryEmailContext,
 ): Promise<void> {
-  // intentionally no-op
+  await sendMail({
+    from: FROM,
+    to: [
+      recipient(ctx.creatorEmail, ctx.creatorName),
+      recipient(ctx.reviewerEmail, ctx.reviewerName),
+    ],
+    subject: "FunderMaps - Rapportage is goedgekeurd",
+    template: "report-approved",
+    variables: {
+      id: ctx.inquiryId,
+      reviewerName: ctx.reviewerName,
+      documentName: ctx.documentName,
+    },
+  });
 }
 
 export async function sendRejectedEmail(
-  _ctx: InquiryEmailContext & { motivation: string },
+  ctx: InquiryEmailContext & { motivation: string },
 ): Promise<void> {
-  // intentionally no-op
+  await sendMail({
+    from: FROM,
+    to: [
+      recipient(ctx.creatorEmail, ctx.creatorName),
+      recipient(ctx.reviewerEmail, ctx.reviewerName),
+    ],
+    subject: "FunderMaps - Rapportage is afgekeurd",
+    template: "report-declined",
+    variables: {
+      id: ctx.inquiryId,
+      reviewerName: ctx.reviewerName,
+      documentName: ctx.documentName,
+      motivation: ctx.motivation,
+    },
+  });
 }
