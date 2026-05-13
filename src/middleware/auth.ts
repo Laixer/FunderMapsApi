@@ -35,12 +35,17 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
 }
 
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
-  // API key auth — check X-API-Key header and Authorization: AuthKey header
+  // API key auth — check three header shapes:
+  //   X-API-Key: fmsk.xxx
+  //   Authorization: AuthKey fmsk.xxx
+  //   Authorization: Bearer fmsk.xxx       (matches FunderMapsWebservice)
+  // The Bearer match is conditioned on the `fmsk.` prefix so session
+  // tokens (also Bearer-shaped) still fall through to the BA path below.
+  const authHeader = c.req.header("Authorization");
   const apiKeyValue =
     c.req.header("X-API-Key") ??
-    (c.req.header("Authorization")?.startsWith("AuthKey ")
-      ? c.req.header("Authorization")!.slice(8)
-      : undefined);
+    authHeader?.match(/^AuthKey\s+(.+)$/i)?.[1] ??
+    authHeader?.match(/^Bearer\s+(fmsk\..+)$/i)?.[1];
 
   if (apiKeyValue?.startsWith("fmsk.")) {
     // Dual-read: try Better Auth's api-key plugin first (new keys live
