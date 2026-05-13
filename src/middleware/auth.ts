@@ -35,14 +35,18 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
 }
 
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
-  // API key auth — check X-API-Key header and Authorization: AuthKey header
-  const apiKeyValue =
-    c.req.header("X-API-Key") ??
-    (c.req.header("Authorization")?.startsWith("AuthKey ")
-      ? c.req.header("Authorization")!.slice(8)
-      : undefined);
+  // API key auth — Bearer only, matching FunderMapsWebservice.
+  //   Authorization: Bearer fmsk.xxx
+  // The match is conditioned on the `fmsk.` prefix so session tokens
+  // (also Bearer-shaped, never `fmsk.`-prefixed) fall through to the BA
+  // path below. X-API-Key and `Authorization: AuthKey` were dropped on
+  // 2026-05-13 — see feedback_api_bearer_only in the auto-memory and
+  // the matching FunderMapsReport apiClient switch (PR #50 there).
+  const apiKeyValue = c.req
+    .header("Authorization")
+    ?.match(/^Bearer\s+(fmsk\..+)$/i)?.[1];
 
-  if (apiKeyValue?.startsWith("fmsk.")) {
+  if (apiKeyValue) {
     // Dual-read: try Better Auth's api-key plugin first (new keys live
     // in application.apikey), fall back to the legacy SHA-256 lookup
     // against application.auth_key for keys created before the plugin

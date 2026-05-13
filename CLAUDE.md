@@ -48,6 +48,8 @@ Better Auth handles email/password login, sessions, password reset, and an OIDC 
 1. Try `auth.api.verifyApiKey({ key })` against `application.apikey` (BA-issued keys, prefix `fmsk.`).
 2. On `INVALID_API_KEY` miss, fall back to a SHA-256 hex lookup against the legacy `application.auth_key` table.
 
+**Single accepted delivery: `Authorization: Bearer fmsk.…`**. Same shape as FunderMapsWebservice — one header works against both surfaces. The pre-2026-05-13 alternatives (`X-API-Key`, `Authorization: AuthKey`) were dropped to match the Webservice. Bearer-without-`fmsk.` falls through to the BA session path (session tokens via the bearer plugin).
+
 `KEY_DISABLED`/`KEY_EXPIRED`/`RATE_LIMIT_EXCEEDED` are hard rejects with no fallback. The legacy path will be removed in Phase D after the C# Webservice retires end of December 2026 and `auth_key` drains.
 
 Admin routes require `c.get("user").role === "administrator"`. Two writers to that column today: BA's `setRole` (via the admin plugin's `/api/auth/admin/*` surface) and this repo's `routes/management/user.ts`. Same literal both sides — fine, but a co-existence point to keep in mind.
@@ -90,6 +92,10 @@ Pending items here are **load-bearing, not aspirational**. Speculative parity ga
 
 **DB hygiene** (see `~/.claude/projects/-home-eve/memory/project_todos.md`):
 - **GFM cleanup tail** + **`geocoder.building_active` view removal**. The view has 15+ dependents through a chain of maplayer views, statistics matviews, and Worker-managed objects. Single migration of 200+ lines of SQL; explicitly "not a small win, defer."
+
+## Customer-facing docs
+
+- [`docs/external-provider-onboarding.md`](docs/external-provider-onboarding.md) — admin flow to provision an external survey firm as a `writer` in a customer org, plus the provider-side curl flow for the full inquiry submission lifecycle.
 
 ## Reference Codebases
 
