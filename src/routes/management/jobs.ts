@@ -37,8 +37,25 @@ jobs.get("/", async (c) => {
   return c.json(rows.map(toLegacyJob));
 });
 
+// Canonical form is underscore — matches what `data.refresh_all` writes and
+// the Worker dispatch table. Worker normalizes `-` → `_` for backward
+// compat; mirror that here so a typo gets a 400 at the boundary instead of
+// burying an "Unknown job type" failure in the worker_jobs table.
+const JOB_TYPES = [
+  "process_mapset",
+  "export_product",
+  "load_dataset",
+  "generate_pdf",
+  "cleanup_storage",
+  "send_mail",
+  "export_samples",
+] as const;
+
 const createJobSchema = z.object({
-  job_type: z.string(),
+  job_type: z
+    .string()
+    .transform((v) => v.replace(/-/g, "_"))
+    .pipe(z.enum(JOB_TYPES)),
   payload: z.record(z.string(), z.unknown()).optional(),
   priority: z.number().optional(),
   max_retries: z.number().optional(),
