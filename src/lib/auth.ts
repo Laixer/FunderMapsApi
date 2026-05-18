@@ -15,11 +15,11 @@ import {
   hashPassword as baHashPassword,
   verifyPassword as baVerifyPassword,
 } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { env } from "../config.ts";
 import * as schema from "../db/schema/index.ts";
-import { account } from "../db/schema/application.ts";
+import { account, oauthApplication } from "../db/schema/application.ts";
 import {
   looksLikeDotnetIdentity,
   looksLikeFunderMapsCustom,
@@ -27,6 +27,74 @@ import {
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
+
+// OIDC trusted clients — first-party SSO consumers that bypass the consent
+// screen and the DB lookup in the bundled `oidc-provider` plugin. The
+// plugin's getClient() reads oauth_application rows but does NOT expose
+// skipConsent (or requirePKCE) on the returned shape, so any row that
+// should skip consent has to be hoisted into the `trustedClients` array at
+// plugin construction time.
+//
+// Two sources, merged at startup:
+//   1. Env-driven Grafana entry (legacy hardcode; preserved for backward
+//      compat — the prod env still sets GRAFANA_OIDC_SECRET).
+//   2. DB rows in application.oauth_application where disabled = false AND
+//      skip_consent = true. The Grafana row may live here too; env wins
+//      via order of insertion + BA's `find(client => clientId === id)`.
+//
+// Changing client config requires an API restart — getClient() reads
+// `trustedClients` from the closure captured at plugin construction.
+type OidcTrustedClient = NonNullable<
+  Parameters<typeof oidcProvider>[0]["trustedClients"]
+>[number];
+
+async function loadDbTrustedClients(): Promise<OidcTrustedClient[]> {
+  const rows = await db
+    .select()
+    .from(oauthApplication)
+    .where(
+      and(
+        eq(oauthApplication.disabled, false),
+        eq(oauthApplication.skipConsent, true),
+      ),
+    );
+  return rows.map((r) => ({
+    clientId: r.clientId,
+    clientSecret: r.clientSecret ?? undefined,
+    name: r.name,
+    icon: r.icon ?? undefined,
+    type: r.type as OidcTrustedClient["type"],
+    redirectUrls: r.redirectUrls.split(",").map((u) => u.trim()).filter(Boolean),
+    metadata: r.metadata ? JSON.parse(r.metadata) : null,
+    disabled: r.disabled ?? false,
+    skipConsent: true,
+  }));
+}
+
+const grafanaTrustedClient: OidcTrustedClient | null = env.GRAFANA_OIDC_SECRET
+  ? {
+      clientId: "grafana",
+      clientSecret: env.GRAFANA_OIDC_SECRET,
+      name: "Grafana",
+      type: "web",
+      redirectUrls: ["https://analytics.fundermaps.com/login/generic_oauth"],
+      metadata: null,
+      disabled: false,
+      skipConsent: true,
+    }
+  : null;
+
+const dbTrustedClients = await loadDbTrustedClients();
+const oidcTrustedClients: OidcTrustedClient[] = [
+  ...(grafanaTrustedClient ? [grafanaTrustedClient] : []),
+  ...dbTrustedClients.filter(
+    (c) => c.clientId !== grafanaTrustedClient?.clientId,
+  ),
+];
+console.log(
+  `[oidc] loaded ${oidcTrustedClients.length} trusted client(s): ` +
+    oidcTrustedClients.map((c) => c.clientId).join(", ") || "(none)",
+);
 
 // Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
 // BA scrypt so the next login takes the native path. Account.password is
@@ -196,26 +264,10 @@ export const auth = betterAuth({
     oidcProvider({
       loginPage: "https://admin.fundermaps.com/login",
       requirePKCE: false,
-      // Grafana is a first-party SSO consumer — skip the consent screen.
-      // trustedClients short-circuits the DB lookup, so the matching row in
-      // application.oauth_application is kept for record-keeping but the
-      // values here are what BA actually uses at request time.
-      trustedClients: env.GRAFANA_OIDC_SECRET
-        ? [
-            {
-              clientId: "grafana",
-              clientSecret: env.GRAFANA_OIDC_SECRET,
-              name: "Grafana",
-              type: "web",
-              redirectUrls: [
-                "https://analytics.fundermaps.com/login/generic_oauth",
-              ],
-              metadata: null,
-              disabled: false,
-              skipConsent: true,
-            },
-          ]
-        : [],
+      // Loaded at module init: env-driven Grafana hardcode (backward
+      // compat) merged with DB rows where skip_consent = true. See the
+      // loader above for why this is needed instead of pure DB lookup.
+      trustedClients: oidcTrustedClients,
       getAdditionalUserInfoClaim: (u) => ({
         role: (u as { role?: string }).role ?? "user",
       }),
