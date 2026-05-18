@@ -41,11 +41,14 @@ const envSchema = z.object({
   MAILGUN_API_BASE: z.string().default("https://api.eu.mailgun.net/v3"),
   EMAIL_RECEIVERS: z.string().optional(),
 
-  // PDF service (pdf.co). PDFCO_API_KEY is the x-api-key value;
-  // PDFCO_REPORT_URL is the base URL of the report renderer that pdf.co
-  // turns into a PDF (defaults to the existing whale-app DO instance).
-  PDFCO_API_KEY: z.string().optional(),
-  PDFCO_REPORT_URL: z
+  // PDF renderer (Gotenberg, self-hosted; replaces pdf.co).
+  // GOTENBERG_URL is the base URL of the Gotenberg HTTP API — for prod that's
+  // the in-VPC service URL, for local dev the rootless podman container on the
+  // host. REPORT_RENDER_URL is the base URL of the report front-end that
+  // Gotenberg renders into a PDF (defaults to the existing whale-app DO
+  // instance).
+  GOTENBERG_URL: z.url().optional(),
+  REPORT_RENDER_URL: z
     .string()
     .default("https://whale-app-nm9uv.ondigitalocean.app"),
 
