@@ -76,6 +76,9 @@ export async function putObject(
       Key: key,
       Body: body,
       ContentType: contentType,
+      // Defense in depth on top of provider-side at-rest encryption.
+      // Covers bucket-ACL misconfig and snapshot-export scenarios.
+      ServerSideEncryption: "AES256",
     }),
   );
 }

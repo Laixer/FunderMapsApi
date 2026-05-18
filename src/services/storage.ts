@@ -89,6 +89,8 @@ export async function uploadFiles(
         Key: s3Key,
         Body: new Uint8Array(buffer),
         ContentType: file.type,
+        // Defense in depth on top of provider-side at-rest encryption.
+        ServerSideEncryption: "AES256",
       }),
     );
 
