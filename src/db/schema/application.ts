@@ -96,24 +96,46 @@ export const jwks = applicationSchema.table("jwks", {
   expiresAt: timestamp("expires_at"),
 });
 
-// OAuth2 / OIDC client registrations (e.g. Grafana). Issued by the
-// Better Auth `oidc-provider` plugin.
-export const oauthApplication = applicationSchema.table("oauth_application", {
+// OAuth 2.1 / OIDC client registrations (e.g. Grafana). Read+written by
+// the `@better-auth/oauth-provider` plugin (the bundled `oidc-provider`
+// was replaced 2026-05-18). DB table stays `oauth_application` for
+// backup/tooling continuity; JS export is `oauthClient` to match the
+// plugin's model name (BA's drizzleAdapter resolves by JS identifier).
+export const oauthClient = applicationSchema.table("oauth_application", {
   id: text().primaryKey(),
   name: text().notNull(),
   icon: text(),
-  metadata: text(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
   clientId: text("client_id").notNull().unique(),
+  // SHA-256 → base64url-no-padding hash (the plugin's `defaultHasher`);
+  // verified at request time against the plaintext sent by the client.
   clientSecret: text("client_secret"),
-  redirectUrls: text("redirect_urls").notNull(),
-  type: text().notNull(),
+  type: text(),
+  public: boolean(),
   disabled: boolean().default(false),
-  // Toggled per OIDC client to bypass the consent screen. The bundled
-  // `oidc-provider` plugin's getClient() doesn't expose this on DB-read
-  // rows, so src/lib/auth.ts loads matching rows at startup and feeds them
-  // into the plugin's `trustedClients` array (which short-circuits the
-  // lookup). Defaults to false; flip to true for first-party SSO clients.
+  // Bypass the consent screen for first-party SSO consumers. Read directly
+  // from DB by the new plugin (the bundled plugin couldn't).
   skipConsent: boolean("skip_consent").default(false).notNull(),
+  // Skip PKCE for this client. Set true for legacy SSO clients (Grafana's
+  // generic_oauth doesn't send code_verifier); leave NULL or false for
+  // anything new — OAuth 2.1 wants PKCE.
+  requirePKCE: boolean("require_pkce"),
+  enableEndSession: boolean("enable_end_session"),
+  subjectType: text("subject_type"),
+  scopes: text().array(),
+  grantTypes: text("grant_types").array(),
+  responseTypes: text("response_types").array(),
+  tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+  redirectUris: text("redirect_uris").array().notNull(),
+  postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+  contacts: text().array(),
+  uri: text(),
+  tos: text(),
+  policy: text(),
+  softwareId: text("software_id"),
+  softwareVersion: text("software_version"),
+  softwareStatement: text("software_statement"),
+  referenceId: text("reference_id"),
   userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -121,29 +143,52 @@ export const oauthApplication = applicationSchema.table("oauth_application", {
 
 export const oauthAccessToken = applicationSchema.table("oauth_access_token", {
   id: text().primaryKey(),
-  accessToken: text("access_token").notNull().unique(),
-  refreshToken: text("refresh_token").notNull().unique(),
-  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at").notNull(),
+  token: text().notNull().unique(),
   clientId: text("client_id")
     .notNull()
-    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
+    .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+  sessionId: text("session_id").references(() => session.id, {
+    onDelete: "set null",
+  }),
   userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
-  scopes: text().notNull(),
+  referenceId: text("reference_id"),
+  refreshId: text("refresh_id"),
+  scopes: text().array().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const oauthRefreshToken = applicationSchema.table(
+  "oauth_refresh_token",
+  {
+    id: text().primaryKey(),
+    token: text().notNull().unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => session.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    scopes: text().array().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    revoked: timestamp(),
+    authTime: timestamp("auth_time"),
+  },
+);
 
 export const oauthConsent = applicationSchema.table("oauth_consent", {
   id: text().primaryKey(),
   clientId: text("client_id")
     .notNull()
-    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  scopes: text().notNull(),
-  consentGiven: boolean("consent_given").notNull(),
+    .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+  referenceId: text("reference_id"),
+  scopes: text().array().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

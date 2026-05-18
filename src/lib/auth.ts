@@ -8,18 +8,18 @@ import {
 import { apiKey } from "@better-auth/api-key";
 import { bearer } from "better-auth/plugins/bearer";
 import { jwt } from "better-auth/plugins/jwt";
-import { oidcProvider } from "better-auth/plugins/oidc-provider";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
   hashPassword as baHashPassword,
   verifyPassword as baVerifyPassword,
 } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { env } from "../config.ts";
 import * as schema from "../db/schema/index.ts";
-import { account, oauthApplication } from "../db/schema/application.ts";
+import { account } from "../db/schema/application.ts";
 import {
   looksLikeDotnetIdentity,
   looksLikeFunderMapsCustom,
@@ -27,74 +27,6 @@ import {
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
-
-// OIDC trusted clients — first-party SSO consumers that bypass the consent
-// screen and the DB lookup in the bundled `oidc-provider` plugin. The
-// plugin's getClient() reads oauth_application rows but does NOT expose
-// skipConsent (or requirePKCE) on the returned shape, so any row that
-// should skip consent has to be hoisted into the `trustedClients` array at
-// plugin construction time.
-//
-// Two sources, merged at startup:
-//   1. Env-driven Grafana entry (legacy hardcode; preserved for backward
-//      compat — the prod env still sets GRAFANA_OIDC_SECRET).
-//   2. DB rows in application.oauth_application where disabled = false AND
-//      skip_consent = true. The Grafana row may live here too; env wins
-//      via order of insertion + BA's `find(client => clientId === id)`.
-//
-// Changing client config requires an API restart — getClient() reads
-// `trustedClients` from the closure captured at plugin construction.
-type OidcTrustedClient = NonNullable<
-  Parameters<typeof oidcProvider>[0]["trustedClients"]
->[number];
-
-async function loadDbTrustedClients(): Promise<OidcTrustedClient[]> {
-  const rows = await db
-    .select()
-    .from(oauthApplication)
-    .where(
-      and(
-        eq(oauthApplication.disabled, false),
-        eq(oauthApplication.skipConsent, true),
-      ),
-    );
-  return rows.map((r) => ({
-    clientId: r.clientId,
-    clientSecret: r.clientSecret ?? undefined,
-    name: r.name,
-    icon: r.icon ?? undefined,
-    type: r.type as OidcTrustedClient["type"],
-    redirectUrls: r.redirectUrls.split(",").map((u) => u.trim()).filter(Boolean),
-    metadata: r.metadata ? JSON.parse(r.metadata) : null,
-    disabled: r.disabled ?? false,
-    skipConsent: true,
-  }));
-}
-
-const grafanaTrustedClient: OidcTrustedClient | null = env.GRAFANA_OIDC_SECRET
-  ? {
-      clientId: "grafana",
-      clientSecret: env.GRAFANA_OIDC_SECRET,
-      name: "Grafana",
-      type: "web",
-      redirectUrls: ["https://analytics.fundermaps.com/login/generic_oauth"],
-      metadata: null,
-      disabled: false,
-      skipConsent: true,
-    }
-  : null;
-
-const dbTrustedClients = await loadDbTrustedClients();
-const oidcTrustedClients: OidcTrustedClient[] = [
-  ...(grafanaTrustedClient ? [grafanaTrustedClient] : []),
-  ...dbTrustedClients.filter(
-    (c) => c.clientId !== grafanaTrustedClient?.clientId,
-  ),
-];
-console.log(
-  `[oidc] loaded ${oidcTrustedClients.length} trusted client(s): ` +
-    oidcTrustedClients.map((c) => c.clientId).join(", ") || "(none)",
-);
 
 // Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
 // BA scrypt so the next login takes the native path. Account.password is
@@ -255,21 +187,42 @@ export const auth = betterAuth({
         enabled: false,
       },
     }),
-    // OIDC/OAuth2 authorization server. Used by Grafana SSO (replaces the
-    // Go OAuth2 server). loginPage points at ManagementFront's login —
-    // when an unauthenticated user hits /api/auth/oauth2/authorize, the
-    // plugin redirects there and ManagementFront completes the flow by
-    // posting back the credentials. requirePKCE=false because Grafana's
-    // generic_oauth client doesn't send code_verifier.
-    oidcProvider({
+    // OAuth 2.1 / OIDC authorization server (`@better-auth/oauth-provider`,
+    // replaces the deprecated bundled `oidc-provider` plugin 2026-05-18).
+    // loginPage points at ManagementFront's login — when an unauthenticated
+    // user hits /api/auth/oauth2/authorize, the plugin redirects there and
+    // ManagementFront completes the flow by posting back the credentials.
+    //
+    // `requirePKCE` is now a per-client column (application.oauth_application.
+    // require_pkce); the Grafana row needs it set false. New first-party
+    // clients (auth SPA) should leave it null/true.
+    //
+    // `skip_consent` is also a per-client column read directly from DB by
+    // the new plugin — no more startup-time `trustedClients` hoisting.
+    //
+    // `consentPage` is required by the plugin but currently only reached
+    // by non-trusted clients. We don't have any yet; the placeholder route
+    // 404s on ManagementFront until an auth-SPA-era consent page lands.
+    oauthProvider({
       loginPage: "https://admin.fundermaps.com/login",
-      requirePKCE: false,
-      // Loaded at module init: env-driven Grafana hardcode (backward
-      // compat) merged with DB rows where skip_consent = true. See the
-      // loader above for why this is needed instead of pure DB lookup.
-      trustedClients: oidcTrustedClients,
-      getAdditionalUserInfoClaim: (u) => ({
-        role: (u as { role?: string }).role ?? "user",
+      consentPage: "https://admin.fundermaps.com/oauth/consent",
+      // Suppress boot warnings about discovery routes. The plugin defines
+      // its metadata under /api/auth/.well-known/* but the OIDC spec wants
+      // them at /.well-known/*/<issuer-path>. Grafana doesn't use discovery
+      // (its config has explicit auth_url/token_url/userinfo_url), so this
+      // doesn't block prod. If/when the auth SPA needs discovery, wire the
+      // exported `oauthProviderAuthServerMetadata` /
+      // `oauthProviderOpenIdConfigMetadata` helpers into Hono at the root
+      // /.well-known/* paths and clear these flags.
+      silenceWarnings: {
+        oauthAuthServerConfig: true,
+        openidConfig: true,
+      },
+      customAccessTokenClaims: ({ user: u }) => ({
+        role: (u as { role?: string } | null | undefined)?.role ?? "user",
+      }),
+      customIdTokenClaims: ({ user: u }) => ({
+        role: (u as { role?: string } | null | undefined)?.role ?? "user",
       }),
     }),
   ],
