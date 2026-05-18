@@ -108,6 +108,12 @@ export const oauthApplication = applicationSchema.table("oauth_application", {
   redirectUrls: text("redirect_urls").notNull(),
   type: text().notNull(),
   disabled: boolean().default(false),
+  // Toggled per OIDC client to bypass the consent screen. The bundled
+  // `oidc-provider` plugin's getClient() doesn't expose this on DB-read
+  // rows, so src/lib/auth.ts loads matching rows at startup and feeds them
+  // into the plugin's `trustedClients` array (which short-circuits the
+  // lookup). Defaults to false; flip to true for first-party SSO clients.
+  skipConsent: boolean("skip_consent").default(false).notNull(),
   userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
