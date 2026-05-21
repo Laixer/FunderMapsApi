@@ -34,7 +34,26 @@ const app = new Hono<AppEnv>();
 // Global middleware
 app.use("*", logger());
 app.use("*", secureHeaders());
-app.use("*", cors());
+
+// CORS. First-party origins (the auth SPA + admin/app frontends listed in
+// TRUSTED_ORIGINS) get *credentialed* CORS so the Better Auth session cookie
+// can be set on sign-in and sent on the subsequent /oauth2/authorize navigation
+// (a navigation can't carry a bearer header). Everyone else keeps permissive,
+// cookie-less CORS (bearer / API-key callers + public endpoints) — additive,
+// so it changes nothing for existing consumers.
+const credentialedCors = cors({
+  origin: (origin) => (origin && env.TRUSTED_ORIGINS.includes(origin) ? origin : null),
+  credentials: true,
+  allowHeaders: ["Content-Type", "Authorization"],
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+});
+const publicCors = cors();
+app.use("*", (c, next) => {
+  const origin = c.req.header("Origin");
+  return origin && env.TRUSTED_ORIGINS.includes(origin)
+    ? credentialedCors(c, next)
+    : publicCors(c, next);
+});
 
 // Error handler
 app.onError(errorHandler);
