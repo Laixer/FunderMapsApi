@@ -96,6 +96,7 @@ Pending items here are **load-bearing, not aspirational**. Speculative parity ga
 ## Customer-facing docs
 
 - [`docs/external-provider-onboarding.md`](docs/external-provider-onboarding.md) — admin flow to provision an external survey firm as a `writer` in a customer org, plus the provider-side curl flow for the full inquiry submission lifecycle.
+- [`docs/inquiry-recovery-api-reference.md`](docs/inquiry-recovery-api-reference.md) — complete endpoint reference for `/api/inquiry`, `/api/recovery`, and their `/sample` sub-resources (routes, fields, integer-enum tables, audit-status state machine, status codes). The reference companion to the onboarding walkthrough.
 
 ## Reference Codebases
 
