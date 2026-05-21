@@ -1,14 +1,15 @@
 import { createMiddleware } from "hono/factory";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { auth } from "../lib/auth.ts";
 import { db } from "../db/client.ts";
 import {
   user,
   authKey,
+  oauthAccessToken,
   organization,
   organizationUser,
 } from "../db/schema/application.ts";
-import { sha256Hex } from "../lib/api-key.ts";
+import { sha256Base64Url, sha256Hex } from "../lib/api-key.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
@@ -108,11 +109,37 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     .getSession({ headers: c.req.raw.headers })
     .catch(() => null);
 
-  if (!session?.user) {
+  let userId = session?.user?.id ?? null;
+
+  // OIDC access token. A first-party app acting as an OIDC client calls the API
+  // with the opaque access token issued by /oauth2/token — that's not a BA
+  // session, so resolve it against application.oauth_access_token (token
+  // introspection). Only reached when the session lookup above misses; the
+  // unique, indexed `token` column makes this a single point lookup.
+  if (!userId) {
+    const bearer = c.req.header("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+    if (bearer) {
+      // BA stores the access token hashed (base64url SHA-256); hash before lookup.
+      const tokenHash = await sha256Base64Url(bearer);
+      const tok = await db
+        .select({ userId: oauthAccessToken.userId })
+        .from(oauthAccessToken)
+        .where(
+          and(
+            eq(oauthAccessToken.token, tokenHash),
+            gt(oauthAccessToken.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (tok.length > 0) userId = tok[0]!.userId;
+    }
+  }
+
+  if (!userId) {
     return c.json({ message: "Unauthorized" }, 401);
   }
 
-  const authUser = await loadUserWithOrgs(session.user.id);
+  const authUser = await loadUserWithOrgs(userId);
   if (!authUser) {
     return c.json({ message: "Unauthorized" }, 401);
   }
