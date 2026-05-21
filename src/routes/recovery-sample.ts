@@ -15,7 +15,7 @@ import type { AppEnv } from "../types/context.ts";
 const samples = new Hono<AppEnv>();
 
 function recoveryId(c: Context<AppEnv>): number {
-  const id = parseInt(c.req.param("recovery_id"));
+  const id = parseInt(c.req.param("recovery_id") ?? "");
   if (isNaN(id)) throw new NotFoundError("Recovery not found");
   return id;
 }

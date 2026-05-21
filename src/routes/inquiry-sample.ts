@@ -15,7 +15,7 @@ import type { AppEnv } from "../types/context.ts";
 const samples = new Hono<AppEnv>();
 
 function inquiryId(c: Context<AppEnv>): number {
-  const id = parseInt(c.req.param("inquiry_id"));
+  const id = parseInt(c.req.param("inquiry_id") ?? "");
   if (isNaN(id)) throw new NotFoundError("Inquiry not found");
   return id;
 }
