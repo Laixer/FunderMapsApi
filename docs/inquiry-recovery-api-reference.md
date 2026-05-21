@@ -7,11 +7,18 @@ into a customer tenant).
 This is the **reference**; for the provisioning + first-submission walkthrough
 see [`external-provider-onboarding.md`](external-provider-onboarding.md).
 
+> ⚠️ **Experimental.** This external-client surface is still experimental and
+> subject to change without notice — endpoints, request/response shapes, field
+> names, and enum values may change between releases, and there is no
+> versioning or deprecation guarantee yet. Do not build production integrations
+> against it without coordinating with the FunderMaps team first.
+
 - **Base URL:** `https://api.fundermaps.com` (production).
 - **Content type:** `application/json` for all bodies except document upload
   (`multipart/form-data`).
-- **Versioning:** unversioned; this surface is a stable port of the legacy C#
-  WebApi shape.
+- **Versioning:** unversioned and experimental (see the notice above); the
+  shape is a port of the legacy C# WebApi but is not yet contractually stable
+  for external clients.
 
 ---
 
