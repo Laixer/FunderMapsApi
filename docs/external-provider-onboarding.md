@@ -4,6 +4,8 @@ External survey firms (the "providers") submit inquiry and recovery reports into
 
 > For the full endpoint reference (every route, field, enum value, and status code), see [`inquiry-recovery-api-reference.md`](inquiry-recovery-api-reference.md). This doc is the getting-started walkthrough.
 
+> ⚠️ **Experimental.** The external-client API described here is still experimental and may change without notice. Coordinate with the FunderMaps team before building a production integration.
+
 ## Model
 
 A provider is **a user in the customer's organization with the `writer` role**. They sign in with an API key (`fmsk.…`) and call the same `/api/inquiry/*` and `/api/recovery/*` endpoints the customer's own staff use. The customer's `verifier`/`superuser` reviews and approves; ownership stays with the customer org.
