@@ -8,6 +8,9 @@ const envSchema = z.object({
   // Better Auth
   AUTH_SECRET: z.string(),
   BASE_URL: z.url().optional(),
+  // The dedicated auth SPA's login page — where the OIDC provider sends
+  // unauthenticated users (`loginPage`). Prod: https://auth.fundermaps.com/login.
+  LOGIN_PAGE_URL: z.url().default("https://auth.fundermaps.com/login"),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
   // Required when the frontend is on a different domain than BASE_URL,
   // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.

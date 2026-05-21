@@ -189,9 +189,10 @@ export const auth = betterAuth({
     }),
     // OAuth 2.1 / OIDC authorization server (`@better-auth/oauth-provider`,
     // replaces the deprecated bundled `oidc-provider` plugin 2026-05-18).
-    // loginPage points at ManagementFront's login — when an unauthenticated
-    // user hits /api/auth/oauth2/authorize, the plugin redirects there and
-    // ManagementFront completes the flow by posting back the credentials.
+    // loginPage is the dedicated auth SPA (auth.fundermaps.com): when an
+    // unauthenticated user hits /api/auth/oauth2/authorize, the plugin appends
+    // the signed authorization request to this URL and redirects there; after
+    // login the SPA replays that query string back to /oauth2/authorize.
     //
     // `requirePKCE` is now a per-client column (application.oauth_application.
     // require_pkce); the Grafana row needs it set false. New first-party
@@ -200,11 +201,11 @@ export const auth = betterAuth({
     // `skip_consent` is also a per-client column read directly from DB by
     // the new plugin — no more startup-time `trustedClients` hoisting.
     //
-    // `consentPage` is required by the plugin but currently only reached
-    // by non-trusted clients. We don't have any yet; the placeholder route
-    // 404s on ManagementFront until an auth-SPA-era consent page lands.
+    // `consentPage` is never reached: every first-party FunderMaps app is a
+    // trusted client (skip_consent=true). Kept only because the plugin requires
+    // the option; the placeholder URL 404s and that's fine.
     oauthProvider({
-      loginPage: "https://admin.fundermaps.com/login",
+      loginPage: env.LOGIN_PAGE_URL,
       consentPage: "https://admin.fundermaps.com/oauth/consent",
       // Suppress boot warnings about discovery routes. The plugin defines
       // its metadata under /api/auth/.well-known/* but the OIDC spec wants
