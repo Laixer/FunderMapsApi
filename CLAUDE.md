@@ -9,7 +9,7 @@ FunderMaps API — TypeScript port of the legacy C# `FunderMaps.WebApi`. REST AP
 - **Runtime**: Bun
 - **Framework**: Hono
 - **ORM**: Drizzle ORM (PostgreSQL, existing multi-schema database)
-- **Auth**: Better Auth (sessions, bearer plugin, admin plugin, OIDC provider, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
+- **Auth**: Better Auth (sessions, bearer plugin, admin plugin, `@better-auth/oauth-provider`, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
 - **Validation**: Zod v4 + `@hono/zod-validator`
 - **Storage**: `@aws-sdk/client-s3` (DigitalOcean Spaces compatible)
 - **Email**: Mailgun (direct REST API via `fetch`)
@@ -42,7 +42,7 @@ PostgreSQL with multiple schemas: `application.*`, `geocoder.*`, `report.*`, `da
 
 ## Auth
 
-Better Auth handles email/password login, sessions, password reset, and an OIDC provider surface (Grafana is currently the only registered trusted client; hardcoded in `src/lib/auth.ts` pending DB-driven `trustedClients`). The bearer plugin lets clients send session tokens as `Authorization: Bearer …`.
+Better Auth handles email/password login, sessions, password reset, and an OAuth2.1/OIDC provider surface (`@better-auth/oauth-provider`). Per-client config (`skip_consent`, `require_pkce`) is read directly from the `application.oauth_application` table — no startup-time `trustedClients` hoisting. The bearer plugin lets clients send session tokens as `Authorization: Bearer …`.
 
 **API keys are dual-stack** (`src/middleware/auth.ts`):
 1. Try `auth.api.verifyApiKey({ key })` against `application.apikey` (BA-issued keys, prefix `fmsk.`).
@@ -85,7 +85,6 @@ Admin-only (`/api/management/*` — gated by `adminMiddleware`):
 Pending items here are **load-bearing, not aspirational**. Speculative parity gaps against the long-retired C# WebApi (e.g. `IncidentController`, `PDOKLocationService` exposure, `VersionController`) have been removed — re-add only with a concrete consumer.
 
 **Auth migration (Better Auth, see `~/.claude/projects/-home-eve/memory/project_better_auth_migration.md`):**
-- **OIDC `trustedClients` → DB-driven** (Phase 1, step 3). Grafana is hardcoded in `src/lib/auth.ts:196` because `oidc-provider`'s DB fallback doesn't expose `skipConsent`. Real prerequisite for the planned auth SPA (`auth.fundermaps.com`), where every first-party frontend becomes an OIDC client. Likely also paired with the migration from `better-auth/plugins/oidc-provider` (deprecated, removed in BA 1.7) to the separate `@better-auth/oauth-provider` package.
 - **Legacy PBKDF2 verify hook removal** (Phase 1, step 1, finish). Auto-upgrade is live (`src/lib/auth.ts` + `src/lib/legacy-password.ts`). When `SELECT count(*) FROM application.account WHERE provider_id='credential' AND password NOT LIKE '%:%'` reaches 0, the legacy verify hook + helper become dead code and should be deleted.
 - **apiKey Phase C drain** (operational, customer-paced). New keys go through BA; legacy `application.auth_key` rows are only validated, never rotated server-side. Monitor with the query pinned in the migration plan memory. Phase D (legacy fallback + table drop) lands post-Dec-2026 when the C# Webservice retires.
 - **Better Auth `organization` plugin** (Phase 2). Biggest blast radius — BA's org/member tables don't match `application.organization` + `organization_user`; preferred shape is per-plugin schema override so C# joins keep compiling until retirement.

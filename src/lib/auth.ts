@@ -165,12 +165,12 @@ export const auth = betterAuth({
       adminRoles: ["administrator"],
       defaultRole: "user",
     }),
-    // API-key plugin — mounted but not yet read by any auth middleware.
-    // New `fmsk.`-prefixed keys are written into application.apikey via
-    // the plugin's /api/auth/api-key/* endpoints; the legacy custom
-    // middleware (src/middleware/auth.ts) and management routes still
-    // run against application.auth_key. Dual-validate cutover lands in a
-    // follow-up PR (Phase B of the apiKey migration in
+    // API-key plugin — the primary key-validation path. `fmsk.`-prefixed
+    // keys are written into application.apikey via the plugin's
+    // /api/auth/api-key/* endpoints, and src/middleware/auth.ts validates
+    // incoming keys with `auth.api.verifyApiKey()` first, falling back to a
+    // SHA-256 lookup against the legacy application.auth_key table for
+    // unrotated keys (drained in Phase D, post-Dec-2026; see
     // project_better_auth_migration.md). The `fmsk.` prefix matches our
     // existing keys' visual format; BA's docs recommend an underscore
     // suffix but the literal stays as-is for customer continuity.
