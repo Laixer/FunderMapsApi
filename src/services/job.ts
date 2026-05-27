@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { workerJob } from "../db/schema/application.ts";
 import { NotFoundError, AppError } from "../lib/errors.ts";
@@ -44,7 +44,7 @@ export async function getAllJobs(options: GetJobsOptions = {}) {
   const query = db
     .select()
     .from(workerJob)
-    .orderBy(desc(workerJob.priority), asc(workerJob.createdAt))
+    .orderBy(desc(workerJob.priority), desc(workerJob.createdAt))
     .limit(options.limit ?? 100)
     .offset(options.offset ?? 0);
 
