@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, exists, ilike, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/client.ts";
 import {
@@ -181,17 +181,48 @@ recoveries.get("/building/:bid", async (c) => {
 
 recoveries.get("/", async (c) => {
   const orgId = activeOrgId(c);
-  const limit = parseInt(c.req.query("limit") ?? "100");
+  const q = c.req.query("q")?.trim();
+  const defaultLimit = q ? 500 : 100;
+  const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
+  const where: SQL[] = [eq(attribution.owner, orgId)];
+  if (q) where.push(buildRecoverySearchPredicate(q));
+
   const rows = await recoverySelector()
-    .where(eq(attribution.owner, orgId))
+    .where(and(...where))
     .orderBy(sql`coalesce(${recovery.updateDate}, ${recovery.createDate}) DESC`)
     .limit(limit)
     .offset(offset);
 
   return c.json(rows.map((r) => toLegacyRecovery(r.recovery, r.attr)));
 });
+
+// Recovery samples only carry a building_id (BAG PAND), not an address row,
+// so the search surface is narrower than inquiry's.
+function buildRecoverySearchPredicate(q: string): SQL {
+  const like = `%${q}%`;
+  // BAG identifiers contain long digit runs (e.g. "0202100000216966") that
+  // overflow int32 — only treat as an ID match when it fits.
+  const asInt = /^\d+$/.test(q) ? Number(q) : NaN;
+  const numericId = Number.isSafeInteger(asInt) && asInt <= 2147483647 ? asInt : null;
+
+  const sampleMatch = exists(
+    db
+      .select({ x: sql`1` })
+      .from(recoverySample)
+      .where(
+        and(
+          eq(recoverySample.recovery, recovery.id),
+          ilike(recoverySample.buildingId, like),
+        ),
+      ),
+  );
+
+  const parts: SQL[] = [ilike(recovery.documentName, like), sampleMatch];
+  if (numericId != null) parts.unshift(eq(recovery.id, numericId));
+  return or(...parts)!;
+}
 
 recoveries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
