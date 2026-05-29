@@ -201,12 +201,17 @@ recoveries.get("/", async (c) => {
 // Recovery samples only carry a building_id (BAG PAND), not an address row,
 // so the search surface is narrower than inquiry's.
 function buildRecoverySearchPredicate(q: string): SQL {
-  const like = `%${q}%`;
   // BAG identifiers contain long digit runs (e.g. "0202100000216966") that
   // overflow int32 — only treat as an ID match when it fits.
   const asInt = /^\d+$/.test(q) ? Number(q) : NaN;
   const numericId = Number.isSafeInteger(asInt) && asInt <= 2147483647 ? asInt : null;
 
+  // Fast path — see inquiry.ts for the perf rationale.
+  if (numericId != null) {
+    return eq(recovery.id, numericId);
+  }
+
+  const like = `%${q}%`;
   const sampleMatch = exists(
     db
       .select({ x: sql`1` })
@@ -219,9 +224,7 @@ function buildRecoverySearchPredicate(q: string): SQL {
       ),
   );
 
-  const parts: SQL[] = [ilike(recovery.documentName, like), sampleMatch];
-  if (numericId != null) parts.unshift(eq(recovery.id, numericId));
-  return or(...parts)!;
+  return or(ilike(recovery.documentName, like), sampleMatch)!;
 }
 
 recoveries.get("/:id{[0-9]+}", async (c) => {

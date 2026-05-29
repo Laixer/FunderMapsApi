@@ -209,12 +209,20 @@ inquiries.get("/", async (c) => {
 // `address` column references geocoder.address.id), BAG NUMMERAANDUIDING
 // (geocoder.address.external_id), and BAG PAND (inquirySample.building).
 function buildInquirySearchPredicate(q: string): SQL {
-  const like = `%${q}%`;
   // BAG identifiers contain long digit runs (e.g. "0202100000216966") that
   // overflow int32 — only treat as an ID match when it fits.
   const asInt = /^\d+$/.test(q) ? Number(q) : NaN;
   const numericId = Number.isSafeInteger(asInt) && asInt <= 2147483647 ? asInt : null;
 
+  // Fast path for an exact id lookup. Keeping the text predicates in the
+  // same OR clause caused the planner to fall off the PK index and scan
+  // the whole org (13s in prod for a single-row lookup). When the user
+  // types a plain int, that's an id query — short-circuit on it.
+  if (numericId != null) {
+    return eq(inquiry.id, numericId);
+  }
+
+  const like = `%${q}%`;
   const sampleMatch = exists(
     db
       .select({ x: sql`1` })
@@ -232,9 +240,7 @@ function buildInquirySearchPredicate(q: string): SQL {
       ),
   );
 
-  const parts: SQL[] = [ilike(inquiry.documentName, like), sampleMatch];
-  if (numericId != null) parts.unshift(eq(inquiry.id, numericId));
-  return or(...parts)!;
+  return or(ilike(inquiry.documentName, like), sampleMatch)!;
 }
 
 inquiries.get("/:id{[0-9]+}", async (c) => {
