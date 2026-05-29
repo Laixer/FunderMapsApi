@@ -9,6 +9,7 @@ import {
   apikey,
   account,
   session,
+  organization,
   organizationUser,
   attribution,
 } from "../../db/schema/application.ts";
@@ -90,7 +91,18 @@ users.get("/:user_id", async (c) => {
     .limit(1);
 
   if (rows.length === 0) throw new NotFoundError("User not found");
-  return c.json(toLegacyUser(rows[0]!));
+
+  const organizations = await db
+    .select({
+      id: organization.id,
+      name: organization.name,
+      role: organizationUser.role,
+    })
+    .from(organizationUser)
+    .innerJoin(organization, eq(organization.id, organizationUser.organizationId))
+    .where(eq(organizationUser.userId, userId));
+
+  return c.json(toLegacyUser(rows[0]!, organizations));
 });
 
 const updateUserSchema = z.object({
