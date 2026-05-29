@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, exists, ilike, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/client.ts";
 import {
@@ -11,6 +11,7 @@ import {
   user,
 } from "../db/schema/application.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
+import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
 import { assertCanWrite, assertCanReview, assertCanAdmin } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
@@ -184,17 +185,57 @@ inquiries.get("/building/:bid", async (c) => {
 
 inquiries.get("/", async (c) => {
   const orgId = activeOrgId(c);
-  const limit = parseInt(c.req.query("limit") ?? "100");
+  const q = c.req.query("q")?.trim();
+  // When searching, default to a larger ceiling so the staff actually see
+  // their matches; bare browse stays at 100. Caller can still override.
+  const defaultLimit = q ? 500 : 100;
+  const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
+  const where: SQL[] = [eq(attribution.owner, orgId)];
+  if (q) where.push(buildInquirySearchPredicate(q));
+
   const rows = await inquirySelector()
-    .where(eq(attribution.owner, orgId))
+    .where(and(...where))
     .orderBy(sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`)
     .limit(limit)
     .offset(offset);
 
   return c.json(rows.map((r) => toLegacyInquiry(r.inquiry, r.attr)));
 });
+
+// Search across id (numeric exact), document_name, and any of the sample's
+// address/building identifiers. The sample subquery covers gfm-* ids (the
+// `address` column references geocoder.address.id), BAG NUMMERAANDUIDING
+// (geocoder.address.external_id), and BAG PAND (inquirySample.building).
+function buildInquirySearchPredicate(q: string): SQL {
+  const like = `%${q}%`;
+  // BAG identifiers contain long digit runs (e.g. "0202100000216966") that
+  // overflow int32 — only treat as an ID match when it fits.
+  const asInt = /^\d+$/.test(q) ? Number(q) : NaN;
+  const numericId = Number.isSafeInteger(asInt) && asInt <= 2147483647 ? asInt : null;
+
+  const sampleMatch = exists(
+    db
+      .select({ x: sql`1` })
+      .from(inquirySample)
+      .leftJoin(geocoderAddress, eq(geocoderAddress.id, inquirySample.address))
+      .where(
+        and(
+          eq(inquirySample.inquiry, inquiry.id),
+          or(
+            ilike(inquirySample.address, like),
+            ilike(inquirySample.building, like),
+            ilike(geocoderAddress.externalId, like),
+          ),
+        ),
+      ),
+  );
+
+  const parts: SQL[] = [ilike(inquiry.documentName, like), sampleMatch];
+  if (numericId != null) parts.unshift(eq(inquiry.id, numericId));
+  return or(...parts)!;
+}
 
 inquiries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
