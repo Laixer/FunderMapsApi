@@ -41,15 +41,13 @@ jobs.get("/", async (c) => {
 // the Worker dispatch table. Worker normalizes `-` → `_` for backward
 // compat; mirror that here so a typo gets a 400 at the boundary instead of
 // burying an "Unknown job type" failure in the worker_jobs table.
-const JOB_TYPES = [
-  "process_mapset",
-  "export_product",
-  "load_dataset",
-  "generate_pdf",
-  "cleanup_storage",
-  "send_mail",
-  "export_samples",
-] as const;
+//
+// `process_mapset` (tile rendering) is the only job the Worker still runs from
+// the queue. The former export/pdf/mail/cleanup jobs moved to Windmill, and
+// BAG ingest (`load_dataset`) is now a direct Worker CLI call — none of them
+// are dispatched via worker_jobs anymore, so enqueuing them here would just
+// leave a row nothing consumes.
+const JOB_TYPES = ["process_mapset"] as const;
 
 const createJobSchema = z.object({
   job_type: z
