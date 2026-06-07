@@ -26,6 +26,8 @@ geocoder.get("/building-info/:id", async (c) => {
       b.external_id AS building_id,
       public.ST_Y(r.geom) AS residence_lat,
       public.ST_X(r.geom) AS residence_lon,
+      public.ST_Y(public.ST_Centroid(b.geom)) AS building_lat,
+      public.ST_X(public.ST_Centroid(b.geom)) AS building_lon,
       a.id AS address_id,
       a.external_id AS address_external_id,
       a.street,
