@@ -2,18 +2,29 @@ import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { resolveToBuildingId } from "../services/geocoder.ts";
+import { getGeofence, isBuildingInFence } from "../lib/geofence.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const report = new Hono<AppEnv>();
 
 // Aggregate read for the building-detail panel: incidents + parent inquiries
 // + their samples + parent recoveries + their samples in one round-trip.
-// Inquiries/recoveries are filtered by access_policy: only public rows or
-// rows owned by the user's org are returned (matches C# tenant-scoping).
+// Inquiry rows are gated by the caller's geofence (#968): inside the fence
+// every org's inquiries and samples are visible; outside it only the caller's
+// own orgs' rows are. Recoveries keep the legacy access_policy/owner gate.
 report.get("/", async (c) => {
   const input = c.req.param("building_id")!;
   const buildingId = await resolveToBuildingId(input);
   const orgId = c.get("user").organizations[0]?.id ?? null;
+  const orgIds = c.get("user").organizations.map((o) => o.id);
+
+  const fence = await getGeofence(orgIds);
+  const inFence = await isBuildingInFence(buildingId, fence);
+  // Drizzle sql templates bind JS arrays as scalars — serialize to a PG
+  // array literal (uuids: no quoting needed) and cast.
+  const inquiryGate = inFence
+    ? sql`TRUE`
+    : sql`a.owner_id = ANY(${`{${orgIds.join(",")}}`}::uuid[])`;
 
   const [incidents, inquiries, inquirySamples, recoveries, recoverySamples] =
     await Promise.all([
@@ -57,7 +68,7 @@ report.get("/", async (c) => {
         WHERE i.id IN (
           SELECT inquiry_id FROM report.inquiry_sample WHERE building_id = ${buildingId}
         )
-          AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
+          AND (${inquiryGate})
         ORDER BY COALESCE(i.update_date, i.create_date) DESC
       `),
       db.execute(sql`
@@ -66,7 +77,7 @@ report.get("/", async (c) => {
         JOIN report.inquiry i ON i.id = s.inquiry_id
         JOIN application.attribution a ON a.id = i.attribution_id
         WHERE s.building_id = ${buildingId}
-          AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
+          AND (${inquiryGate})
       `),
       db.execute(sql`
         SELECT

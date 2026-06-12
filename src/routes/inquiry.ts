@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, count, exists, ilike, or, sql, type SQL } from "drizzle-orm";
+import { eq, and, count, exists, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/client.ts";
 import {
@@ -20,6 +20,7 @@ import {
   type AttributionView,
 } from "../lib/inquiry-serializer.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
+import { getGeofence, isBuildingInFence, inquiryInFenceSql } from "../lib/geofence.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import {
   sendApprovedEmail,
@@ -80,6 +81,34 @@ async function loadInquiryScoped(
     .limit(1);
   if (!hit) throw new NotFoundError("Inquiry not found");
   return { row: hit.inquiry, attr: hit.attr };
+}
+
+// Read gate per issue #968: an inquiry is readable when it has a sample
+// inside the caller's geofence (cross-org), or when one of the caller's
+// orgs owns it (keeps sampleless drafts visible to their own org). Writes
+// and the audit workflow stay owner-scoped via loadInquiryScoped.
+async function loadInquiryReadable(
+  id: number,
+  orgIds: string[],
+): Promise<{ row: typeof inquiry.$inferSelect; attr: AttributionView }> {
+  const fence = await getGeofence(orgIds);
+  const gate =
+    fence === null
+      ? eq(inquiry.id, id)
+      : and(
+          eq(inquiry.id, id),
+          or(
+            inArray(attribution.owner, orgIds),
+            inquiryInFenceSql(fence, inquiry.id),
+          ),
+        );
+  const [hit] = await inquirySelector().where(gate).limit(1);
+  if (!hit) throw new NotFoundError("Inquiry not found");
+  return { row: hit.inquiry, attr: hit.attr };
+}
+
+function userOrgIds(c: Context<AppEnv>): string[] {
+  return c.get("user").organizations.map((o) => o.id);
 }
 
 function requireWritable(row: typeof inquiry.$inferSelect) {
@@ -152,18 +181,26 @@ inquiries.get("/stats", async (c) => {
 });
 
 inquiries.get("/building/:bid", async (c) => {
-  const orgId = activeOrgId(c);
+  activeOrgId(c); // 403 for org-less users, as before
+  const orgIds = userOrgIds(c);
   const buildingId = c.req.param("bid");
   const limit = parseInt(c.req.query("limit") ?? "100");
   const offset = parseInt(c.req.query("offset") ?? "0");
 
+  // #968: inside the caller's geofence every org's inquiries are visible;
+  // outside it the caller still sees their own orgs' work.
+  const fence = await getGeofence(orgIds);
+  const inFence = await isBuildingInFence(buildingId, fence);
+
   const rows = await inquirySelector()
     .innerJoin(inquirySample, eq(inquirySample.inquiry, inquiry.id))
     .where(
-      and(
-        eq(inquirySample.building, buildingId),
-        eq(attribution.owner, orgId),
-      ),
+      inFence
+        ? eq(inquirySample.building, buildingId)
+        : and(
+            eq(inquirySample.building, buildingId),
+            inArray(attribution.owner, orgIds),
+          ),
     )
     .groupBy(
       inquiry.id,
@@ -245,15 +282,15 @@ function buildInquirySearchPredicate(q: string): SQL {
 
 inquiries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row, attr } = await loadInquiryScoped(id, orgId);
+  activeOrgId(c);
+  const { row, attr } = await loadInquiryReadable(id, userOrgIds(c));
   return c.json(toLegacyInquiry(row, attr));
 });
 
 inquiries.get("/:id{[0-9]+}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row } = await loadInquiryScoped(id, orgId);
+  activeOrgId(c);
+  const { row } = await loadInquiryReadable(id, userOrgIds(c));
   const link = await getDownloadUrl(`inquiry-report/${row.documentFile}`, 1);
   return c.json({ accessLink: link });
 });
@@ -474,6 +511,8 @@ export default inquiries;
 // Re-exports for sample sub-router.
 export {
   loadInquiryScoped,
+  loadInquiryReadable,
   requireWritable,
   activeOrgId,
+  userOrgIds,
 };

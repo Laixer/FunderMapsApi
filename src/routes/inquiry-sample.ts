@@ -9,7 +9,13 @@ import { assertCanWrite } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
-import { activeOrgId, loadInquiryScoped, requireWritable } from "./inquiry.ts";
+import {
+  activeOrgId,
+  loadInquiryReadable,
+  loadInquiryScoped,
+  requireWritable,
+  userOrgIds,
+} from "./inquiry.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const samples = new Hono<AppEnv>();
@@ -43,9 +49,9 @@ async function loadSampleScoped(sampleId: number, inqId: number, orgId: string) 
 // ─────────────────────────────────────────────────────────────────────────
 
 samples.get("/", async (c) => {
-  const orgId = activeOrgId(c);
+  activeOrgId(c);
   const inqId = inquiryId(c);
-  await loadInquiryScoped(inqId, orgId); // 404 if not in caller's org
+  await loadInquiryReadable(inqId, userOrgIds(c)); // 404 if outside fence and not owned
 
   const limit = parseInt(c.req.query("limit") ?? "100");
   const offset = parseInt(c.req.query("offset") ?? "0");
@@ -62,9 +68,9 @@ samples.get("/", async (c) => {
 });
 
 samples.get("/stats", async (c) => {
-  const orgId = activeOrgId(c);
+  activeOrgId(c);
   const inqId = inquiryId(c);
-  await loadInquiryScoped(inqId, orgId);
+  await loadInquiryReadable(inqId, userOrgIds(c));
 
   const [stat] = await db
     .select({ value: count() })
@@ -74,10 +80,17 @@ samples.get("/stats", async (c) => {
 });
 
 samples.get("/:sid{[0-9]+}", async (c) => {
-  const orgId = activeOrgId(c);
+  activeOrgId(c);
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));
-  const row = await loadSampleScoped(sid, inqId, orgId);
+  await loadInquiryReadable(inqId, userOrgIds(c));
+
+  const [row] = await db
+    .select()
+    .from(inquirySample)
+    .where(and(eq(inquirySample.id, sid), eq(inquirySample.inquiry, inqId)))
+    .limit(1);
+  if (!row) throw new NotFoundError("Inquiry sample not found");
   return c.json(toLegacyInquirySample(row));
 });
 
