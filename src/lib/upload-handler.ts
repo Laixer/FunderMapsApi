@@ -8,6 +8,8 @@ import {
 import { ValidationError } from "./errors.ts";
 import { assertCanWrite } from "./auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
+import { db } from "../db/client.ts";
+import { fileResource } from "../db/schema/application.ts";
 
 // Mirrors C# `[FormFile(AllowedFileMimes)] IFormFile input` + StoreFileAsync.
 // Returns the storage key (folder + unique name) and the unique filename,
@@ -46,6 +48,19 @@ export async function handleDocumentUpload(
   const key = `${folder}/${filename}`;
   const body = new Uint8Array(await file.arrayBuffer());
   await putObject(key, body, baseContentType);
+
+  // Register the upload in the resource table (Laixer/FunderMaps#861) so user
+  // uploads are tracked in the database. `key` is the full S3 object key
+  // (folder + unique name): unique, and enough to locate the stored object,
+  // which the application.file_resources_orphaned sweep relies on. Status stays
+  // 'uploaded' until the file is attached to an inquiry/recovery record.
+  await db.insert(fileResource).values({
+    key,
+    originalFilename: file.name,
+    status: "uploaded",
+    sizeBytes: file.size,
+    mimeType: baseContentType,
+  });
 
   return { name: filename };
 }
