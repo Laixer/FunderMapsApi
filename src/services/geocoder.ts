@@ -6,7 +6,7 @@ import {
 } from "../lib/geocoder-id.ts";
 import { NotFoundError, AppError } from "../lib/errors.ts";
 
-export interface BuildingGeocoder {
+interface BuildingGeocoder {
   building_id: string;
   [key: string]: unknown;
 }
