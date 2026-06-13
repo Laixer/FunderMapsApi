@@ -13,7 +13,7 @@ import { enumToInt, enumsToInts } from "./inquiry-enums.ts";
 type RecoveryRow = InferSelectModel<typeof recovery>;
 type RecoverySampleRow = InferSelectModel<typeof recoverySample>;
 
-export interface LegacyRecovery {
+interface LegacyRecovery {
   id: number;
   documentName: string;
   note: string | null;

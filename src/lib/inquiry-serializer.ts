@@ -24,7 +24,7 @@ export interface AttributionView {
   contractorName: string | null;
 }
 
-export interface LegacyInquiry {
+interface LegacyInquiry {
   id: number;
   documentName: string;
   inspection: boolean;

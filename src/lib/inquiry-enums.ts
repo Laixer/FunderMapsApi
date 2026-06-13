@@ -205,7 +205,7 @@ const ENUMS = {
   ]),
 } as const;
 
-export type EnumName = keyof typeof ENUMS;
+type EnumName = keyof typeof ENUMS;
 
 // JSON wire (int) → DB string. Used when accepting input from ClientApp.
 export function intToEnum(name: EnumName, value: number | null | undefined): string | null {
