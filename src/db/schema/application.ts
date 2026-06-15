@@ -288,6 +288,37 @@ export const apikey = applicationSchema.table("apikey", {
   metadata: text(),
 });
 
+// Per-(API key, product) billing-event rate limits enforced by the TS
+// FunderMapsWebservice (issue #8). One row caps the billable events (rows
+// in application.product_tracker, post 24h-dedup) a given key may produce
+// for a product within a calendar window. Absent row = unlimited.
+//
+// `source` discriminates the two key tables: 'ba' → application.apikey.id,
+// 'legacy' → application.auth_key.id (uuid as text). The Webservice reads
+// this table by (api_key_id, source, product); the API owns writes via the
+// management route. NB: the overage *count* is measured per tenant (org),
+// not per key — see FunderMapsWebservice#16. Migration:
+// FunderMapsWorker/sql/migrate/create_api_key_rate_limit.sql.
+export const apiKeyRateLimit = applicationSchema.table(
+  "api_key_rate_limit",
+  {
+    apiKeyId: text("api_key_id").notNull(),
+    source: text().notNull(),
+    product: text().notNull(),
+    period: text().notNull(),
+    limitCount: integer("limit_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.apiKeyId, table.source, table.product] }),
+  ],
+);
+
 export const attribution = applicationSchema.table("attribution", {
   id: serial().primaryKey(),
   reviewer: uuid("reviewer_id").notNull(),
