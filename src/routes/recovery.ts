@@ -79,6 +79,16 @@ async function loadRecoveryScoped(
   return { row: hit.recovery, attr: hit.attr };
 }
 
+// Ownership-agnostic lookup (issue #968): recovery source files are downloadable
+// by any logged-in user, not just the owning organization.
+async function loadRecoveryUnscoped(
+  id: number,
+): Promise<{ row: typeof recovery.$inferSelect; attr: AttributionView }> {
+  const [hit] = await recoverySelector().where(eq(recovery.id, id)).limit(1);
+  if (!hit) throw new NotFoundError("Recovery not found");
+  return { row: hit.recovery, attr: hit.attr };
+}
+
 function requireWritable(row: typeof recovery.$inferSelect) {
   const allowed = ["todo", "pending", "rejected"];
   if (!row.auditStatus || !allowed.includes(row.auditStatus)) {
@@ -236,8 +246,7 @@ recoveries.get("/:id{[0-9]+}", async (c) => {
 
 recoveries.get("/:id{[0-9]+}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row } = await loadRecoveryUnscoped(id);
   const link = await getDownloadUrl(`recovery-report/${row.documentFile}`, 1);
   return c.json({ accessLink: link });
 });

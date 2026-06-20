@@ -82,6 +82,16 @@ async function loadInquiryScoped(
   return { row: hit.inquiry, attr: hit.attr };
 }
 
+// Ownership-agnostic lookup (issue #968): inquiry source files are downloadable
+// by any logged-in user, not just the owning organization.
+async function loadInquiryUnscoped(
+  id: number,
+): Promise<{ row: typeof inquiry.$inferSelect; attr: AttributionView }> {
+  const [hit] = await inquirySelector().where(eq(inquiry.id, id)).limit(1);
+  if (!hit) throw new NotFoundError("Inquiry not found");
+  return { row: hit.inquiry, attr: hit.attr };
+}
+
 function requireWritable(row: typeof inquiry.$inferSelect) {
   const allowed = ["todo", "pending", "rejected"];
   if (!row.auditStatus || !allowed.includes(row.auditStatus)) {
@@ -252,8 +262,7 @@ inquiries.get("/:id{[0-9]+}", async (c) => {
 
 inquiries.get("/:id{[0-9]+}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row } = await loadInquiryScoped(id, orgId);
+  const { row } = await loadInquiryUnscoped(id);
   const link = await getDownloadUrl(`inquiry-report/${row.documentFile}`, 1);
   return c.json({ accessLink: link });
 });
