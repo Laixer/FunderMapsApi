@@ -9,6 +9,7 @@ import {
   real,
   numeric,
   serial,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { attribution } from "./application.ts";
 
@@ -64,6 +65,9 @@ export const inquiry = reportSchema.table("inquiry", {
   attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
+  // #973: durable owning organization, independent of the processing account.
+  // Nullable until backfilled (Phase 2); API falls back to attribution.owner_id.
+  dataOwnerOrganization: uuid("data_owner_organization_id"),
   accessPolicy: text("access_policy").default("private").notNull(),
   type: text().notNull(),
   standardF3o: boolean("standard_f3o").default(false).notNull(),
@@ -157,6 +161,9 @@ export const recovery = reportSchema.table("recovery", {
   attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
+  // #973: durable owning organization, independent of the processing account.
+  // Nullable until backfilled; API falls back to attribution.owner_id.
+  dataOwnerOrganization: uuid("data_owner_organization_id"),
   accessPolicy: text("access_policy").default("private").notNull(),
   type: text().default("unknown").notNull(),
   documentDate: date("document_date").notNull(),
