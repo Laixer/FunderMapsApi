@@ -161,6 +161,9 @@ export const recovery = reportSchema.table("recovery", {
   attribution: integer("attribution_id")
     .notNull()
     .references(() => attribution.id),
+  // #973: durable owning organization, independent of the processing account.
+  // Nullable until backfilled; API falls back to attribution.owner_id.
+  dataOwnerOrganization: uuid("data_owner_organization_id"),
   accessPolicy: text("access_policy").default("private").notNull(),
   type: text().default("unknown").notNull(),
   documentDate: date("document_date").notNull(),
