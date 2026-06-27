@@ -46,6 +46,8 @@ report.get("/", async (c) => {
           cu.email AS attribution_creator_name,
           a.owner_id AS attribution_owner,
           o.name AS attribution_owner_name,
+          i.data_owner_organization_id AS attribution_data_owner,
+          dao.name AS attribution_data_owner_name,
           a.contractor_id AS attribution_contractor,
           ct.name AS attribution_contractor_name
         FROM report.inquiry i
@@ -53,6 +55,7 @@ report.get("/", async (c) => {
         LEFT JOIN application."user" ru ON ru.id = a.reviewer_id
         LEFT JOIN application."user" cu ON cu.id = a.creator_id
         LEFT JOIN application.organization o ON o.id = a.owner_id
+        LEFT JOIN application.organization dao ON dao.id = i.data_owner_organization_id
         LEFT JOIN application.contractor ct ON ct.id = a.contractor_id
         WHERE i.id IN (
           SELECT inquiry_id FROM report.inquiry_sample WHERE building_id = ${buildingId}
@@ -83,6 +86,8 @@ report.get("/", async (c) => {
           cu.email AS attribution_creator_name,
           a.owner_id AS attribution_owner,
           o.name AS attribution_owner_name,
+          r.data_owner_organization_id AS attribution_data_owner,
+          dao.name AS attribution_data_owner_name,
           a.contractor_id AS attribution_contractor,
           ct.name AS attribution_contractor_name
         FROM report.recovery r
@@ -90,6 +95,7 @@ report.get("/", async (c) => {
         LEFT JOIN application."user" ru ON ru.id = a.reviewer_id
         LEFT JOIN application."user" cu ON cu.id = a.creator_id
         LEFT JOIN application.organization o ON o.id = a.owner_id
+        LEFT JOIN application.organization dao ON dao.id = r.data_owner_organization_id
         LEFT JOIN application.contractor ct ON ct.id = a.contractor_id
         WHERE r.id IN (
           SELECT recovery_id FROM report.recovery_sample WHERE building_id = ${buildingId}

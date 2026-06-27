@@ -20,6 +20,9 @@ export interface AttributionView {
   creatorName: string | null;
   owner: string;
   ownerName: string | null;
+  // #973: durable owning organization, independent of the processing account.
+  dataOwner: string | null;
+  dataOwnerName: string | null;
   contractor: number;
   contractorName: string | null;
 }
