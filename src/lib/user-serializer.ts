@@ -9,13 +9,13 @@ type UserRow = InferSelectModel<typeof user>;
 type AuthKeyRow = InferSelectModel<typeof authKey>;
 type ApiKeyRow = InferSelectModel<typeof apikey>;
 
-export interface LegacyOrg {
+interface LegacyOrg {
   id: string;
   name: string;
   role?: string | null;
 }
 
-export interface LegacyUser {
+interface LegacyUser {
   id: string;
   given_name: string | null;
   family_name: string | null;
@@ -48,7 +48,7 @@ export function toLegacyUser(
   };
 }
 
-export interface LegacyAuthKey {
+interface LegacyAuthKey {
   id: string;
   user_id: string;
   name: string | null;
@@ -67,7 +67,7 @@ export function toLegacyAuthKey(k: AuthKeyRow): LegacyAuthKey {
 // One-time creation response: includes the freshly generated plaintext
 // key so the user can copy it. The plaintext is NOT stored — only its
 // SHA-256 hash lives in the DB — so this is the only chance to surface it.
-export interface LegacyAuthKeyCreated extends LegacyAuthKey {
+interface LegacyAuthKeyCreated extends LegacyAuthKey {
   key: string;
 }
 

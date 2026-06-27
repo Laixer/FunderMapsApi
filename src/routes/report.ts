@@ -8,12 +8,12 @@ const report = new Hono<AppEnv>();
 
 // Aggregate read for the building-detail panel: incidents + parent inquiries
 // + their samples + parent recoveries + their samples in one round-trip.
-// Inquiries/recoveries are filtered by access_policy: only public rows or
-// rows owned by the user's org are returned (matches C# tenant-scoping).
+// All rows for the building are returned regardless of owning organization
+// (issue #968): in the Maps environment access is gated client-side by the
+// org's geographic rights, not by data ownership.
 report.get("/", async (c) => {
   const input = c.req.param("building_id")!;
   const buildingId = await resolveToBuildingId(input);
-  const orgId = c.get("user").organizations[0]?.id ?? null;
 
   const [incidents, inquiries, inquirySamples, recoveries, recoverySamples] =
     await Promise.all([
@@ -57,16 +57,12 @@ report.get("/", async (c) => {
         WHERE i.id IN (
           SELECT inquiry_id FROM report.inquiry_sample WHERE building_id = ${buildingId}
         )
-          AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
         ORDER BY COALESCE(i.update_date, i.create_date) DESC
       `),
       db.execute(sql`
         SELECT s.*
         FROM report.inquiry_sample s
-        JOIN report.inquiry i ON i.id = s.inquiry_id
-        JOIN application.attribution a ON a.id = i.attribution_id
         WHERE s.building_id = ${buildingId}
-          AND (i.access_policy = 'public' OR a.owner_id = ${orgId})
       `),
       db.execute(sql`
         SELECT
@@ -98,16 +94,12 @@ report.get("/", async (c) => {
         WHERE r.id IN (
           SELECT recovery_id FROM report.recovery_sample WHERE building_id = ${buildingId}
         )
-          AND (r.access_policy = 'public' OR a.owner_id = ${orgId})
         ORDER BY COALESCE(r.update_date, r.create_date) DESC
       `),
       db.execute(sql`
         SELECT s.*
         FROM report.recovery_sample s
-        JOIN report.recovery r ON r.id = s.recovery_id
-        JOIN application.attribution a ON a.id = r.attribution_id
         WHERE s.building_id = ${buildingId}
-          AND (r.access_policy = 'public' OR a.owner_id = ${orgId})
       `),
     ]);
 

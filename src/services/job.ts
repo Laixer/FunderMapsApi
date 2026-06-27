@@ -3,7 +3,7 @@ import { db } from "../db/client.ts";
 import { workerJob } from "../db/schema/application.ts";
 import { NotFoundError, AppError } from "../lib/errors.ts";
 
-export interface CreateJobInput {
+interface CreateJobInput {
   jobType: string;
   payload?: Record<string, unknown>;
   priority?: number;
@@ -25,7 +25,7 @@ export async function createJob(input: CreateJobInput) {
   return job!;
 }
 
-export interface GetJobsOptions {
+interface GetJobsOptions {
   jobType?: string;
   status?: string;
   limit?: number;
