@@ -33,6 +33,7 @@ const inquiries = new Hono<AppEnv>();
 
 const reviewerU = alias(user, "reviewer_u");
 const creatorU = alias(user, "creator_u");
+const dataOwnerOrg = alias(organization, "data_owner_org");
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -59,6 +60,8 @@ function inquirySelector() {
         creatorName: creatorU.email,
         owner: attribution.owner,
         ownerName: organization.name,
+        dataOwner: inquiry.dataOwnerOrganization,
+        dataOwnerName: dataOwnerOrg.name,
         contractor: attribution.contractor,
         contractorName: contractor.name,
       },
@@ -68,6 +71,7 @@ function inquirySelector() {
     .innerJoin(reviewerU, eq(reviewerU.id, attribution.reviewer))
     .innerJoin(creatorU, eq(creatorU.id, attribution.creator))
     .innerJoin(organization, eq(organization.id, attribution.owner))
+    .leftJoin(dataOwnerOrg, eq(dataOwnerOrg.id, inquiry.dataOwnerOrganization))
     .innerJoin(contractor, eq(contractor.id, attribution.contractor));
 }
 
@@ -76,7 +80,7 @@ async function loadInquiryScoped(
   orgId: string,
 ): Promise<{ row: typeof inquiry.$inferSelect; attr: AttributionView }> {
   const [hit] = await inquirySelector()
-    .where(and(eq(inquiry.id, id), eq(attribution.owner, orgId)))
+    .where(and(eq(inquiry.id, id), eq(inquiry.dataOwnerOrganization, orgId)))
     .limit(1);
   if (!hit) throw new NotFoundError("Inquiry not found");
   return { row: hit.inquiry, attr: hit.attr };
@@ -157,7 +161,7 @@ inquiries.get("/stats", async (c) => {
     .select({ value: count() })
     .from(inquiry)
     .innerJoin(attribution, eq(attribution.id, inquiry.attribution))
-    .where(eq(attribution.owner, orgId));
+    .where(eq(inquiry.dataOwnerOrganization, orgId));
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
@@ -172,7 +176,7 @@ inquiries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(inquirySample.building, buildingId),
-        eq(attribution.owner, orgId),
+        eq(inquiry.dataOwnerOrganization, orgId),
       ),
     )
     .groupBy(
@@ -183,6 +187,7 @@ inquiries.get("/building/:bid", async (c) => {
       creatorU.email,
       attribution.owner,
       organization.name,
+      dataOwnerOrg.name,
       attribution.contractor,
       contractor.name,
     )
@@ -202,7 +207,7 @@ inquiries.get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const where: SQL[] = [eq(attribution.owner, orgId)];
+  const where: SQL[] = [eq(inquiry.dataOwnerOrganization, orgId)];
   if (q) where.push(buildInquirySearchPredicate(q));
 
   const rows = await inquirySelector()
@@ -322,6 +327,10 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
         documentDate: data.documentDate,
         documentFile: data.documentFile,
         attribution: attr!.id,
+        // #973: data owner defaults to the creating org. Once entry moves to a
+        // central processing account (Phase 5), this is set to the real owner
+        // explicitly while attribution.owner becomes the central account.
+        dataOwnerOrganization: orgId,
         accessPolicy: "private",
         type: typeStr,
         standardF3o: data.standardF3o ?? false,
@@ -403,6 +412,50 @@ inquiries.delete("/:id{[0-9]+}", async (c) => {
 
   return c.body(null, 204);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Data owner (#973) — reassign the owning organization of an inquiry's data.
+// Admin-gated on the *current* data owner (loadInquiryScoped enforces that the
+// caller's org currently owns it); the target org must exist.
+// ─────────────────────────────────────────────────────────────────────────
+
+const dataOwnerSchema = z.object({
+  dataOwnerOrganizationId: z.uuid(),
+});
+
+inquiries.put(
+  "/:id{[0-9]+}/data-owner",
+  zValidator("json", dataOwnerSchema),
+  async (c) => {
+    const id = parseInt(c.req.param("id"));
+    const { dataOwnerOrganizationId } = c.req.valid("json");
+    const u = c.get("user");
+    const orgId = activeOrgId(c);
+    await assertCanAdmin(u.id, orgId);
+
+    // Caller must currently own the data — scoped load throws 404 otherwise.
+    await loadInquiryScoped(id, orgId);
+
+    const [org] = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.id, dataOwnerOrganizationId))
+      .limit(1);
+    if (!org) throw new ValidationError(["Unknown data owner organization"]);
+
+    await db
+      .update(inquiry)
+      .set({ dataOwnerOrganization: dataOwnerOrganizationId, updateDate: new Date() })
+      .where(eq(inquiry.id, id));
+
+    // Audit trail for the ownership change (no dedicated audit table yet).
+    console.info(
+      `[audit] inquiry ${id} data_owner ${orgId} -> ${dataOwnerOrganizationId} by user ${u.id}`,
+    );
+
+    return c.body(null, 204);
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Status state machine

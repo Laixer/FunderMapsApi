@@ -32,6 +32,7 @@ const recoveries = new Hono<AppEnv>();
 
 const reviewerU = alias(user, "reviewer_u");
 const creatorU = alias(user, "creator_u");
+const dataOwnerOrg = alias(organization, "data_owner_org");
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -56,6 +57,8 @@ function recoverySelector() {
         creatorName: creatorU.email,
         owner: attribution.owner,
         ownerName: organization.name,
+        dataOwner: recovery.dataOwnerOrganization,
+        dataOwnerName: dataOwnerOrg.name,
         contractor: attribution.contractor,
         contractorName: contractor.name,
       },
@@ -65,6 +68,7 @@ function recoverySelector() {
     .innerJoin(reviewerU, eq(reviewerU.id, attribution.reviewer))
     .innerJoin(creatorU, eq(creatorU.id, attribution.creator))
     .innerJoin(organization, eq(organization.id, attribution.owner))
+    .leftJoin(dataOwnerOrg, eq(dataOwnerOrg.id, recovery.dataOwnerOrganization))
     .innerJoin(contractor, eq(contractor.id, attribution.contractor));
 }
 
@@ -73,7 +77,7 @@ async function loadRecoveryScoped(
   orgId: string,
 ): Promise<{ row: typeof recovery.$inferSelect; attr: AttributionView }> {
   const [hit] = await recoverySelector()
-    .where(and(eq(recovery.id, id), eq(attribution.owner, orgId)))
+    .where(and(eq(recovery.id, id), eq(recovery.dataOwnerOrganization, orgId)))
     .limit(1);
   if (!hit) throw new NotFoundError("Recovery not found");
   return { row: hit.recovery, attr: hit.attr };
@@ -153,7 +157,7 @@ recoveries.get("/stats", async (c) => {
     .select({ value: count() })
     .from(recovery)
     .innerJoin(attribution, eq(attribution.id, recovery.attribution))
-    .where(eq(attribution.owner, orgId));
+    .where(eq(recovery.dataOwnerOrganization, orgId));
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
@@ -168,7 +172,7 @@ recoveries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(recoverySample.buildingId, buildingId),
-        eq(attribution.owner, orgId),
+        eq(recovery.dataOwnerOrganization, orgId),
       ),
     )
     .groupBy(
@@ -179,6 +183,7 @@ recoveries.get("/building/:bid", async (c) => {
       creatorU.email,
       attribution.owner,
       organization.name,
+      dataOwnerOrg.name,
       attribution.contractor,
       contractor.name,
     )
@@ -196,7 +201,7 @@ recoveries.get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const where: SQL[] = [eq(attribution.owner, orgId)];
+  const where: SQL[] = [eq(recovery.dataOwnerOrganization, orgId)];
   if (q) where.push(buildRecoverySearchPredicate(q));
 
   const rows = await recoverySelector()
@@ -299,6 +304,8 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
         documentDate: data.documentDate,
         documentFile: data.documentFile,
         attribution: attr!.id,
+        // #973: data owner defaults to the creating org (see inquiry.ts).
+        dataOwnerOrganization: orgId,
         accessPolicy: "private",
         type: typeStr,
         auditStatus: "todo",
@@ -373,6 +380,48 @@ recoveries.delete("/:id{[0-9]+}", async (c) => {
 
   return c.body(null, 204);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Data owner (#973) — reassign the owning organization of a recovery's data.
+// Admin-gated on the *current* data owner; the target org must exist.
+// ─────────────────────────────────────────────────────────────────────────
+
+const dataOwnerSchema = z.object({
+  dataOwnerOrganizationId: z.uuid(),
+});
+
+recoveries.put(
+  "/:id{[0-9]+}/data-owner",
+  zValidator("json", dataOwnerSchema),
+  async (c) => {
+    const id = parseInt(c.req.param("id"));
+    const { dataOwnerOrganizationId } = c.req.valid("json");
+    const u = c.get("user");
+    const orgId = activeOrgId(c);
+    await assertCanAdmin(u.id, orgId);
+
+    // Caller must currently own the data — scoped load throws 404 otherwise.
+    await loadRecoveryScoped(id, orgId);
+
+    const [org] = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.id, dataOwnerOrganizationId))
+      .limit(1);
+    if (!org) throw new ValidationError(["Unknown data owner organization"]);
+
+    await db
+      .update(recovery)
+      .set({ dataOwnerOrganization: dataOwnerOrganizationId, updateDate: new Date() })
+      .where(eq(recovery.id, id));
+
+    console.info(
+      `[audit] recovery ${id} data_owner ${orgId} -> ${dataOwnerOrganizationId} by user ${u.id}`,
+    );
+
+    return c.body(null, 204);
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Status state machine
