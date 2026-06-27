@@ -267,11 +267,32 @@ const recoveryBodySchema = z.object({
   documentDate: z.string(),
   documentFile: z.string(),
   type: z.number().int(),
+  // #973: optionally assign the data to another organization (central-account
+  // entry workflow). Admin-gated; defaults to the creating org when omitted.
+  dataOwnerOrganizationId: z.uuid().optional(),
   attribution: z.object({
     reviewer: z.uuid(),
     contractor: z.number().int(),
   }),
 });
+
+// Resolve the data-owner org for a create: defaults to the caller's org, but an
+// admin may assign it to another (existing) organization. Returns the org id.
+async function resolveDataOwner(
+  userId: string,
+  orgId: string,
+  requested: string | undefined,
+): Promise<string> {
+  if (!requested || requested === orgId) return orgId;
+  await assertCanAdmin(userId, orgId);
+  const [org] = await db
+    .select({ id: organization.id })
+    .from(organization)
+    .where(eq(organization.id, requested))
+    .limit(1);
+  if (!org) throw new ValidationError(["Unknown data owner organization"]);
+  return requested;
+}
 
 recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   const data = c.req.valid("json");
@@ -284,6 +305,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   }
 
   const typeStr = intToEnum("recovery_document_type", data.type)!;
+  const dataOwner = await resolveDataOwner(u.id, orgId, data.dataOwnerOrganizationId);
 
   const created = await db.transaction(async (tx) => {
     const [attr] = await tx
@@ -304,8 +326,8 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
         documentDate: data.documentDate,
         documentFile: data.documentFile,
         attribution: attr!.id,
-        // #973: data owner defaults to the creating org (see inquiry.ts).
-        dataOwnerOrganization: orgId,
+        // #973: data owner — defaults to creating org or an admin-assigned org.
+        dataOwnerOrganization: dataOwner,
         accessPolicy: "private",
         type: typeStr,
         auditStatus: "todo",
@@ -314,7 +336,8 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
     return rec!;
   });
 
-  const { row, attr } = await loadRecoveryScoped(created.id, orgId);
+  // Scope the reload to the data owner (may differ from the caller's org).
+  const { row, attr } = await loadRecoveryScoped(created.id, dataOwner);
   return c.json(toLegacyRecovery(row, attr));
 });
 
