@@ -13,7 +13,12 @@ import {
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
-import { assertCanWrite, assertCanReview, assertCanAdmin } from "../lib/auth-helpers.ts";
+import {
+  assertCanWrite,
+  assertCanReview,
+  assertCanAdmin,
+  isPlatformMember,
+} from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
   toLegacyInquiry,
@@ -27,7 +32,7 @@ import {
   sendReviewRequestedEmail,
   type InquiryEmailContext,
 } from "../lib/inquiry-emails.ts";
-import type { AppEnv } from "../types/context.ts";
+import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const inquiries = new Hono<AppEnv>();
 
@@ -45,6 +50,13 @@ function activeOrgId(c: Context<AppEnv>): string {
     throw new ForbiddenError("User is not a member of any organization");
   }
   return orgId;
+}
+
+// Org scope for data access: FunderMaps staff (platform-org members) work
+// across all organizations, so their scope is null — no data-owner filter.
+// Everyone else is confined to their own org.
+function dataScope(c: Context<AppEnv>): string | null {
+  return isPlatformMember(c.get("user")) ? null : activeOrgId(c);
 }
 
 // Single source of truth for the JOIN that backs every Inquiry response.
@@ -77,10 +89,15 @@ function inquirySelector() {
 
 async function loadInquiryScoped(
   id: number,
-  orgId: string,
+  orgId: string | null,
 ): Promise<{ row: typeof inquiry.$inferSelect; attr: AttributionView }> {
   const [hit] = await inquirySelector()
-    .where(and(eq(inquiry.id, id), eq(inquiry.dataOwnerOrganization, orgId)))
+    .where(
+      and(
+        eq(inquiry.id, id),
+        orgId === null ? undefined : eq(inquiry.dataOwnerOrganization, orgId),
+      ),
+    )
     .limit(1);
   if (!hit) throw new NotFoundError("Inquiry not found");
   return { row: hit.inquiry, attr: hit.attr };
@@ -156,17 +173,17 @@ inquiries.post("/upload-document", async (c) => {
 // ─────────────────────────────────────────────────────────────────────────
 
 inquiries.get("/stats", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const [stat] = await db
     .select({ value: count() })
     .from(inquiry)
     .innerJoin(attribution, eq(attribution.id, inquiry.attribution))
-    .where(eq(inquiry.dataOwnerOrganization, orgId));
+    .where(scope === null ? undefined : eq(inquiry.dataOwnerOrganization, scope));
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
 inquiries.get("/building/:bid", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const buildingId = c.req.param("bid");
   const limit = parseInt(c.req.query("limit") ?? "100");
   const offset = parseInt(c.req.query("offset") ?? "0");
@@ -176,7 +193,7 @@ inquiries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(inquirySample.building, buildingId),
-        eq(inquiry.dataOwnerOrganization, orgId),
+        scope === null ? undefined : eq(inquiry.dataOwnerOrganization, scope),
       ),
     )
     .groupBy(
@@ -199,7 +216,7 @@ inquiries.get("/building/:bid", async (c) => {
 });
 
 inquiries.get("/", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const q = c.req.query("q")?.trim();
   // When searching, default to a larger ceiling so the staff actually see
   // their matches; bare browse stays at 100. Caller can still override.
@@ -207,7 +224,8 @@ inquiries.get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const where: SQL[] = [eq(inquiry.dataOwnerOrganization, orgId)];
+  const where: SQL[] = [];
+  if (scope !== null) where.push(eq(inquiry.dataOwnerOrganization, scope));
   if (q) where.push(buildInquirySearchPredicate(q));
 
   const rows = await inquirySelector()
@@ -260,8 +278,7 @@ function buildInquirySearchPredicate(q: string): SQL {
 
 inquiries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row, attr } = await loadInquiryScoped(id, orgId);
+  const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   return c.json(toLegacyInquiry(row, attr));
 });
 
@@ -296,15 +313,18 @@ const inquiryBodySchema = z.object({
   }),
 });
 
-// Resolve the data-owner org for a create: defaults to the caller's org, but an
-// admin may assign it to another (existing) organization. Returns the org id.
+// Resolve the data-owner org for a create: defaults to the caller's org, but
+// platform staff (any writer) or an org admin may assign it to another
+// (existing) organization. Returns the org id.
 async function resolveDataOwner(
-  userId: string,
+  u: AuthUser,
   orgId: string,
   requested: string | undefined,
 ): Promise<string> {
   if (!requested || requested === orgId) return orgId;
-  await assertCanAdmin(userId, orgId);
+  // Assigning customer orgs is the staff's normal invoer flow; outside the
+  // platform org it stays admin-gated.
+  if (!isPlatformMember(u)) await assertCanAdmin(u.id, orgId);
   const [org] = await db
     .select({ id: organization.id })
     .from(organization)
@@ -325,7 +345,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   }
 
   const typeStr = intToEnum("inquiry_type", data.type)!;
-  const dataOwner = await resolveDataOwner(u.id, orgId, data.dataOwnerOrganizationId);
+  const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
 
   const created = await db.transaction(async (tx) => {
     const [attr] = await tx
@@ -378,7 +398,7 @@ inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) =
   }
 
   const typeStr = intToEnum("inquiry_type", data.type)!;
-  const { row } = await loadInquiryScoped(id, orgId);
+  const { row } = await loadInquiryScoped(id, dataScope(c));
 
   await db.transaction(async (tx) => {
     await tx
@@ -424,7 +444,7 @@ inquiries.delete("/:id{[0-9]+}", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanAdmin(u.id, orgId);
 
-  const { row } = await loadInquiryScoped(id, orgId);
+  const { row } = await loadInquiryScoped(id, dataScope(c));
 
   await db.transaction(async (tx) => {
     await tx.delete(inquirySample).where(eq(inquirySample.inquiry, id));
@@ -455,8 +475,9 @@ inquiries.put(
     const orgId = activeOrgId(c);
     await assertCanAdmin(u.id, orgId);
 
-    // Caller must currently own the data — scoped load throws 404 otherwise.
-    await loadInquiryScoped(id, orgId);
+    // Caller must currently own the data (platform staff: any org) — scoped
+    // load throws 404 otherwise.
+    const { row } = await loadInquiryScoped(id, dataScope(c));
 
     const [org] = await db
       .select({ id: organization.id })
@@ -472,7 +493,7 @@ inquiries.put(
 
     // Audit trail for the ownership change (no dedicated audit table yet).
     console.info(
-      `[audit] inquiry ${id} data_owner ${orgId} -> ${dataOwnerOrganizationId} by user ${u.id}`,
+      `[audit] inquiry ${id} data_owner ${row.dataOwnerOrganization} -> ${dataOwnerOrganizationId} by user ${u.id}`,
     );
 
     return c.body(null, 204);
@@ -489,7 +510,7 @@ inquiries.post("/:id{[0-9]+}/status_review", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanWrite(u.id, orgId);
 
-  const { row, attr } = await loadInquiryScoped(id, orgId);
+  const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
   await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
 
@@ -511,7 +532,7 @@ inquiries.post(
     const orgId = activeOrgId(c);
     await assertCanReview(u.id, orgId);
 
-    const { row, attr } = await loadInquiryScoped(id, orgId);
+    const { row, attr } = await loadInquiryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
     await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
 
@@ -529,7 +550,7 @@ inquiries.post("/:id{[0-9]+}/status_approved", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanReview(u.id, orgId);
 
-  const { row, attr } = await loadInquiryScoped(id, orgId);
+  const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
   await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
 
@@ -543,7 +564,7 @@ inquiries.post("/:id{[0-9]+}/reset", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanWrite(u.id, orgId);
 
-  const { row } = await loadInquiryScoped(id, orgId);
+  const { row } = await loadInquiryScoped(id, dataScope(c));
   // C# uses TransitionToPending which is unconditional.
   await db
     .update(inquiry)
@@ -560,4 +581,5 @@ export {
   loadInquiryScoped,
   requireWritable,
   activeOrgId,
+  dataScope,
 };

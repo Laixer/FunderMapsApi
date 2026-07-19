@@ -9,7 +9,7 @@ import { assertCanWrite } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum, intsToEnums } from "../lib/inquiry-enums.ts";
 import { toLegacyRecoverySample } from "../lib/recovery-serializer.ts";
-import { activeOrgId, loadRecoveryScoped, requireWritable } from "./recovery.ts";
+import { activeOrgId, dataScope, loadRecoveryScoped, requireWritable } from "./recovery.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const samples = new Hono<AppEnv>();
@@ -20,7 +20,7 @@ function recoveryId(c: Context<AppEnv>): number {
   return id;
 }
 
-async function loadSampleScoped(sampleId: number, recId: number, orgId: string) {
+async function loadSampleScoped(sampleId: number, recId: number, orgId: string | null) {
   const [hit] = await db
     .select({ s: recoverySample })
     .from(recoverySample)
@@ -30,7 +30,7 @@ async function loadSampleScoped(sampleId: number, recId: number, orgId: string) 
       and(
         eq(recoverySample.id, sampleId),
         eq(recoverySample.recovery, recId),
-        eq(attribution.owner, orgId),
+        orgId === null ? undefined : eq(attribution.owner, orgId),
       ),
     )
     .limit(1);
@@ -43,9 +43,8 @@ async function loadSampleScoped(sampleId: number, recId: number, orgId: string) 
 // ─────────────────────────────────────────────────────────────────────────
 
 samples.get("/", async (c) => {
-  const orgId = activeOrgId(c);
   const recId = recoveryId(c);
-  await loadRecoveryScoped(recId, orgId);
+  await loadRecoveryScoped(recId, dataScope(c));
 
   const limit = parseInt(c.req.query("limit") ?? "100");
   const offset = parseInt(c.req.query("offset") ?? "0");
@@ -62,9 +61,8 @@ samples.get("/", async (c) => {
 });
 
 samples.get("/stats", async (c) => {
-  const orgId = activeOrgId(c);
   const recId = recoveryId(c);
-  await loadRecoveryScoped(recId, orgId);
+  await loadRecoveryScoped(recId, dataScope(c));
 
   const [stat] = await db
     .select({ value: count() })
@@ -74,10 +72,9 @@ samples.get("/stats", async (c) => {
 });
 
 samples.get("/:sid{[0-9]+}", async (c) => {
-  const orgId = activeOrgId(c);
   const recId = recoveryId(c);
   const sid = parseInt(c.req.param("sid"));
-  const row = await loadSampleScoped(sid, recId, orgId);
+  const row = await loadSampleScoped(sid, recId, dataScope(c));
   return c.json(toLegacyRecoverySample(row));
 });
 
@@ -141,7 +138,7 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   const u = c.get("user");
   await assertCanWrite(u.id, orgId);
 
-  const { row: parent } = await loadRecoveryScoped(recId, orgId);
+  const { row: parent } = await loadRecoveryScoped(recId, dataScope(c));
   requireWritable(parent);
 
   const data = c.req.valid("json");
@@ -169,9 +166,9 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   const u = c.get("user");
   await assertCanWrite(u.id, orgId);
 
-  const { row: parent } = await loadRecoveryScoped(recId, orgId);
+  const { row: parent } = await loadRecoveryScoped(recId, dataScope(c));
   requireWritable(parent);
-  await loadSampleScoped(sid, recId, orgId);
+  await loadSampleScoped(sid, recId, dataScope(c));
 
   const data = c.req.valid("json");
   const buildingId = await resolveBuildingId(data.address);
@@ -197,9 +194,9 @@ samples.delete("/:sid{[0-9]+}", async (c) => {
   const u = c.get("user");
   await assertCanWrite(u.id, orgId);
 
-  const { row: parent } = await loadRecoveryScoped(recId, orgId);
+  const { row: parent } = await loadRecoveryScoped(recId, dataScope(c));
   requireWritable(parent);
-  await loadSampleScoped(sid, recId, orgId);
+  await loadSampleScoped(sid, recId, dataScope(c));
 
   await db.transaction(async (tx) => {
     await tx.delete(recoverySample).where(eq(recoverySample.id, sid));
