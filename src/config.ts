@@ -5,6 +5,15 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   APP_ID: z.string(),
 
+  // Platform organization ("FunderMaps B.V."). Members are FunderMaps' own
+  // invoer staff who enter data on behalf of customer organizations (#973
+  // central-account workflow) — inquiry/recovery routes lift the per-org data
+  // scoping for them. Their role *within* this org still decides
+  // read/write/review level.
+  PLATFORM_ORGANIZATION_ID: z
+    .uuid()
+    .default("d8c19418-c832-4c91-8993-84b8ed641448"),
+
   // Better Auth
   AUTH_SECRET: z.string(),
   BASE_URL: z.url().optional(),

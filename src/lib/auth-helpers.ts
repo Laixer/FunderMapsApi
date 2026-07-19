@@ -2,6 +2,16 @@ import { db } from "../db/client.ts";
 import { eq, and } from "drizzle-orm";
 import { organizationUser } from "../db/schema/application.ts";
 import { ForbiddenError } from "./errors.ts";
+import { env } from "../config.ts";
+
+// FunderMaps' own staff belong to the platform organization and do invoer
+// across customer organizations (#973 central-account workflow), so the
+// per-org data scoping on inquiry/recovery routes does not apply to them.
+export function isPlatformMember(user: {
+  organizations: { id: string }[];
+}): boolean {
+  return user.organizations.some((o) => o.id === env.PLATFORM_ORGANIZATION_ID);
+}
 
 // Mirrors C# WriterAdministratorPolicy.
 const WRITE_ROLES = new Set(["writer", "verifier", "superuser"]);

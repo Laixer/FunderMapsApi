@@ -12,7 +12,12 @@ import {
 } from "../db/schema/application.ts";
 import { recovery, recoverySample } from "../db/schema/report.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
-import { assertCanWrite, assertCanReview, assertCanAdmin } from "../lib/auth-helpers.ts";
+import {
+  assertCanWrite,
+  assertCanReview,
+  assertCanAdmin,
+  isPlatformMember,
+} from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
   toLegacyRecovery,
@@ -26,7 +31,7 @@ import {
   sendReviewRequestedEmail,
 } from "../lib/recovery-emails.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
-import type { AppEnv } from "../types/context.ts";
+import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const recoveries = new Hono<AppEnv>();
 
@@ -44,6 +49,13 @@ function activeOrgId(c: Context<AppEnv>): string {
     throw new ForbiddenError("User is not a member of any organization");
   }
   return orgId;
+}
+
+// Org scope for data access: FunderMaps staff (platform-org members) work
+// across all organizations, so their scope is null — no data-owner filter.
+// Everyone else is confined to their own org.
+function dataScope(c: Context<AppEnv>): string | null {
+  return isPlatformMember(c.get("user")) ? null : activeOrgId(c);
 }
 
 function recoverySelector() {
@@ -74,10 +86,15 @@ function recoverySelector() {
 
 async function loadRecoveryScoped(
   id: number,
-  orgId: string,
+  orgId: string | null,
 ): Promise<{ row: typeof recovery.$inferSelect; attr: AttributionView }> {
   const [hit] = await recoverySelector()
-    .where(and(eq(recovery.id, id), eq(recovery.dataOwnerOrganization, orgId)))
+    .where(
+      and(
+        eq(recovery.id, id),
+        orgId === null ? undefined : eq(recovery.dataOwnerOrganization, orgId),
+      ),
+    )
     .limit(1);
   if (!hit) throw new NotFoundError("Recovery not found");
   return { row: hit.recovery, attr: hit.attr };
@@ -152,17 +169,17 @@ recoveries.post("/upload-document", async (c) => {
 // ─────────────────────────────────────────────────────────────────────────
 
 recoveries.get("/stats", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const [stat] = await db
     .select({ value: count() })
     .from(recovery)
     .innerJoin(attribution, eq(attribution.id, recovery.attribution))
-    .where(eq(recovery.dataOwnerOrganization, orgId));
+    .where(scope === null ? undefined : eq(recovery.dataOwnerOrganization, scope));
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
 recoveries.get("/building/:bid", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const buildingId = c.req.param("bid");
   const limit = parseInt(c.req.query("limit") ?? "100");
   const offset = parseInt(c.req.query("offset") ?? "0");
@@ -172,7 +189,7 @@ recoveries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(recoverySample.buildingId, buildingId),
-        eq(recovery.dataOwnerOrganization, orgId),
+        scope === null ? undefined : eq(recovery.dataOwnerOrganization, scope),
       ),
     )
     .groupBy(
@@ -195,13 +212,14 @@ recoveries.get("/building/:bid", async (c) => {
 });
 
 recoveries.get("/", async (c) => {
-  const orgId = activeOrgId(c);
+  const scope = dataScope(c);
   const q = c.req.query("q")?.trim();
   const defaultLimit = q ? 500 : 100;
   const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const where: SQL[] = [eq(recovery.dataOwnerOrganization, orgId)];
+  const where: SQL[] = [];
+  if (scope !== null) where.push(eq(recovery.dataOwnerOrganization, scope));
   if (q) where.push(buildRecoverySearchPredicate(q));
 
   const rows = await recoverySelector()
@@ -244,8 +262,7 @@ function buildRecoverySearchPredicate(q: string): SQL {
 
 recoveries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const orgId = activeOrgId(c);
-  const { row, attr } = await loadRecoveryScoped(id, orgId);
+  const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   return c.json(toLegacyRecovery(row, attr));
 });
 
@@ -276,15 +293,18 @@ const recoveryBodySchema = z.object({
   }),
 });
 
-// Resolve the data-owner org for a create: defaults to the caller's org, but an
-// admin may assign it to another (existing) organization. Returns the org id.
+// Resolve the data-owner org for a create: defaults to the caller's org, but
+// platform staff (any writer) or an org admin may assign it to another
+// (existing) organization. Returns the org id.
 async function resolveDataOwner(
-  userId: string,
+  u: AuthUser,
   orgId: string,
   requested: string | undefined,
 ): Promise<string> {
   if (!requested || requested === orgId) return orgId;
-  await assertCanAdmin(userId, orgId);
+  // Assigning customer orgs is the staff's normal invoer flow; outside the
+  // platform org it stays admin-gated.
+  if (!isPlatformMember(u)) await assertCanAdmin(u.id, orgId);
   const [org] = await db
     .select({ id: organization.id })
     .from(organization)
@@ -305,7 +325,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   }
 
   const typeStr = intToEnum("recovery_document_type", data.type)!;
-  const dataOwner = await resolveDataOwner(u.id, orgId, data.dataOwnerOrganizationId);
+  const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
 
   const created = await db.transaction(async (tx) => {
     const [attr] = await tx
@@ -353,7 +373,7 @@ recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c)
   }
 
   const typeStr = intToEnum("recovery_document_type", data.type)!;
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row } = await loadRecoveryScoped(id, dataScope(c));
 
   await db.transaction(async (tx) => {
     await tx
@@ -393,7 +413,7 @@ recoveries.delete("/:id{[0-9]+}", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanAdmin(u.id, orgId);
 
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row } = await loadRecoveryScoped(id, dataScope(c));
 
   await db.transaction(async (tx) => {
     await tx.delete(recoverySample).where(eq(recoverySample.recovery, id));
@@ -423,8 +443,9 @@ recoveries.put(
     const orgId = activeOrgId(c);
     await assertCanAdmin(u.id, orgId);
 
-    // Caller must currently own the data — scoped load throws 404 otherwise.
-    await loadRecoveryScoped(id, orgId);
+    // Caller must currently own the data (platform staff: any org) — scoped
+    // load throws 404 otherwise.
+    const { row } = await loadRecoveryScoped(id, dataScope(c));
 
     const [org] = await db
       .select({ id: organization.id })
@@ -439,7 +460,7 @@ recoveries.put(
       .where(eq(recovery.id, id));
 
     console.info(
-      `[audit] recovery ${id} data_owner ${orgId} -> ${dataOwnerOrganizationId} by user ${u.id}`,
+      `[audit] recovery ${id} data_owner ${row.dataOwnerOrganization} -> ${dataOwnerOrganizationId} by user ${u.id}`,
     );
 
     return c.body(null, 204);
@@ -456,7 +477,7 @@ recoveries.post("/:id{[0-9]+}/status_review", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanWrite(u.id, orgId);
 
-  const { row, attr } = await loadRecoveryScoped(id, orgId);
+  const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
   await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
 
@@ -478,7 +499,7 @@ recoveries.post(
     const orgId = activeOrgId(c);
     await assertCanReview(u.id, orgId);
 
-    const { row, attr } = await loadRecoveryScoped(id, orgId);
+    const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
     await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
 
@@ -496,7 +517,7 @@ recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanReview(u.id, orgId);
 
-  const { row, attr } = await loadRecoveryScoped(id, orgId);
+  const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
   await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
 
@@ -510,7 +531,7 @@ recoveries.post("/:id{[0-9]+}/reset", async (c) => {
   const orgId = activeOrgId(c);
   await assertCanWrite(u.id, orgId);
 
-  const { row } = await loadRecoveryScoped(id, orgId);
+  const { row } = await loadRecoveryScoped(id, dataScope(c));
   await db
     .update(recovery)
     .set({ auditStatus: "pending" })
@@ -525,4 +546,5 @@ export {
   loadRecoveryScoped,
   requireWritable,
   activeOrgId,
+  dataScope,
 };
