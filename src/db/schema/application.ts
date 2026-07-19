@@ -55,6 +55,11 @@ export const session = applicationSchema.table("session", {
   impersonatedBy: uuid("impersonated_by").references(() => user.id, {
     onDelete: "set null",
   }),
+  // Better Auth organization plugin: the session's active organization.
+  activeOrganizationId: uuid("active_organization_id").references(
+    () => organization.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -196,11 +201,20 @@ export const oauthConsent = applicationSchema.table("oauth_consent", {
 export const organization = applicationSchema.table("organization", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),
+  slug: text().notNull().unique(),
+  logo: text(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const organizationUser = applicationSchema.table(
   "organization_user",
   {
+    // Scalar id for the Better Auth adapter (`member` model maps onto this
+    // table); the composite PK below stays the real identity.
+    id: uuid().defaultRandom().notNull().unique(),
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id),
@@ -208,8 +222,50 @@ export const organizationUser = applicationSchema.table(
       .notNull()
       .references(() => organization.id),
     role: text().default("reader").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.organizationId] })],
+);
+
+// Better Auth organization-plugin invitations (Phase 2).
+export const invitation = applicationSchema.table("invitation", {
+  id: uuid().primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  email: text().notNull(),
+  role: text().default("reader").notNull(),
+  status: text().default("pending").notNull(),
+  teamId: uuid("team_id"),
+  inviterId: uuid("inviter_id")
+    .notNull()
+    .references(() => user.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// Better Auth dynamic access control (#1006): admin-defined per-organization
+// roles with a JSON permission map (resource -> actions). The table is named
+// organization_custom_role because application.organization_role is the role
+// enum type; the export keeps BA's model name so the adapter resolves it.
+export const organizationRole = applicationSchema.table(
+  "organization_custom_role",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    role: text().notNull(),
+    permission: jsonb().$type<Record<string, string[]>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
 );
 
 export const application = applicationSchema.table("application", {

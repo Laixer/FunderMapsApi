@@ -1,8 +1,12 @@
 import { db } from "../db/client.ts";
 import { eq, and } from "drizzle-orm";
-import { organizationUser } from "../db/schema/application.ts";
+import {
+  organizationUser,
+  organizationRole,
+} from "../db/schema/application.ts";
 import { ForbiddenError } from "./errors.ts";
 import { env } from "../config.ts";
+import { roles, type OrgAction, type OrgResource } from "./permissions.ts";
 
 // FunderMaps' own staff belong to the platform organization and do invoer
 // across customer organizations (#973 central-account workflow), so the
@@ -12,17 +16,6 @@ export function isPlatformMember(user: {
 }): boolean {
   return user.organizations.some((o) => o.id === env.PLATFORM_ORGANIZATION_ID);
 }
-
-// Mirrors C# WriterAdministratorPolicy.
-const WRITE_ROLES = new Set(["writer", "verifier", "superuser"]);
-
-// Mirrors C# VerifierAdministratorPolicy — only verifiers and superusers
-// (and the global "administrator" app role) can approve/reject reports.
-const REVIEW_ROLES = new Set(["verifier", "superuser"]);
-
-// Org-level admin: only superusers. Used to gate destructive operations
-// (e.g. inquiry delete with cascade).
-const ADMIN_ROLES = new Set(["superuser"]);
 
 async function getOrgRole(
   userId: string,
@@ -41,41 +34,50 @@ async function getOrgRole(
   return row?.role ?? null;
 }
 
-export async function assertCanWrite(
-  userId: string,
-  orgId: string | undefined,
-): Promise<void> {
-  if (!orgId) {
-    throw new ForbiddenError("User is not a member of any organization");
+// Does `roleName` grant `action` on `resource` in this org? The four fixed
+// roles resolve against the static permission map in permissions.ts; any
+// other name is a dynamic role (#1006) defined by an org admin in
+// application.organization_custom_role.
+async function roleGrants(
+  orgId: string,
+  roleName: string,
+  resource: OrgResource,
+  action: OrgAction,
+): Promise<boolean> {
+  const staticRole = (
+    roles as Record<
+      string,
+      { statements: Partial<Record<string, readonly string[]>> } | undefined
+    >
+  )[roleName];
+  if (staticRole) {
+    return staticRole.statements[resource]?.includes(action) ?? false;
   }
-  const role = await getOrgRole(userId, orgId);
-  if (!role || !WRITE_ROLES.has(role)) {
-    throw new ForbiddenError("Write permission required");
-  }
+
+  const [row] = await db
+    .select({ permission: organizationRole.permission })
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.organizationId, orgId),
+        eq(organizationRole.role, roleName),
+      ),
+    )
+    .limit(1);
+  return row?.permission?.[resource]?.includes(action) ?? false;
 }
 
-export async function assertCanReview(
+export async function assertOrgPermission(
   userId: string,
   orgId: string | undefined,
+  resource: OrgResource,
+  action: OrgAction,
 ): Promise<void> {
   if (!orgId) {
     throw new ForbiddenError("User is not a member of any organization");
   }
   const role = await getOrgRole(userId, orgId);
-  if (!role || !REVIEW_ROLES.has(role)) {
-    throw new ForbiddenError("Verifier permission required");
-  }
-}
-
-export async function assertCanAdmin(
-  userId: string,
-  orgId: string | undefined,
-): Promise<void> {
-  if (!orgId) {
-    throw new ForbiddenError("User is not a member of any organization");
-  }
-  const role = await getOrgRole(userId, orgId);
-  if (!role || !ADMIN_ROLES.has(role)) {
-    throw new ForbiddenError("Administrator permission required");
+  if (!role || !(await roleGrants(orgId, role, resource, action))) {
+    throw new ForbiddenError(`'${action}' permission on ${resource} required`);
   }
 }

@@ -37,6 +37,15 @@ orgs.get("/", async (c) => {
 
 const createOrgSchema = z.object({ name: z.string().min(1) });
 
+// Same slug rule as the Better Auth org-schema migration: lowercase,
+// non-alnum runs collapse to '-', trimmed.
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 orgs.post("/", zValidator("json", createOrgSchema), async (c) => {
   const data = c.req.valid("json");
 
@@ -47,9 +56,23 @@ orgs.post("/", zValidator("json", createOrgSchema), async (c) => {
     .limit(1);
   if (existing.length > 0) throw new ConflictError("Organization already exists");
 
+  const slug = slugify(data.name);
+  const slugTaken = await db
+    .select({ id: organization.id })
+    .from(organization)
+    .where(eq(organization.slug, slug))
+    .limit(1);
+
   const [created] = await db
     .insert(organization)
-    .values({ name: data.name })
+    .values({
+      name: data.name,
+      // Names are unique (checked above) but distinct names can slugify to
+      // the same value; disambiguate like the migration backfill did.
+      slug: slugTaken.length > 0
+        ? `${slug}-${crypto.randomUUID().split("-")[0]}`
+        : slug,
+    })
     .returning();
 
   return c.json(created, 201);
