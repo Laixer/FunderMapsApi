@@ -6,6 +6,7 @@ import { db } from "../../db/client.ts";
 import {
   organization,
   organizationUser,
+  organizationRole,
   user,
   mapsetCollection,
   organizationGeolockDistrict,
@@ -14,7 +15,12 @@ import {
 } from "../../db/schema/application.ts";
 import { organizationMapset } from "../../db/schema/application.ts";
 import { district, municipality, neighborhood } from "../../db/schema/geocoder.ts";
-import { NotFoundError, ConflictError } from "../../lib/errors.ts";
+import {
+  NotFoundError,
+  ConflictError,
+  ValidationError,
+} from "../../lib/errors.ts";
+import { isFixedRole, customRoleStatement } from "../../lib/permissions.ts";
 import { toLegacyUser } from "../../lib/user-serializer.ts";
 import type { AppEnv } from "../../types/context.ts";
 
@@ -167,14 +173,37 @@ orgs.get("/:org_id/user", async (c) => {
   );
 });
 
+// A member's role is either one of the four fixed roles or a custom role
+// defined for this organization (#1006).
+async function assertAssignableRole(orgId: string, role: string): Promise<void> {
+  if (isFixedRole(role)) return;
+  const rows = await db
+    .select({ id: organizationRole.id })
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.organizationId, orgId),
+        eq(organizationRole.role, role),
+      ),
+    )
+    .limit(1);
+  if (rows.length === 0) {
+    throw new ValidationError([
+      `Unknown role '${role}' for this organization`,
+    ]);
+  }
+}
+
 const addUserSchema = z.object({
   user_id: z.string(),
-  role: z.enum(["reader", "writer", "verifier", "superuser"]).default("reader"),
+  role: z.string().min(1).default("reader"),
 });
 
 orgs.post("/:org_id/user", zValidator("json", addUserSchema), async (c) => {
   const orgId = c.req.param("org_id");
   const data = c.req.valid("json");
+
+  await assertAssignableRole(orgId, data.role);
 
   await db.insert(organizationUser).values({
     userId: data.user_id,
@@ -183,6 +212,38 @@ orgs.post("/:org_id/user", zValidator("json", addUserSchema), async (c) => {
   });
 
   return c.body(null, 201);
+});
+
+const updateMemberSchema = z.object({
+  user_id: z.string(),
+  role: z.string().min(1),
+});
+
+orgs.put("/:org_id/user", zValidator("json", updateMemberSchema), async (c) => {
+  const orgId = c.req.param("org_id");
+  const { user_id, role } = c.req.valid("json");
+
+  await assertAssignableRole(orgId, role);
+
+  const [updated] = await db
+    .update(organizationUser)
+    .set({ role })
+    .where(
+      and(
+        eq(organizationUser.userId, user_id),
+        eq(organizationUser.organizationId, orgId),
+      ),
+    )
+    .returning();
+
+  if (!updated) {
+    throw new NotFoundError("User is not a member of this organization");
+  }
+  return c.json({
+    user_id: updated.userId,
+    organization_id: updated.organizationId,
+    role: updated.role,
+  });
 });
 
 const removeUserSchema = z.object({ user_id: z.string() });
@@ -200,6 +261,191 @@ orgs.delete("/:org_id/user", zValidator("json", removeUserSchema), async (c) => 
       ),
     );
 
+  return c.body(null, 204);
+});
+
+// Dynamic custom roles (#1006): admin-defined per-organization roles with a
+// JSON permission map, stored in application.organization_custom_role. Only
+// domain statements (customRoleStatement) can be granted — org management
+// stays exclusive to the fixed superuser role.
+const rolePermissionSchema = z.strictObject(
+  Object.fromEntries(
+    Object.entries(customRoleStatement).map(([resource, actions]) => [
+      resource,
+      z.array(z.enum(actions as unknown as [string, ...string[]])).optional(),
+    ]),
+  ),
+);
+
+// Drop unchecked resources (undefined / empty action lists) so the stored
+// jsonb only holds actual grants.
+function compactPermission(
+  permission: Record<string, string[] | undefined>,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(permission).filter(
+      (entry): entry is [string, string[]] =>
+        entry[1] !== undefined && entry[1].length > 0,
+    ),
+  );
+}
+
+const roleNameSchema = z.string().trim().min(1).max(64);
+
+orgs.get("/:org_id/role", async (c) => {
+  const orgId = c.req.param("org_id");
+  const rows = await db
+    .select()
+    .from(organizationRole)
+    .where(eq(organizationRole.organizationId, orgId))
+    .orderBy(organizationRole.role);
+  return c.json(rows);
+});
+
+const createRoleSchema = z.object({
+  name: roleNameSchema,
+  permission: rolePermissionSchema,
+});
+
+orgs.post("/:org_id/role", zValidator("json", createRoleSchema), async (c) => {
+  const orgId = c.req.param("org_id");
+  const { name, permission } = c.req.valid("json");
+
+  if (isFixedRole(name)) {
+    throw new ConflictError(`'${name}' is a fixed role name`);
+  }
+  const existing = await db
+    .select({ id: organizationRole.id })
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.organizationId, orgId),
+        eq(organizationRole.role, name),
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) throw new ConflictError("Role already exists");
+
+  const [created] = await db
+    .insert(organizationRole)
+    .values({
+      organizationId: orgId,
+      role: name,
+      permission: compactPermission(permission),
+    })
+    .returning();
+
+  return c.json(created, 201);
+});
+
+const updateRoleSchema = z.object({
+  name: roleNameSchema.optional(),
+  permission: rolePermissionSchema.optional(),
+});
+
+orgs.put(
+  "/:org_id/role/:role_id",
+  zValidator("json", updateRoleSchema),
+  async (c) => {
+    const orgId = c.req.param("org_id");
+    const roleId = c.req.param("role_id");
+    const input = c.req.valid("json");
+
+    const [current] = await db
+      .select()
+      .from(organizationRole)
+      .where(
+        and(
+          eq(organizationRole.id, roleId),
+          eq(organizationRole.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+    if (!current) throw new NotFoundError("Role not found");
+
+    const rename = input.name !== undefined && input.name !== current.role;
+    if (rename) {
+      if (isFixedRole(input.name!)) {
+        throw new ConflictError(`'${input.name}' is a fixed role name`);
+      }
+      const clash = await db
+        .select({ id: organizationRole.id })
+        .from(organizationRole)
+        .where(
+          and(
+            eq(organizationRole.organizationId, orgId),
+            eq(organizationRole.role, input.name!),
+          ),
+        )
+        .limit(1);
+      if (clash.length > 0) throw new ConflictError("Role already exists");
+    }
+
+    // A rename must carry the members holding the old name along —
+    // organization_user.role references the role by name, not id.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(organizationRole)
+        .set({
+          ...(input.name !== undefined && { role: input.name }),
+          ...(input.permission !== undefined && {
+            permission: compactPermission(input.permission),
+          }),
+          updatedAt: new Date(),
+        })
+        .where(eq(organizationRole.id, roleId))
+        .returning();
+      if (rename) {
+        await tx
+          .update(organizationUser)
+          .set({ role: input.name! })
+          .where(
+            and(
+              eq(organizationUser.organizationId, orgId),
+              eq(organizationUser.role, current.role),
+            ),
+          );
+      }
+      return row;
+    });
+
+    return c.json(updated);
+  },
+);
+
+orgs.delete("/:org_id/role/:role_id", async (c) => {
+  const orgId = c.req.param("org_id");
+  const roleId = c.req.param("role_id");
+
+  const [current] = await db
+    .select()
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.id, roleId),
+        eq(organizationRole.organizationId, orgId),
+      ),
+    )
+    .limit(1);
+  if (!current) throw new NotFoundError("Role not found");
+
+  const members = await db
+    .select({ userId: organizationUser.userId })
+    .from(organizationUser)
+    .where(
+      and(
+        eq(organizationUser.organizationId, orgId),
+        eq(organizationUser.role, current.role),
+      ),
+    )
+    .limit(1);
+  if (members.length > 0) {
+    throw new ConflictError(
+      "Role is assigned to organization members and cannot be deleted",
+    );
+  }
+
+  await db.delete(organizationRole).where(eq(organizationRole.id, roleId));
   return c.body(null, 204);
 });
 
