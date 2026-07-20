@@ -112,6 +112,9 @@ const updateUserSchema = z.object({
   picture: z.string().optional(),
   job_title: z.string().optional(),
   phone_number: z.string().optional(),
+  // Application role, not an org role. Same literal Better Auth's admin
+  // plugin setRole writes; ManagementFront's role Select PUTs it here.
+  role: z.enum(["user", "administrator"]).optional(),
 });
 
 users.put("/:user_id", zValidator("json", updateUserSchema), async (c) => {
@@ -142,6 +145,7 @@ users.put("/:user_id", zValidator("json", updateUserSchema), async (c) => {
       avatar: toNullable(input.picture),
       jobTitle: toNullable(input.job_title),
       phoneNumber: toNullable(input.phone_number),
+      ...(input.role && { role: input.role }),
     })
     .where(eq(user.id, userId))
     .returning();
