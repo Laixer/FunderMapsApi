@@ -6,6 +6,7 @@ import {
   userAc,
 } from "better-auth/plugins/admin/access";
 import { apiKey } from "@better-auth/api-key";
+import { organization } from "better-auth/plugins/organization";
 import { bearer } from "better-auth/plugins/bearer";
 import { jwt } from "better-auth/plugins/jwt";
 import { oauthProvider } from "@better-auth/oauth-provider";
@@ -27,6 +28,7 @@ import {
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
+import { ac as orgAc, roles as orgRoles } from "./permissions.ts";
 
 // Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
 // BA scrypt so the next login takes the native path. Account.password is
@@ -142,9 +144,49 @@ export const auth = betterAuth({
   account: {
     modelName: "account",
   },
+  advanced: {
+    database: {
+      // BA's default ids are 32-char alnum strings; the org-plugin tables
+      // (organization_user.id, invitation, organization_custom_role) are
+      // uuid-typed like the rest of the application schema, so generate
+      // uuids everywhere. Text-typed id columns (session, apikey) accept
+      // them too — only the format of NEW rows changes, and nothing parses
+      // those ids.
+      generateId: () => crypto.randomUUID(),
+    },
+  },
   plugins: [
     bearer(),
     jwt(),
+    // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
+    // via schema overrides onto the EXISTING application.organization +
+    // organization_user tables — BA reads/writes the same rows the API
+    // already uses, so there is no dual-write phase and the C# Webservice
+    // (EOL Aug 2026) keeps seeing the columns it knows.
+    //
+    // Roles keep the exact names stored in organization_user.role (reader/
+    // writer/verifier/superuser — see permissions.ts), so zero data
+    // migration. dynamicAccessControl lets org admins define custom roles
+    // with a JSON permission map (application.organization_custom_role);
+    // the management portal surfaces that later.
+    //
+    // NOTE: route-level permission checks do NOT go through BA's
+    // hasPermission endpoint — it requires a BA session, which API-key
+    // callers don't have. src/lib/auth-helpers.ts authorizes against the
+    // same permission map in-process for both auth paths.
+    organization({
+      ac: orgAc,
+      roles: orgRoles,
+      creatorRole: "superuser",
+      dynamicAccessControl: {
+        enabled: true,
+      },
+      schema: {
+        member: {
+          modelName: "organizationUser",
+        },
+      },
+    }),
     // Admin plugin — adopted in *supplementing* mode. The existing
     // /api/management/* surface (gated by src/middleware/admin.ts) stays
     // as-is; the plugin layers on top to provide server-side ban

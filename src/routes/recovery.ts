@@ -12,12 +12,7 @@ import {
 } from "../db/schema/application.ts";
 import { recovery, recoverySample } from "../db/schema/report.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
-import {
-  assertCanWrite,
-  assertCanReview,
-  assertCanAdmin,
-  isPlatformMember,
-} from "../lib/auth-helpers.ts";
+import { assertOrgPermission, isPlatformMember } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
   toLegacyRecovery,
@@ -304,7 +299,9 @@ async function resolveDataOwner(
   if (!requested || requested === orgId) return orgId;
   // Assigning customer orgs is the staff's normal invoer flow; outside the
   // platform org it stays admin-gated.
-  if (!isPlatformMember(u)) await assertCanAdmin(u.id, orgId);
+  if (!isPlatformMember(u)) {
+    await assertOrgPermission(u.id, orgId, "recovery", "assign-owner");
+  }
   const [org] = await db
     .select({ id: organization.id })
     .from(organization)
@@ -318,7 +315,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   const data = c.req.valid("json");
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "write");
 
   if (data.attribution.reviewer === u.id) {
     throw new ForbiddenError("Reviewer must differ from creator");
@@ -366,7 +363,7 @@ recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c)
   const data = c.req.valid("json");
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "write");
 
   if (data.attribution.reviewer === u.id) {
     throw new ForbiddenError("Reviewer must differ from creator");
@@ -411,7 +408,7 @@ recoveries.delete("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanAdmin(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "delete");
 
   const { row } = await loadRecoveryScoped(id, dataScope(c));
 
@@ -441,7 +438,7 @@ recoveries.put(
     const { dataOwnerOrganizationId } = c.req.valid("json");
     const u = c.get("user");
     const orgId = activeOrgId(c);
-    await assertCanAdmin(u.id, orgId);
+    await assertOrgPermission(u.id, orgId, "recovery", "assign-owner");
 
     // Caller must currently own the data (platform staff: any org) — scoped
     // load throws 404 otherwise.
@@ -475,7 +472,7 @@ recoveries.post("/:id{[0-9]+}/status_review", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "write");
 
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
@@ -497,7 +494,7 @@ recoveries.post(
     const { message } = c.req.valid("json");
     const u = c.get("user");
     const orgId = activeOrgId(c);
-    await assertCanReview(u.id, orgId);
+    await assertOrgPermission(u.id, orgId, "recovery", "review");
 
     const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
@@ -515,7 +512,7 @@ recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanReview(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "review");
 
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
@@ -529,7 +526,7 @@ recoveries.post("/:id{[0-9]+}/reset", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "recovery", "write");
 
   const { row } = await loadRecoveryScoped(id, dataScope(c));
   await db

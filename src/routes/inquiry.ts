@@ -13,12 +13,7 @@ import {
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { handleDocumentUpload } from "../lib/upload-handler.ts";
-import {
-  assertCanWrite,
-  assertCanReview,
-  assertCanAdmin,
-  isPlatformMember,
-} from "../lib/auth-helpers.ts";
+import { assertOrgPermission, isPlatformMember } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
   toLegacyInquiry,
@@ -324,7 +319,9 @@ async function resolveDataOwner(
   if (!requested || requested === orgId) return orgId;
   // Assigning customer orgs is the staff's normal invoer flow; outside the
   // platform org it stays admin-gated.
-  if (!isPlatformMember(u)) await assertCanAdmin(u.id, orgId);
+  if (!isPlatformMember(u)) {
+    await assertOrgPermission(u.id, orgId, "inquiry", "assign-owner");
+  }
   const [org] = await db
     .select({ id: organization.id })
     .from(organization)
@@ -338,7 +335,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   const data = c.req.valid("json");
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   if (data.attribution.reviewer === u.id) {
     throw new ForbiddenError("Reviewer must differ from creator");
@@ -391,7 +388,7 @@ inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) =
   const data = c.req.valid("json");
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   if (data.attribution.reviewer === u.id) {
     throw new ForbiddenError("Reviewer must differ from creator");
@@ -442,7 +439,7 @@ inquiries.delete("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanAdmin(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "delete");
 
   const { row } = await loadInquiryScoped(id, dataScope(c));
 
@@ -473,7 +470,7 @@ inquiries.put(
     const { dataOwnerOrganizationId } = c.req.valid("json");
     const u = c.get("user");
     const orgId = activeOrgId(c);
-    await assertCanAdmin(u.id, orgId);
+    await assertOrgPermission(u.id, orgId, "inquiry", "assign-owner");
 
     // Caller must currently own the data (platform staff: any org) — scoped
     // load throws 404 otherwise.
@@ -508,7 +505,7 @@ inquiries.post("/:id{[0-9]+}/status_review", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
@@ -530,7 +527,7 @@ inquiries.post(
     const { message } = c.req.valid("json");
     const u = c.get("user");
     const orgId = activeOrgId(c);
-    await assertCanReview(u.id, orgId);
+    await assertOrgPermission(u.id, orgId, "inquiry", "review");
 
     const { row, attr } = await loadInquiryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
@@ -548,7 +545,7 @@ inquiries.post("/:id{[0-9]+}/status_approved", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanReview(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "review");
 
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
@@ -562,7 +559,7 @@ inquiries.post("/:id{[0-9]+}/reset", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   const { row } = await loadInquiryScoped(id, dataScope(c));
   // C# uses TransitionToPending which is unconditional.

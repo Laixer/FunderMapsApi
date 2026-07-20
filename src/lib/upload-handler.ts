@@ -6,7 +6,7 @@ import {
   uniqueFileName,
 } from "./s3.ts";
 import { ValidationError } from "./errors.ts";
-import { assertCanWrite } from "./auth-helpers.ts";
+import { assertOrgPermission } from "./auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
 import { db } from "../db/client.ts";
 import { fileResource } from "../db/schema/application.ts";
@@ -19,7 +19,12 @@ export async function handleDocumentUpload(
   folder: "inquiry-report" | "recovery-report",
 ): Promise<{ name: string }> {
   const u = c.get("user");
-  await assertCanWrite(u.id, u.organizations[0]?.id);
+  await assertOrgPermission(
+    u.id,
+    u.organizations[0]?.id,
+    folder === "inquiry-report" ? "inquiry" : "recovery",
+    "write",
+  );
 
   const form = await c.req.parseBody();
   const file = form["input"];

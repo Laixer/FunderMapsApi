@@ -5,7 +5,7 @@ import { and, count, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution } from "../db/schema/application.ts";
-import { assertCanWrite } from "../lib/auth-helpers.ts";
+import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
@@ -265,7 +265,7 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   const inqId = inquiryId(c);
   const u = c.get("user");
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   const { row: parent } = await loadInquiryScoped(inqId, dataScope(c));
   requireWritable(parent);
@@ -294,7 +294,7 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));
   const u = c.get("user");
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   const { row: parent } = await loadInquiryScoped(inqId, dataScope(c));
   requireWritable(parent);
@@ -322,7 +322,7 @@ samples.delete("/:sid{[0-9]+}", async (c) => {
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));
   const u = c.get("user");
-  await assertCanWrite(u.id, orgId);
+  await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
   const { row: parent } = await loadInquiryScoped(inqId, dataScope(c));
   requireWritable(parent);
