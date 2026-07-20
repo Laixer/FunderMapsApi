@@ -5,6 +5,7 @@ import {
   putObject,
   uniqueFileName,
 } from "./s3.ts";
+import { eq } from "drizzle-orm";
 import { ValidationError } from "./errors.ts";
 import { assertOrgPermission } from "./auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -68,4 +69,19 @@ export async function handleDocumentUpload(
   });
 
   return { name: filename };
+}
+
+// Attach-time lifecycle transition: a record referencing the upload moves it
+// 'uploaded' → 'active' (out of the file_resources_orphaned sweep); replacing
+// or deleting the record moves the old object to 'archived'. `key` is the
+// full S3 object key. Uploads that predate the resource table produce no row
+// here, so a miss is a silent no-op by design.
+export async function markFileResource(
+  key: string,
+  status: "active" | "archived",
+): Promise<void> {
+  await db
+    .update(fileResource)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(fileResource.key, key));
 }
