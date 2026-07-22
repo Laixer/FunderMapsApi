@@ -61,6 +61,28 @@ export const superuser = ac.newRole({
 
 export const roles = { reader, writer, verifier, superuser };
 
+export const FIXED_ROLE_NAMES = [
+  "reader",
+  "writer",
+  "verifier",
+  "superuser",
+] as const;
+
+export function isFixedRole(name: string): boolean {
+  return (FIXED_ROLE_NAMES as readonly string[]).includes(name);
+}
+
+// The subset of the statement a dynamic custom role (#1006) may grant.
+// Org-management statements (organization/member/invitation/team/ac) stay
+// exclusive to the fixed superuser role — custom roles configure domain
+// access only. Also the contract for the portal's permission matrix.
+export const customRoleStatement = {
+  inquiry: statement.inquiry,
+  recovery: statement.recovery,
+  incident: statement.incident,
+  app: statement.app,
+} as const;
+
 export type OrgResource = "inquiry" | "recovery" | "incident" | "app";
 export type OrgAction =
   | "read"

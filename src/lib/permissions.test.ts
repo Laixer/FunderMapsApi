@@ -1,5 +1,14 @@
 import { describe, test, expect } from "bun:test";
-import { reader, writer, verifier, superuser, roles } from "./permissions.ts";
+import {
+  reader,
+  writer,
+  verifier,
+  superuser,
+  roles,
+  statement,
+  FIXED_ROLE_NAMES,
+  customRoleStatement,
+} from "./permissions.ts";
 
 // The four fixed roles must keep the legacy C# policy semantics that
 // auth-helpers.ts enforced with role sets before Phase 2:
@@ -65,6 +74,25 @@ describe("fixed org roles", () => {
     for (const role of [reader, writer, verifier]) {
       expect(can(role, "member", "create")).toBe(false);
       expect(can(role, "ac", "create")).toBe(false);
+    }
+  });
+
+  test("FIXED_ROLE_NAMES matches the exported role map", () => {
+    expect([...FIXED_ROLE_NAMES].sort()).toEqual(
+      Object.keys(roles).sort() as (typeof FIXED_ROLE_NAMES)[number][],
+    );
+  });
+
+  test("customRoleStatement grants domain resources only", () => {
+    expect(Object.keys(customRoleStatement).sort()).toEqual([
+      "app",
+      "incident",
+      "inquiry",
+      "recovery",
+    ]);
+    const full = statement as Record<string, readonly string[]>;
+    for (const [resource, actions] of Object.entries(customRoleStatement)) {
+      expect([...actions] as string[]).toEqual([...full[resource]!]);
     }
   });
 });
