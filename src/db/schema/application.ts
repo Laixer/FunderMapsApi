@@ -602,13 +602,6 @@ export const keyStore = applicationSchema.table("key_store", {
   value: text().notNull(),
 });
 
-// Legacy portal table. id is plain integer in DB (no sequence) — INSERTs
-// would have to supply id explicitly, but the table is unused.
-export const portal = applicationSchema.table("portal", {
-  id: integer().primaryKey(),
-  name: text(),
-});
-
 // Other views in the application schema not modeled here:
 //   file_resources_orphaned (VIEW) — maintenance/cleanup view over
 //     file_resources rows whose key has no S3 object behind it.
