@@ -104,12 +104,6 @@ export const residence = geocoderSchema.table("residence", {
   geom: text().notNull(),
 });
 
-// 6-character postal code as the natural key (e.g. "1011AB").
-export const postalCode = geocoderSchema.table("postal_code", {
-  postalCode: varchar("postal_code", { length: 6 }).primaryKey(),
-  geom: text().notNull(),
-});
-
 // VIEW. Joined hydrate of building + residence + geo hierarchy.
 // Currently queried via raw SQL in services/geocoder.ts; this
 // declaration enables typed Drizzle reads as a follow-up.
