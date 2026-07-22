@@ -150,31 +150,6 @@ export const supercluster_sample = dataSchema.table("supercluster_sample", {
   id: integer(),
 });
 
-export const statistics_postal_code_data_collected = dataSchema.table(
-  "statistics_postal_code_data_collected",
-  {
-    postal_code: text(),
-    percentage: doublePrecision(),
-  },
-);
-
-export const statistics_postal_code_foundation_risk = dataSchema.table(
-  "statistics_postal_code_foundation_risk",
-  {
-    postal_code: text(),
-    foundation_risk: text(),
-    percentage: numeric(),
-  },
-);
-
-export const statistics_postal_code_foundation_type = dataSchema.table(
-  "statistics_postal_code_foundation_type",
-  {
-    postal_code: text(),
-    foundation_type: text(),
-    percentage: numeric(),
-  },
-);
 
 // Other views in the data schema not modeled here:
 //   building_geo_hierarchy (VIEW) — joins model_risk_static with geocoder
