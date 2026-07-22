@@ -12,7 +12,10 @@ import {
 } from "../db/schema/application.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
-import { handleDocumentUpload } from "../lib/upload-handler.ts";
+import {
+  handleDocumentUpload,
+  markFileResource,
+} from "../lib/upload-handler.ts";
 import { assertOrgPermission, isPlatformMember } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
@@ -378,6 +381,8 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
     return inq!;
   });
 
+  await markFileResource(`inquiry-report/${data.documentFile}`, "active");
+
   // Scope the reload to the data owner (may differ from the caller's org).
   const { row, attr } = await loadInquiryScoped(created.id, dataOwner);
   return c.json(toLegacyInquiry(row, attr));
@@ -432,6 +437,11 @@ inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) =
     }
   });
 
+  await markFileResource(`inquiry-report/${data.documentFile}`, "active");
+  if (row.documentFile !== data.documentFile) {
+    await markFileResource(`inquiry-report/${row.documentFile}`, "archived");
+  }
+
   return c.body(null, 204);
 });
 
@@ -448,6 +458,8 @@ inquiries.delete("/:id{[0-9]+}", async (c) => {
     await tx.delete(inquiry).where(eq(inquiry.id, id));
     await tx.delete(attribution).where(eq(attribution.id, row.attribution));
   });
+
+  await markFileResource(`inquiry-report/${row.documentFile}`, "archived");
 
   return c.body(null, 204);
 });

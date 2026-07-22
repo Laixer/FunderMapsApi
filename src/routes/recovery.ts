@@ -11,7 +11,10 @@ import {
   user,
 } from "../db/schema/application.ts";
 import { recovery, recoverySample } from "../db/schema/report.ts";
-import { handleDocumentUpload } from "../lib/upload-handler.ts";
+import {
+  handleDocumentUpload,
+  markFileResource,
+} from "../lib/upload-handler.ts";
 import { assertOrgPermission, isPlatformMember } from "../lib/auth-helpers.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import {
@@ -353,6 +356,8 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
     return rec!;
   });
 
+  await markFileResource(`recovery-report/${data.documentFile}`, "active");
+
   // Scope the reload to the data owner (may differ from the caller's org).
   const { row, attr } = await loadRecoveryScoped(created.id, dataOwner);
   return c.json(toLegacyRecovery(row, attr));
@@ -401,6 +406,11 @@ recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c)
     }
   });
 
+  await markFileResource(`recovery-report/${data.documentFile}`, "active");
+  if (row.documentFile !== data.documentFile) {
+    await markFileResource(`recovery-report/${row.documentFile}`, "archived");
+  }
+
   return c.body(null, 204);
 });
 
@@ -417,6 +427,8 @@ recoveries.delete("/:id{[0-9]+}", async (c) => {
     await tx.delete(recovery).where(eq(recovery.id, id));
     await tx.delete(attribution).where(eq(attribution.id, row.attribution));
   });
+
+  await markFileResource(`recovery-report/${row.documentFile}`, "archived");
 
   return c.body(null, 204);
 });
