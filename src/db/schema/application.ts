@@ -547,55 +547,6 @@ export const productTrackerMismatch = applicationSchema.table(
   },
 );
 
-// Legacy OAuth2 tables — superseded by Better Auth's oauth_* tables
-// but retained because the C# Webservice (still in production) reads
-// them. Will be dropped after C# Webservice retirement.
-export const authAccessToken = applicationSchema.table("auth_access_token", {
-  accessToken: text("access_token").primaryKey(),
-  ipAddress: text("ip_address").notNull(),
-  applicationId: text("application_id")
-    .notNull()
-    .references(() => application.applicationId),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  expiredAt: timestamp("expired_at", { withTimezone: true }).notNull(),
-});
-
-export const authCode = applicationSchema.table("auth_code", {
-  code: text().primaryKey(),
-  applicationId: text("application_id")
-    .notNull()
-    .references(() => application.applicationId),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  expiredAt: timestamp("expired_at", { withTimezone: true }).notNull(),
-  codeChallenge: text("code_challenge"),
-  codeChallengeMethod: text("code_challenge_method"),
-});
-
-export const authRefreshToken = applicationSchema.table("auth_refresh_token", {
-  token: text().primaryKey(),
-  applicationId: text("application_id")
-    .notNull()
-    .references(() => application.applicationId),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  expiredAt: timestamp("expired_at", { withTimezone: true }),
-});
-
 // Generic key/value store — legacy.
 export const keyStore = applicationSchema.table("key_store", {
   name: text().primaryKey(),
