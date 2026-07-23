@@ -106,6 +106,20 @@ Inquiry adds `inspection`, `jointMeasurement`, `floorMeasurement`,
 (default 0). Reports are ordered by `updateDate` (then `createDate`)
 descending; samples by ascending `id`.
 
+**Filtering & sorting (inquiry list only).** `GET /api/inquiry` additionally
+accepts:
+
+- `?status=` — one or more `auditStatus` wire integers, comma-separated
+  (e.g. `status=4` or `status=0,1,5`).
+- `?creator=` / `?reviewer=` — a user id; filters on the report's attribution.
+- `?sort=` — one of `id`, `document_name`, `type`, `document_date`, `creator`,
+  `reviewer`, `status` (creator/reviewer sort on the user's email). Combine
+  with `?order=asc|desc` (default `desc`). Without `sort`, the default
+  recency ordering above applies.
+
+Unknown sort columns, malformed status integers, and non-UUID
+creator/reviewer values return `400`.
+
 **Dates.** `documentDate` / `permitDate` / `recoveryDate` are date strings
 (`YYYY-MM-DD`). `record.*` timestamps are returned as ISO-8601 UTC.
 
