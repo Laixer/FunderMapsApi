@@ -1,7 +1,19 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, count, exists, ilike, or, sql, type SQL } from "drizzle-orm";
+import {
+  eq,
+  and,
+  asc,
+  count,
+  desc,
+  exists,
+  ilike,
+  inArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/client.ts";
 import {
@@ -213,6 +225,21 @@ inquiries.get("/building/:bid", async (c) => {
   return c.json(rows.map((r) => toLegacyInquiry(r.inquiry, r.attr)));
 });
 
+// Sortable columns for the list endpoint. Sorting by creator/reviewer sorts
+// on the joined user email — the same string the clients display.
+const LIST_SORT_COLUMNS = {
+  id: inquiry.id,
+  document_name: inquiry.documentName,
+  type: inquiry.type,
+  document_date: inquiry.documentDate,
+  creator: creatorU.email,
+  reviewer: reviewerU.email,
+  status: inquiry.auditStatus,
+} as const;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 inquiries.get("/", async (c) => {
   const scope = dataScope(c);
   const q = c.req.query("q")?.trim();
@@ -226,9 +253,48 @@ inquiries.get("/", async (c) => {
   if (scope !== null) where.push(eq(inquiry.dataOwnerOrganization, scope));
   if (q) where.push(buildInquirySearchPredicate(q));
 
+  // Column filters (ClientApp #263, item 8). `status` takes wire-format
+  // integers, comma-separated; `creator`/`reviewer` take a user id.
+  const statusParam = c.req.query("status");
+  if (statusParam) {
+    let statuses: string[];
+    try {
+      statuses = statusParam
+        .split(",")
+        .map((s) => intToEnum("audit_status", parseInt(s.trim(), 10))!);
+    } catch {
+      throw new ValidationError([`Invalid status filter: ${statusParam}`]);
+    }
+    where.push(inArray(inquiry.auditStatus, statuses));
+  }
+  for (const [param, column] of [
+    ["creator", attribution.creator],
+    ["reviewer", attribution.reviewer],
+  ] as const) {
+    const value = c.req.query(param);
+    if (!value) continue;
+    if (!UUID_RE.test(value)) {
+      throw new ValidationError([`Invalid ${param} filter: expected a user id`]);
+    }
+    where.push(eq(column, value));
+  }
+
+  const sortParam = c.req.query("sort");
+  if (sortParam && !(sortParam in LIST_SORT_COLUMNS)) {
+    throw new ValidationError([`Invalid sort column: ${sortParam}`]);
+  }
+  const sortColumn = sortParam
+    ? LIST_SORT_COLUMNS[sortParam as keyof typeof LIST_SORT_COLUMNS]
+    : null;
+  const orderBy = sortColumn
+    ? c.req.query("order") === "asc"
+      ? asc(sortColumn)
+      : desc(sortColumn)
+    : sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`;
+
   const rows = await inquirySelector()
     .where(and(...where))
-    .orderBy(sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`)
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
