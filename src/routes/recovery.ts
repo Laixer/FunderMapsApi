@@ -1,7 +1,17 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, count, exists, ilike, or, sql, type SQL } from "drizzle-orm";
+import {
+  eq,
+  and,
+  count,
+  exists,
+  ilike,
+  inArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/client.ts";
 import {
@@ -51,9 +61,15 @@ function activeOrgId(c: Context<AppEnv>): string {
 
 // Org scope for data access: FunderMaps staff (platform-org members) work
 // across all organizations, so their scope is null — no data-owner filter.
-// Everyone else is confined to their own org.
-function dataScope(c: Context<AppEnv>): string | null {
-  return isPlatformMember(c.get("user")) ? null : activeOrgId(c);
+// Everyone else sees data owned by ANY org they belong to.
+function dataScope(c: Context<AppEnv>): string[] | null {
+  const u = c.get("user");
+  if (isPlatformMember(u)) return null;
+  const ids = u.organizations.map((o) => o.id);
+  if (ids.length === 0) {
+    throw new ForbiddenError("User is not a member of any organization");
+  }
+  return ids;
 }
 
 function recoverySelector() {
@@ -84,13 +100,15 @@ function recoverySelector() {
 
 async function loadRecoveryScoped(
   id: number,
-  orgId: string | null,
+  orgIds: string[] | null,
 ): Promise<{ row: typeof recovery.$inferSelect; attr: AttributionView }> {
   const [hit] = await recoverySelector()
     .where(
       and(
         eq(recovery.id, id),
-        orgId === null ? undefined : eq(recovery.dataOwnerOrganization, orgId),
+        orgIds === null
+          ? undefined
+          : inArray(recovery.dataOwnerOrganization, orgIds),
       ),
     )
     .limit(1);
@@ -172,7 +190,11 @@ recoveries.get("/stats", async (c) => {
     .select({ value: count() })
     .from(recovery)
     .innerJoin(attribution, eq(attribution.id, recovery.attribution))
-    .where(scope === null ? undefined : eq(recovery.dataOwnerOrganization, scope));
+    .where(
+      scope === null
+        ? undefined
+        : inArray(recovery.dataOwnerOrganization, scope),
+    );
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
@@ -187,7 +209,9 @@ recoveries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(recoverySample.buildingId, buildingId),
-        scope === null ? undefined : eq(recovery.dataOwnerOrganization, scope),
+        scope === null
+          ? undefined
+          : inArray(recovery.dataOwnerOrganization, scope),
       ),
     )
     .groupBy(
@@ -217,7 +241,8 @@ recoveries.get("/", async (c) => {
   const offset = parseInt(c.req.query("offset") ?? "0");
 
   const where: SQL[] = [];
-  if (scope !== null) where.push(eq(recovery.dataOwnerOrganization, scope));
+  if (scope !== null)
+    where.push(inArray(recovery.dataOwnerOrganization, scope));
   if (q) where.push(buildRecoverySearchPredicate(q));
 
   const rows = await recoverySelector()
@@ -359,7 +384,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   await markFileResource(`recovery-report/${data.documentFile}`, "active");
 
   // Scope the reload to the data owner (may differ from the caller's org).
-  const { row, attr } = await loadRecoveryScoped(created.id, dataOwner);
+  const { row, attr } = await loadRecoveryScoped(created.id, [dataOwner]);
   return c.json(toLegacyRecovery(row, attr));
 });
 

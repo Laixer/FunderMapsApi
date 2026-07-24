@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { NotFoundError } from "../lib/errors.ts";
+import { billingOrgId } from "../lib/auth-helpers.ts";
 import { resolveToBuildingId } from "../services/geocoder.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -125,7 +126,7 @@ product.get("/statistics", async (c) => {
   ]);
 
   const currentUser = c.get("user");
-  const orgId = currentUser.organizations[0]?.id;
+  const orgId = billingOrgId(currentUser);
   if (orgId) {
     c.set("tracker", {
       product: "statistics",
@@ -193,7 +194,7 @@ product.get("/analysis", async (c) => {
     throw new NotFoundError("Analysis data not found");
 
   const currentUser = c.get("user");
-  const orgId = currentUser.organizations[0]?.id;
+  const orgId = billingOrgId(currentUser);
   if (orgId) {
     c.set("tracker", {
       product: "analysis",

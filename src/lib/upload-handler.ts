@@ -7,7 +7,7 @@ import {
 } from "./s3.ts";
 import { eq } from "drizzle-orm";
 import { ValidationError } from "./errors.ts";
-import { assertOrgPermission } from "./auth-helpers.ts";
+import { assertAnyOrgPermission } from "./auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
 import { db } from "../db/client.ts";
 import { fileResource } from "../db/schema/application.ts";
@@ -20,9 +20,9 @@ export async function handleDocumentUpload(
   folder: "inquiry-report" | "recovery-report",
 ): Promise<{ name: string }> {
   const u = c.get("user");
-  await assertOrgPermission(
+  await assertAnyOrgPermission(
     u.id,
-    u.organizations[0]?.id,
+    u.organizations.map((o) => o.id),
     folder === "inquiry-report" ? "inquiry" : "recovery",
     "write",
   );

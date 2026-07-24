@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution } from "../db/schema/application.ts";
@@ -20,7 +20,11 @@ function inquiryId(c: Context<AppEnv>): number {
   return id;
 }
 
-async function loadSampleScoped(sampleId: number, inqId: number, orgId: string | null) {
+async function loadSampleScoped(
+  sampleId: number,
+  inqId: number,
+  orgIds: string[] | null,
+) {
   const [hit] = await db
     .select({ s: inquirySample })
     .from(inquirySample)
@@ -30,7 +34,7 @@ async function loadSampleScoped(sampleId: number, inqId: number, orgId: string |
       and(
         eq(inquirySample.id, sampleId),
         eq(inquirySample.inquiry, inqId),
-        orgId === null ? undefined : eq(attribution.owner, orgId),
+        orgIds === null ? undefined : inArray(attribution.owner, orgIds),
       ),
     )
     .limit(1);

@@ -64,9 +64,15 @@ function activeOrgId(c: Context<AppEnv>): string {
 
 // Org scope for data access: FunderMaps staff (platform-org members) work
 // across all organizations, so their scope is null — no data-owner filter.
-// Everyone else is confined to their own org.
-function dataScope(c: Context<AppEnv>): string | null {
-  return isPlatformMember(c.get("user")) ? null : activeOrgId(c);
+// Everyone else sees data owned by ANY org they belong to.
+function dataScope(c: Context<AppEnv>): string[] | null {
+  const u = c.get("user");
+  if (isPlatformMember(u)) return null;
+  const ids = u.organizations.map((o) => o.id);
+  if (ids.length === 0) {
+    throw new ForbiddenError("User is not a member of any organization");
+  }
+  return ids;
 }
 
 // Single source of truth for the JOIN that backs every Inquiry response.
@@ -99,13 +105,15 @@ function inquirySelector() {
 
 async function loadInquiryScoped(
   id: number,
-  orgId: string | null,
+  orgIds: string[] | null,
 ): Promise<{ row: typeof inquiry.$inferSelect; attr: AttributionView }> {
   const [hit] = await inquirySelector()
     .where(
       and(
         eq(inquiry.id, id),
-        orgId === null ? undefined : eq(inquiry.dataOwnerOrganization, orgId),
+        orgIds === null
+          ? undefined
+          : inArray(inquiry.dataOwnerOrganization, orgIds),
       ),
     )
     .limit(1);
@@ -188,7 +196,11 @@ inquiries.get("/stats", async (c) => {
     .select({ value: count() })
     .from(inquiry)
     .innerJoin(attribution, eq(attribution.id, inquiry.attribution))
-    .where(scope === null ? undefined : eq(inquiry.dataOwnerOrganization, scope));
+    .where(
+      scope === null
+        ? undefined
+        : inArray(inquiry.dataOwnerOrganization, scope),
+    );
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
@@ -203,7 +215,9 @@ inquiries.get("/building/:bid", async (c) => {
     .where(
       and(
         eq(inquirySample.building, buildingId),
-        scope === null ? undefined : eq(inquiry.dataOwnerOrganization, scope),
+        scope === null
+          ? undefined
+          : inArray(inquiry.dataOwnerOrganization, scope),
       ),
     )
     .groupBy(
@@ -250,7 +264,8 @@ inquiries.get("/", async (c) => {
   const offset = parseInt(c.req.query("offset") ?? "0");
 
   const where: SQL[] = [];
-  if (scope !== null) where.push(eq(inquiry.dataOwnerOrganization, scope));
+  if (scope !== null)
+    where.push(inArray(inquiry.dataOwnerOrganization, scope));
   if (q) where.push(buildInquirySearchPredicate(q));
 
   // Column filters (ClientApp #263, item 8). `status` takes wire-format
@@ -450,7 +465,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   await markFileResource(`inquiry-report/${data.documentFile}`, "active");
 
   // Scope the reload to the data owner (may differ from the caller's org).
-  const { row, attr } = await loadInquiryScoped(created.id, dataOwner);
+  const { row, attr } = await loadInquiryScoped(created.id, [dataOwner]);
   return c.json(toLegacyInquiry(row, attr));
 });
 

@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
-import { and, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { auth } from "../lib/auth.ts";
+import { env } from "../config.ts";
 import { db } from "../db/client.ts";
 import {
   user,
@@ -28,7 +29,16 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
         organizationUser,
         eq(organization.id, organizationUser.organizationId),
       )
-      .where(eq(organizationUser.userId, userId)),
+      .where(eq(organizationUser.userId, userId))
+      // Deterministic order: platform org first (staff act as FunderMaps by
+      // default), then membership age. Consumers of organizations[0] —
+      // product billing, create attribution, the session-org endpoints —
+      // depend on this being stable across requests.
+      .orderBy(
+        desc(eq(organization.id, env.PLATFORM_ORGANIZATION_ID)),
+        organizationUser.createdAt,
+        organization.id,
+      ),
   ]);
 
   if (rows.length === 0) return null;
