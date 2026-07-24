@@ -8,6 +8,7 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "test": "bun test",
+    "enums:refresh": "bun run scripts/refresh-enum-snapshot.ts",
     "typecheck": "bun run --bun tsc --noEmit"
   },
   "overrides": {

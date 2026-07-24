@@ -207,6 +207,22 @@ const ENUMS = {
 
 type EnumName = keyof typeof ENUMS;
 
+export const ENUM_NAMES = Object.keys(ENUMS) as EnumName[];
+
+/**
+ * The (int, string) pairs backing one enum, in declaration order.
+ *
+ * Exposed for the contract test (enum-contract.test.ts), which checks these
+ * pairs against the checked-in snapshot of the two upstream sources of truth:
+ * the PG enum labels and the C# enum members. Nothing in the request path
+ * should need this — use intToEnum/enumToInt instead.
+ */
+export function enumEntries(name: EnumName): [number, string][] {
+  return [...ENUMS[name].toString.entries()];
+}
+
+export type { EnumName };
+
 // JSON wire (int) → DB string. Used when accepting input from ClientApp.
 export function intToEnum(name: EnumName, value: number | null | undefined): string | null {
   if (value === null || value === undefined) return null;

@@ -1,0 +1,1076 @@
+{
+  "enums": {
+    "access_policy": {
+      "pgType": "application.access_policy",
+      "pgLabels": [
+        "public",
+        "private"
+      ],
+      "csharpType": "AccessPolicy",
+      "csharpMembers": {
+        "Public": 0,
+        "Private": 1
+      },
+      "expectedPairs": [
+        [
+          0,
+          "public"
+        ],
+        [
+          1,
+          "private"
+        ]
+      ]
+    },
+    "audit_status": {
+      "pgType": "report.audit_status",
+      "pgLabels": [
+        "todo",
+        "pending",
+        "done",
+        "discarded",
+        "rejected",
+        "pending_review"
+      ],
+      "csharpType": "AuditStatus",
+      "csharpMembers": {
+        "Todo": 0,
+        "Pending": 1,
+        "Done": 2,
+        "Discarded": 3,
+        "PendingReview": 4,
+        "Rejected": 5
+      },
+      "expectedPairs": [
+        [
+          0,
+          "todo"
+        ],
+        [
+          1,
+          "pending"
+        ],
+        [
+          2,
+          "done"
+        ],
+        [
+          3,
+          "discarded"
+        ],
+        [
+          4,
+          "pending_review"
+        ],
+        [
+          5,
+          "rejected"
+        ]
+      ]
+    },
+    "construction_pile": {
+      "pgType": "report.construction_pile",
+      "pgLabels": [
+        "punched",
+        "broken",
+        "pinched",
+        "pressed",
+        "perished",
+        "decay",
+        "root_growth"
+      ],
+      "csharpType": "ConstructionPile",
+      "csharpMembers": {
+        "Punched": 0,
+        "Broken": 1,
+        "Pinched": 2,
+        "Pressed": 3,
+        "Perished": 4,
+        "Decay": 5,
+        "RootGrowth": 6
+      },
+      "expectedPairs": [
+        [
+          0,
+          "punched"
+        ],
+        [
+          1,
+          "broken"
+        ],
+        [
+          2,
+          "pinched"
+        ],
+        [
+          3,
+          "pressed"
+        ],
+        [
+          4,
+          "perished"
+        ],
+        [
+          5,
+          "decay"
+        ],
+        [
+          6,
+          "root_growth"
+        ]
+      ]
+    },
+    "crack_type": {
+      "pgType": "report.crack_type",
+      "pgLabels": [
+        "none",
+        "nil",
+        "small",
+        "mediocre",
+        "big"
+      ],
+      "csharpType": "CrackType",
+      "csharpMembers": {
+        "None": 0,
+        "Nil": 1,
+        "Small": 2,
+        "Mediocre": 3,
+        "Big": 4
+      },
+      "expectedPairs": [
+        [
+          0,
+          "none"
+        ],
+        [
+          1,
+          "nil"
+        ],
+        [
+          2,
+          "small"
+        ],
+        [
+          3,
+          "mediocre"
+        ],
+        [
+          4,
+          "big"
+        ]
+      ]
+    },
+    "enforcement_term": {
+      "pgType": "report.enforcement_term",
+      "pgLabels": [
+        "term05",
+        "term510",
+        "term1020",
+        "term5",
+        "term10",
+        "term15",
+        "term20",
+        "term25",
+        "term30",
+        "term40"
+      ],
+      "csharpType": "EnforcementTerm",
+      "csharpMembers": {
+        "Term05": 0,
+        "Term510": 1,
+        "Term1020": 2,
+        "Term5": 3,
+        "Term10": 4,
+        "Term15": 5,
+        "Term20": 6,
+        "Term25": 7,
+        "Term30": 8,
+        "Term40": 9
+      },
+      "expectedPairs": [
+        [
+          0,
+          "term05"
+        ],
+        [
+          1,
+          "term510"
+        ],
+        [
+          2,
+          "term1020"
+        ],
+        [
+          3,
+          "term5"
+        ],
+        [
+          4,
+          "term10"
+        ],
+        [
+          5,
+          "term15"
+        ],
+        [
+          6,
+          "term20"
+        ],
+        [
+          7,
+          "term25"
+        ],
+        [
+          8,
+          "term30"
+        ],
+        [
+          9,
+          "term40"
+        ]
+      ]
+    },
+    "facade": {
+      "pgType": "report.facade",
+      "pgLabels": [
+        "front",
+        "sidewall_left",
+        "sidewall_right",
+        "rear"
+      ],
+      "csharpType": "Facade",
+      "csharpMembers": {
+        "Front": 0,
+        "SidewallLeft": 1,
+        "SidewallRight": 2,
+        "Rear": 3
+      },
+      "expectedPairs": [
+        [
+          0,
+          "front"
+        ],
+        [
+          1,
+          "sidewall_left"
+        ],
+        [
+          2,
+          "sidewall_right"
+        ],
+        [
+          3,
+          "rear"
+        ]
+      ]
+    },
+    "facade_scan_risk": {
+      "pgType": "report.facade_scan_risk",
+      "pgLabels": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "csharpType": "FacadeScanRisk",
+      "csharpMembers": {
+        "A": 0,
+        "B": 1,
+        "C": 2,
+        "D": 3,
+        "E": 4
+      },
+      "expectedPairs": [
+        [
+          0,
+          "a"
+        ],
+        [
+          1,
+          "b"
+        ],
+        [
+          2,
+          "c"
+        ],
+        [
+          3,
+          "d"
+        ],
+        [
+          4,
+          "e"
+        ]
+      ]
+    },
+    "foundation_damage_cause": {
+      "pgType": "report.foundation_damage_cause",
+      "pgLabels": [
+        "drainage",
+        "construction_flaw",
+        "drystand",
+        "overcharge",
+        "overcharge_negative_cling",
+        "negative_cling",
+        "bio_infection",
+        "fungus_infection",
+        "bio_fungus_infection",
+        "foundation_flaw",
+        "construction_heave",
+        "subsidence",
+        "vegetation",
+        "gas",
+        "vibrations",
+        "partial_foundation_recovery",
+        "japanese_knotweed",
+        "groundwater_level_reduction"
+      ],
+      "csharpType": "FoundationDamageCause",
+      "csharpMembers": {
+        "Drainage": 0,
+        "ConstructionFlaw": 1,
+        "Drystand": 2,
+        "Overcharge": 3,
+        "OverchargeNegativeCling": 4,
+        "NegativeCling": 5,
+        "BioInfection": 6,
+        "FungusInfection": 8,
+        "BioFungusInfection": 9,
+        "FoundationFlaw": 10,
+        "ConstructionHeave": 11,
+        "Subsidence": 12,
+        "Vegetation": 13,
+        "Gas": 14,
+        "Vibrations": 15,
+        "PartialFoundationRecovery": 16,
+        "JapaneseKnotweed": 17,
+        "GroundwaterLevelReduction": 18
+      },
+      "expectedPairs": [
+        [
+          0,
+          "drainage"
+        ],
+        [
+          1,
+          "construction_flaw"
+        ],
+        [
+          2,
+          "drystand"
+        ],
+        [
+          3,
+          "overcharge"
+        ],
+        [
+          4,
+          "overcharge_negative_cling"
+        ],
+        [
+          5,
+          "negative_cling"
+        ],
+        [
+          6,
+          "bio_infection"
+        ],
+        [
+          8,
+          "fungus_infection"
+        ],
+        [
+          9,
+          "bio_fungus_infection"
+        ],
+        [
+          10,
+          "foundation_flaw"
+        ],
+        [
+          11,
+          "construction_heave"
+        ],
+        [
+          12,
+          "subsidence"
+        ],
+        [
+          13,
+          "vegetation"
+        ],
+        [
+          14,
+          "gas"
+        ],
+        [
+          15,
+          "vibrations"
+        ],
+        [
+          16,
+          "partial_foundation_recovery"
+        ],
+        [
+          17,
+          "japanese_knotweed"
+        ],
+        [
+          18,
+          "groundwater_level_reduction"
+        ]
+      ]
+    },
+    "foundation_damage_characteristics": {
+      "pgType": "report.foundation_damage_characteristics",
+      "pgLabels": [
+        "jamming_door_window",
+        "crack",
+        "skewed",
+        "crawlspace_flooding",
+        "threshold_above_subsurface",
+        "threshold_below_subsurface",
+        "crooked_floor_wall"
+      ],
+      "csharpType": "FoundationDamageCharacteristics",
+      "csharpMembers": {
+        "JammingDoorWindow": 0,
+        "Crack": 1,
+        "Skewed": 2,
+        "CrawlspaceFlooding": 3,
+        "ThresholdAboveSubsurface": 4,
+        "ThresholdBelowSubsurface": 5,
+        "CrookedFloorWall": 6
+      },
+      "expectedPairs": [
+        [
+          0,
+          "jamming_door_window"
+        ],
+        [
+          1,
+          "crack"
+        ],
+        [
+          2,
+          "skewed"
+        ],
+        [
+          3,
+          "crawlspace_flooding"
+        ],
+        [
+          4,
+          "threshold_above_subsurface"
+        ],
+        [
+          5,
+          "threshold_below_subsurface"
+        ],
+        [
+          6,
+          "crooked_floor_wall"
+        ]
+      ]
+    },
+    "foundation_quality": {
+      "pgType": "report.foundation_quality",
+      "pgLabels": [
+        "bad",
+        "mediocre",
+        "tolerable",
+        "good",
+        "mediocre_good",
+        "mediocre_bad"
+      ],
+      "csharpType": "FoundationQuality",
+      "csharpMembers": {
+        "Bad": 0,
+        "Mediocre": 1,
+        "Tolerable": 2,
+        "Good": 3,
+        "MediocreGood": 4,
+        "MediocreBad": 5
+      },
+      "expectedPairs": [
+        [
+          0,
+          "bad"
+        ],
+        [
+          1,
+          "mediocre"
+        ],
+        [
+          2,
+          "tolerable"
+        ],
+        [
+          3,
+          "good"
+        ],
+        [
+          4,
+          "mediocre_good"
+        ],
+        [
+          5,
+          "mediocre_bad"
+        ]
+      ]
+    },
+    "foundation_type": {
+      "pgType": "report.foundation_type",
+      "pgLabels": [
+        "wood",
+        "concrete",
+        "no_pile",
+        "wood_charger",
+        "weighted_pile",
+        "combined",
+        "steel_pile",
+        "other",
+        "no_pile_masonry",
+        "no_pile_strips",
+        "no_pile_concrete_floor",
+        "no_pile_slit",
+        "wood_amsterdam",
+        "wood_rotterdam",
+        "no_pile_bearing_floor",
+        "wood_rotterdam_amsterdam",
+        "wood_rotterdam_arch",
+        "wood_amsterdam_arch"
+      ],
+      "csharpType": "FoundationType",
+      "csharpMembers": {
+        "Wood": 0,
+        "WoodAmsterdam": 1,
+        "WoodRotterdam": 2,
+        "Concrete": 3,
+        "NoPile": 4,
+        "NoPileMasonry": 5,
+        "NoPileStrips": 6,
+        "NoPileBearingFloor": 7,
+        "NoPileConcreteFloor": 8,
+        "NoPileSlit": 9,
+        "WoodCharger": 10,
+        "WeightedPile": 11,
+        "Combined": 12,
+        "SteelPile": 13,
+        "Other": 14,
+        "WoodRotterdamAmsterdam": 15,
+        "WoodRotterdamArch": 16,
+        "WoodAmsterdamArch": 17
+      },
+      "expectedPairs": [
+        [
+          0,
+          "wood"
+        ],
+        [
+          1,
+          "wood_amsterdam"
+        ],
+        [
+          2,
+          "wood_rotterdam"
+        ],
+        [
+          3,
+          "concrete"
+        ],
+        [
+          4,
+          "no_pile"
+        ],
+        [
+          5,
+          "no_pile_masonry"
+        ],
+        [
+          6,
+          "no_pile_strips"
+        ],
+        [
+          7,
+          "no_pile_bearing_floor"
+        ],
+        [
+          8,
+          "no_pile_concrete_floor"
+        ],
+        [
+          9,
+          "no_pile_slit"
+        ],
+        [
+          10,
+          "wood_charger"
+        ],
+        [
+          11,
+          "weighted_pile"
+        ],
+        [
+          12,
+          "combined"
+        ],
+        [
+          13,
+          "steel_pile"
+        ],
+        [
+          14,
+          "other"
+        ],
+        [
+          15,
+          "wood_rotterdam_amsterdam"
+        ],
+        [
+          16,
+          "wood_rotterdam_arch"
+        ],
+        [
+          17,
+          "wood_amsterdam_arch"
+        ]
+      ]
+    },
+    "inquiry_type": {
+      "pgType": "report.inquiry_type",
+      "pgLabels": [
+        "monitoring",
+        "note",
+        "quickscan",
+        "unknown",
+        "demolition_research",
+        "second_opinion",
+        "archive_research",
+        "architectural_research",
+        "foundation_advice",
+        "inspectionpit",
+        "foundation_research",
+        "additional_research",
+        "ground_water_level_research",
+        "soil_investigation",
+        "facade_scan"
+      ],
+      "csharpType": "InquiryType",
+      "csharpMembers": {
+        "AdditionalResearch": 0,
+        "Monitoring": 1,
+        "Note": 2,
+        "Quickscan": 3,
+        "Unknown": 4,
+        "DemolitionResearch": 5,
+        "SecondOpinion": 6,
+        "ArchiveResearch": 7,
+        "ArchitecturalResearch": 8,
+        "FoundationAdvice": 9,
+        "Inspectionpit": 10,
+        "FoundationResearch": 11,
+        "GroundWaterLevelResearch": 12,
+        "SoilInvestigation": 13,
+        "FacadeScan": 14
+      },
+      "expectedPairs": [
+        [
+          0,
+          "additional_research"
+        ],
+        [
+          1,
+          "monitoring"
+        ],
+        [
+          2,
+          "note"
+        ],
+        [
+          3,
+          "quickscan"
+        ],
+        [
+          4,
+          "unknown"
+        ],
+        [
+          5,
+          "demolition_research"
+        ],
+        [
+          6,
+          "second_opinion"
+        ],
+        [
+          7,
+          "archive_research"
+        ],
+        [
+          8,
+          "architectural_research"
+        ],
+        [
+          9,
+          "foundation_advice"
+        ],
+        [
+          10,
+          "inspectionpit"
+        ],
+        [
+          11,
+          "foundation_research"
+        ],
+        [
+          12,
+          "ground_water_level_research"
+        ],
+        [
+          13,
+          "soil_investigation"
+        ],
+        [
+          14,
+          "facade_scan"
+        ]
+      ]
+    },
+    "pile_type": {
+      "pgType": "report.pile_type",
+      "pgLabels": [
+        "press",
+        "internally_driven",
+        "segment"
+      ],
+      "csharpType": "PileType",
+      "csharpMembers": {
+        "Press": 0,
+        "InternallyDriven": 1,
+        "Segment": 2
+      },
+      "expectedPairs": [
+        [
+          0,
+          "press"
+        ],
+        [
+          1,
+          "internally_driven"
+        ],
+        [
+          2,
+          "segment"
+        ]
+      ]
+    },
+    "quality": {
+      "pgType": "report.quality",
+      "pgLabels": [
+        "nil",
+        "small",
+        "mediocre",
+        "large"
+      ],
+      "csharpType": "Quality",
+      "csharpMembers": {
+        "Nil": 0,
+        "Small": 1,
+        "Mediocre": 2,
+        "Large": 3
+      },
+      "expectedPairs": [
+        [
+          0,
+          "nil"
+        ],
+        [
+          1,
+          "small"
+        ],
+        [
+          2,
+          "mediocre"
+        ],
+        [
+          3,
+          "large"
+        ]
+      ]
+    },
+    "recovery_document_type": {
+      "pgType": "report.recovery_document_type",
+      "pgLabels": [
+        "permit",
+        "foundation_report",
+        "archive_report",
+        "owner_evidence",
+        "unknown"
+      ],
+      "csharpType": "RecoveryDocumentType",
+      "csharpMembers": {
+        "Permit": 0,
+        "FoundationReport": 1,
+        "ArchiveReport": 2,
+        "OwnerEvidence": 3,
+        "Unknown": 4
+      },
+      "expectedPairs": [
+        [
+          0,
+          "permit"
+        ],
+        [
+          1,
+          "foundation_report"
+        ],
+        [
+          2,
+          "archive_report"
+        ],
+        [
+          3,
+          "owner_evidence"
+        ],
+        [
+          4,
+          "unknown"
+        ]
+      ]
+    },
+    "recovery_status": {
+      "pgType": "report.recovery_status",
+      "pgLabels": [
+        "planned",
+        "requested",
+        "executed"
+      ],
+      "csharpType": "RecoveryStatus",
+      "csharpMembers": {
+        "Planned": 0,
+        "Requested": 1,
+        "Executed": 2
+      },
+      "expectedPairs": [
+        [
+          0,
+          "planned"
+        ],
+        [
+          1,
+          "requested"
+        ],
+        [
+          2,
+          "executed"
+        ]
+      ]
+    },
+    "recovery_type": {
+      "pgType": "report.recovery_type",
+      "pgLabels": [
+        "table",
+        "beam_on_pile",
+        "pile_lowering",
+        "pile_in_wall",
+        "injection",
+        "unknown"
+      ],
+      "csharpType": "RecoveryType",
+      "csharpMembers": {
+        "Table": 0,
+        "BeamOnPile": 1,
+        "PileLowering": 2,
+        "PileInWall": 3,
+        "Injection": 4,
+        "Unknown": 5
+      },
+      "expectedPairs": [
+        [
+          0,
+          "table"
+        ],
+        [
+          1,
+          "beam_on_pile"
+        ],
+        [
+          2,
+          "pile_lowering"
+        ],
+        [
+          3,
+          "pile_in_wall"
+        ],
+        [
+          4,
+          "injection"
+        ],
+        [
+          5,
+          "unknown"
+        ]
+      ]
+    },
+    "rotation_type": {
+      "pgType": "report.rotation_type",
+      "pgLabels": [
+        "nil",
+        "small",
+        "mediocre",
+        "big",
+        "very_big"
+      ],
+      "csharpType": "RotationType",
+      "csharpMembers": {
+        "Nil": 0,
+        "Small": 1,
+        "Mediocre": 2,
+        "Big": 3,
+        "VeryBig": 4
+      },
+      "expectedPairs": [
+        [
+          0,
+          "nil"
+        ],
+        [
+          1,
+          "small"
+        ],
+        [
+          2,
+          "mediocre"
+        ],
+        [
+          3,
+          "big"
+        ],
+        [
+          4,
+          "very_big"
+        ]
+      ]
+    },
+    "substructure": {
+      "pgType": "report.substructure",
+      "pgLabels": [
+        "basement",
+        "cellar",
+        "crawlspace",
+        "none"
+      ],
+      "csharpType": "Substructure",
+      "csharpMembers": {
+        "Cellar": 0,
+        "Basement": 1,
+        "Crawlspace": 2,
+        "None": 3
+      },
+      "expectedPairs": [
+        [
+          0,
+          "cellar"
+        ],
+        [
+          1,
+          "basement"
+        ],
+        [
+          2,
+          "crawlspace"
+        ],
+        [
+          3,
+          "none"
+        ]
+      ]
+    },
+    "wood_encroachment": {
+      "pgType": "report.wood_encroachment",
+      "pgLabels": [
+        "fungus_infection",
+        "bio_fungus_infection",
+        "bio_infection"
+      ],
+      "csharpType": "WoodEncroachment",
+      "csharpMembers": {
+        "FungusInfection": 0,
+        "BioFungusInfection": 1,
+        "BioInfection": 2
+      },
+      "expectedPairs": [
+        [
+          0,
+          "fungus_infection"
+        ],
+        [
+          1,
+          "bio_fungus_infection"
+        ],
+        [
+          2,
+          "bio_infection"
+        ]
+      ]
+    },
+    "wood_quality": {
+      "pgType": "report.wood_quality",
+      "pgLabels": [
+        "area1",
+        "area2",
+        "area3",
+        "area4"
+      ],
+      "csharpType": "WoodQuality",
+      "csharpMembers": {
+        "Area1": 0,
+        "Area2": 1,
+        "Area3": 2,
+        "Area4": 3
+      },
+      "expectedPairs": [
+        [
+          0,
+          "area1"
+        ],
+        [
+          1,
+          "area2"
+        ],
+        [
+          2,
+          "area3"
+        ],
+        [
+          3,
+          "area4"
+        ]
+      ]
+    },
+    "wood_type": {
+      "pgType": "report.wood_type",
+      "pgLabels": [
+        "pine",
+        "spruce"
+      ],
+      "csharpType": "WoodType",
+      "csharpMembers": {
+        "Pine": 0,
+        "Spruce": 1
+      },
+      "expectedPairs": [
+        [
+          0,
+          "pine"
+        ],
+        [
+          1,
+          "spruce"
+        ]
+      ]
+    }
+  }
+}
