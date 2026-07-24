@@ -60,7 +60,6 @@ Better Auth routes mount at `/api/auth/*`. The FunderMaps-specific admin surface
 
 Public (no auth):
 - `GET /health` — liveness
-- `/api/diag` — request echo / forwarded-IP probe
 - `/api/geocoder` — building/address/residence/neighborhood/district/municipality/state lookup
 - `/api/mapset` — layer set metadata
 - `/api/data/contractor` — contractor reference data

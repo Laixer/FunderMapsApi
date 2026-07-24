@@ -11,7 +11,6 @@ import { trackerMiddleware } from "./middleware/tracker.ts";
 import type { AppEnv } from "./types/context.ts";
 
 // Routes
-import diagRoutes from "./routes/diag.ts";
 import contractorRoutes from "./routes/contractor.ts";
 import geocoderRoutes from "./routes/geocoder.ts";
 import userRoutes from "./routes/user.ts";
@@ -66,7 +65,6 @@ app.on(["POST", "GET"], "/api/auth/*", (c) => {
 });
 
 // Public routes
-app.route("/api/diag", diagRoutes);
 app.route("/api/geocoder", geocoderRoutes);
 
 // Public routes (continued)
