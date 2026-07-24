@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../../db/client.ts";
 import {
   organization,
@@ -628,6 +628,50 @@ orgs.delete("/:org_id/neighborhood", zValidator("json", neighborhoodSchema), asy
     );
 
   return c.body(null, 204);
+});
+
+// Billable product usage for one organization, read straight off
+// application.product_tracker. That table is a TimescaleDB hypertable and
+// already carries a (organization_id, product, identifier, create_date)
+// index, so this stays an index scan rather than a 26M-row seq scan.
+//
+// Deliberately narrow: Grafana (analytics.fundermaps.com) owns trends, time
+// series and alerting. This endpoint answers the one question you have while
+// already looking at an organization — "what is this customer consuming right
+// now" — next to their rate limits.
+//
+// Both windows are counted in a single pass. The WHERE floor uses least() of
+// the two because neither window always contains the other: month-to-date is
+// shorter than 30 days for most of a month, but longer on the 31st.
+orgs.get("/:org_id/usage", async (c) => {
+  const orgId = c.req.param("org_id");
+
+  const rows = await db.execute(sql`
+    SELECT
+      product,
+      count(*) FILTER (WHERE create_date >= date_trunc('month', now())) AS month_to_date,
+      count(*) FILTER (WHERE create_date >= now() - interval '30 days') AS last_30_days
+    FROM application.product_tracker
+    WHERE organization_id = ${orgId}
+      AND create_date >= least(date_trunc('month', now()), now() - interval '30 days')
+    GROUP BY product
+    ORDER BY 3 DESC, 1 ASC
+  `);
+
+  // count() arrives as a bigint, which postgres.js hands back as a string.
+  const products = [...rows].map((r) => ({
+    product: String(r.product),
+    month_to_date: Number(r.month_to_date),
+    last_30_days: Number(r.last_30_days),
+  }));
+
+  return c.json({
+    products,
+    total: {
+      month_to_date: products.reduce((sum, p) => sum + p.month_to_date, 0),
+      last_30_days: products.reduce((sum, p) => sum + p.last_30_days, 0),
+    },
+  });
 });
 
 export default orgs;
