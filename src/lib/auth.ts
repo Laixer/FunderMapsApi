@@ -154,6 +154,22 @@ export const auth = betterAuth({
       // those ids.
       generateId: () => crypto.randomUUID(),
     },
+    ipAddress: {
+      // DO App Platform fronts the app with a Cloudflare-based edge, so
+      // `x-forwarded-for` arrives as "<client>, <edge>" — and a client can
+      // prepend anything it likes ("9.9.9.9, <client>, <edge>"). BA only
+      // trusts a SINGLE-valued x-forwarded-for when no trustedProxies are
+      // configured, so from the 2026-07-19 deploy onward every session was
+      // written with ip_address = "" (getIp -> null -> "").
+      //
+      // `do-connecting-ip` is set by the edge and *overwritten* on every
+      // request (verified: sending our own value is discarded), so it is the
+      // one unspoofable single-value client IP available here. x-real-ip and
+      // cf-connecting-ip are stripped/rejected at the edge — don't add them.
+      //
+      // DO-specific: revisit if we ever move off App Platform.
+      ipAddressHeaders: ["do-connecting-ip"],
+    },
   },
   plugins: [
     bearer(),
