@@ -17,6 +17,18 @@ export function isPlatformMember(user: {
   return user.organizations.some((o) => o.id === env.PLATFORM_ORGANIZATION_ID);
 }
 
+// The org product usage is attributed (billed) to: staff usage always lands
+// on the platform org — never on a customer org they happen to be a member
+// of. Everyone else is billed on their first org, which the auth middleware
+// orders deterministically (platform first, then membership age).
+export function billingOrgId(user: {
+  organizations: { id: string }[];
+}): string | undefined {
+  return isPlatformMember(user)
+    ? env.PLATFORM_ORGANIZATION_ID
+    : user.organizations[0]?.id;
+}
+
 async function getOrgRole(
   userId: string,
   orgId: string,
@@ -80,4 +92,20 @@ export async function assertOrgPermission(
   if (!role || !(await roleGrants(orgId, role, resource, action))) {
     throw new ForbiddenError(`'${action}' permission on ${resource} required`);
   }
+}
+
+// Pass when ANY of the user's orgs grants the permission — for actions not
+// yet tied to a specific org (e.g. a document upload before the file is
+// attached to an inquiry/recovery record).
+export async function assertAnyOrgPermission(
+  userId: string,
+  orgIds: string[],
+  resource: OrgResource,
+  action: OrgAction,
+): Promise<void> {
+  for (const orgId of orgIds) {
+    const role = await getOrgRole(userId, orgId);
+    if (role && (await roleGrants(orgId, role, resource, action))) return;
+  }
+  throw new ForbiddenError(`'${action}' permission on ${resource} required`);
 }
