@@ -17,34 +17,56 @@ mapset.get("/", authMiddleware, async (c) => {
 
   if (orgIds.length === 0) return c.json([]);
 
-  // Fence subqueries union all geolocks across every org the user is in,
-  // not just whichever org-mapset row survives DISTINCT ON. Rationale: if
-  // ANY of the user's orgs locks them to a region, that lock should apply
-  // (most-restrictive). For Yorick (FunderMaps no-lock + Laixer locked to
-  // GM0606), the previous correlated-subquery approach could pick either
-  // org's fence depending on dedupe order — frequently null.
+  // Fencing is per-mapset, least-restrictive across the orgs that GRANT the
+  // mapset: if any granting org has no geolocks at all, the mapset is
+  // unfenced (NULL); otherwise the fence is the union of the granting orgs'
+  // locks. Orgs the user is in that don't grant the mapset get no say — the
+  // previous user-level union meant joining one locked customer org fenced
+  // a staff member's entire (nationwide) map to that customer's region.
   const rows = await db.execute(sql`
-    SELECT DISTINCT ON (c.id)
+    WITH grants AS (
+      SELECT om.mapset_id, array_agg(om.organization_id) AS org_ids
+      FROM application.organization_mapset om
+      WHERE ${inArray(sql`om.organization_id`, orgIds)}
+      GROUP BY om.mapset_id
+    ),
+    fences AS (
+      SELECT
+        g.mapset_id,
+        CASE WHEN u.unlocked THEN NULL ELSE (
+          SELECT array_agg(DISTINCT neighborhood_id)
+          FROM application.organization_geolock_neighborhood
+          WHERE organization_id = ANY (g.org_ids)
+        ) END AS fence_neighborhood,
+        CASE WHEN u.unlocked THEN NULL ELSE (
+          SELECT array_agg(DISTINCT district_id)
+          FROM application.organization_geolock_district
+          WHERE organization_id = ANY (g.org_ids)
+        ) END AS fence_district,
+        CASE WHEN u.unlocked THEN NULL ELSE (
+          SELECT array_agg(DISTINCT municipality_id)
+          FROM application.organization_geolock_municipality
+          WHERE organization_id = ANY (g.org_ids)
+        ) END AS fence_municipality
+      FROM grants g
+      CROSS JOIN LATERAL (
+        -- "unlocked" = the org has no rows in ANY of the three geolock
+        -- tables. An org locked at only one level (e.g. district) still
+        -- counts as locked for all levels.
+        SELECT EXISTS (
+          SELECT 1 FROM unnest(g.org_ids) AS granting(org_id)
+          WHERE NOT EXISTS (SELECT 1 FROM application.organization_geolock_municipality m WHERE m.organization_id = granting.org_id)
+            AND NOT EXISTS (SELECT 1 FROM application.organization_geolock_district d WHERE d.organization_id = granting.org_id)
+            AND NOT EXISTS (SELECT 1 FROM application.organization_geolock_neighborhood n WHERE n.organization_id = granting.org_id)
+        ) AS unlocked
+      ) u
+    )
+    SELECT
       c.id, c.name, c.slug, c.style, c.metadata, c.public, c.consent,
       c.note, c.icon, c."order", c.layerset,
-      (
-        SELECT array_agg(DISTINCT neighborhood_id)
-        FROM application.organization_geolock_neighborhood
-        WHERE ${inArray(sql`organization_id`, orgIds)}
-      ) AS fence_neighborhood,
-      (
-        SELECT array_agg(DISTINCT district_id)
-        FROM application.organization_geolock_district
-        WHERE ${inArray(sql`organization_id`, orgIds)}
-      ) AS fence_district,
-      (
-        SELECT array_agg(DISTINCT municipality_id)
-        FROM application.organization_geolock_municipality
-        WHERE ${inArray(sql`organization_id`, orgIds)}
-      ) AS fence_municipality
+      f.fence_neighborhood, f.fence_district, f.fence_municipality
     FROM application.mapset_collection c
-    JOIN application.organization_mapset om ON om.mapset_id = c.id
-    WHERE ${inArray(sql`om.organization_id`, orgIds)}
+    JOIN fences f ON f.mapset_id = c.id
   `);
 
   return c.json(rows);
