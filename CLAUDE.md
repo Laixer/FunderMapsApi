@@ -76,7 +76,7 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/pdf` — async PDF generation through the worker
 
 Admin-only (`/api/management/*` — gated by `adminMiddleware`):
-- `app`, `incident` (delete), `jobs`, `layer`, `mapset`, `organization`, `session`, `user`
+- `app`, `jobs`, `layer`, `mapset`, `organization`, `session`, `user`
 
 ## What's NOT Yet Implemented
 
