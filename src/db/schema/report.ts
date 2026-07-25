@@ -10,6 +10,7 @@ import {
   numeric,
   serial,
   uuid,
+  bigint,
 } from "drizzle-orm/pg-core";
 import { attribution } from "./application.ts";
 
@@ -192,5 +193,40 @@ export const recoverySample = reportSchema.table("recovery_sample", {
   recoveryDate: date("recovery_date"),
   contractor: integer("contractor_id"),
   buildingId: text("building_id").notNull(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
+});
+
+/**
+ * Append-only trail of what happened to a dossier.
+ *
+ * Exactly one of `inquiry` / `recovery` / `incident` is set — a CHECK in the DB
+ * enforces it. `actor` is null when the actor was not a person (a pipeline step,
+ * a Windmill flow) or when that user has since been deleted: the FK nulls the
+ * column rather than dropping the row, because that something happened outlives
+ * who did it.
+ *
+ * The API role holds INSERT and SELECT and nothing else, so rows cannot be
+ * amended or removed by the service that writes them. Do not add an update or
+ * delete path here — it would fail at the grant anyway.
+ */
+export const dossierEvent = reportSchema.table("dossier_event", {
+  id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  createDate: timestamp("create_date", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  kind: text().notNull(),
+  inquiry: integer("inquiry_id").references(() => inquiry.id, {
+    onDelete: "cascade",
+  }),
+  recovery: integer("recovery_id").references(() => recovery.id, {
+    onDelete: "cascade",
+  }),
+  incident: text("incident_id").references(() => incident.id, {
+    onDelete: "cascade",
+  }),
+  actor: uuid(),
+  /** Human prose the event carried — a rejection motivation, an import source. */
+  note: text(),
+  /** Structured payload for machine-made events (artifact, confidence, field). */
   metadata: jsonb().$type<Record<string, unknown>>(),
 });

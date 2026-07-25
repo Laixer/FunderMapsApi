@@ -35,6 +35,7 @@ import {
   type AttributionView,
 } from "../lib/inquiry-serializer.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
+import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import {
   sendApprovedEmail,
@@ -459,6 +460,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
         auditStatus: "todo",
       })
       .returning();
+    await recordEvent({ inquiry: inq!.id }, "created", { actor: u.id }, tx);
     return inq!;
   });
 
@@ -602,7 +604,12 @@ inquiries.post("/:id{[0-9]+}/status_review", async (c) => {
 
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
-  await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+  // Status change and trail entry commit together — a trail that can silently
+  // miss entries reads as authoritative while being wrong.
+  await db.transaction(async (tx) => {
+    await tx.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+    await recordEvent({ inquiry: id }, "submitted", { actor: u.id }, tx);
+  });
 
   await sendReviewRequestedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
@@ -624,7 +631,13 @@ inquiries.post(
 
     const { row, attr } = await loadInquiryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
-    await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+    await db.transaction(async (tx) => {
+      await tx.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+      // The motivation was previously handed to Mailgun and stored nowhere, so
+      // the person who has to fix the report could only learn why from their
+      // inbox — one api-prod without MAILGUN_* envs away from nowhere at all.
+      await recordEvent({ inquiry: id }, "rejected", { actor: u.id, note: message }, tx);
+    });
 
     await sendRejectedEmail({
       ...(await emailContext({ ...row, auditStatus: next }, attr)),
@@ -642,7 +655,10 @@ inquiries.post("/:id{[0-9]+}/status_approved", async (c) => {
 
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
-  await db.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+  await db.transaction(async (tx) => {
+    await tx.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
+    await recordEvent({ inquiry: id }, "approved", { actor: u.id }, tx);
+  });
 
   await sendApprovedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
@@ -656,12 +672,34 @@ inquiries.post("/:id{[0-9]+}/reset", async (c) => {
 
   const { row } = await loadInquiryScoped(id, dataScope(c));
   // C# uses TransitionToPending which is unconditional.
-  await db
-    .update(inquiry)
-    .set({ auditStatus: "pending" })
-    .where(eq(inquiry.id, id));
-  void row;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(inquiry)
+      .set({ auditStatus: "pending" })
+      .where(eq(inquiry.id, id));
+    // Worth recording which state it was pulled back out of: reopening an
+    // approved dossier is a very different act from reopening a rejected one.
+    await recordEvent(
+      { inquiry: id },
+      "reopened",
+      { actor: u.id, metadata: { from: row.auditStatus } },
+      tx,
+    );
+  });
   return c.body(null, 204);
+});
+
+/**
+ * The dossier's trail, oldest first.
+ *
+ * Scoped through `loadInquiryScoped` so it inherits the same org/data-owner
+ * check as reading the dossier itself — the trail names people and carries
+ * rejection motivations, so it is no less sensitive than the record.
+ */
+inquiries.get("/:id{[0-9]+}/events", async (c) => {
+  const id = parseInt(c.req.param("id"));
+  await loadInquiryScoped(id, dataScope(c));
+  return c.json(await listEvents({ inquiry: id }));
 });
 
 export default inquiries;
