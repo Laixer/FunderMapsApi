@@ -38,6 +38,7 @@ import {
   sendRejectedEmail,
   sendReviewRequestedEmail,
 } from "../lib/recovery-emails.ts";
+import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
@@ -378,6 +379,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
         auditStatus: "todo",
       })
       .returning();
+    await recordEvent({ recovery: rec!.id }, "created", { actor: u.id }, tx);
     return rec!;
   });
 
@@ -513,7 +515,12 @@ recoveries.post("/:id{[0-9]+}/status_review", async (c) => {
 
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "pending_review");
-  await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+  // Status change and trail entry commit together — a trail that can silently
+  // miss entries reads as authoritative while being wrong.
+  await db.transaction(async (tx) => {
+    await tx.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+    await recordEvent({ recovery: id }, "submitted", { actor: u.id }, tx);
+  });
 
   await sendReviewRequestedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
@@ -535,7 +542,11 @@ recoveries.post(
 
     const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
     const next = transitionStatus(row.auditStatus, "rejected");
-    await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+    await db.transaction(async (tx) => {
+      await tx.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+      // The motivation was previously handed to Mailgun and stored nowhere.
+      await recordEvent({ recovery: id }, "rejected", { actor: u.id, note: message }, tx);
+    });
 
     await sendRejectedEmail({
       ...(await emailContext({ ...row, auditStatus: next }, attr)),
@@ -553,7 +564,10 @@ recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
 
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   const next = transitionStatus(row.auditStatus, "done");
-  await db.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+  await db.transaction(async (tx) => {
+    await tx.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
+    await recordEvent({ recovery: id }, "approved", { actor: u.id }, tx);
+  });
 
   await sendApprovedEmail(await emailContext({ ...row, auditStatus: next }, attr));
   return c.body(null, 204);
@@ -566,12 +580,34 @@ recoveries.post("/:id{[0-9]+}/reset", async (c) => {
   await assertOrgPermission(u.id, orgId, "recovery", "write");
 
   const { row } = await loadRecoveryScoped(id, dataScope(c));
-  await db
-    .update(recovery)
-    .set({ auditStatus: "pending" })
-    .where(eq(recovery.id, id));
-  void row;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(recovery)
+      .set({ auditStatus: "pending" })
+      .where(eq(recovery.id, id));
+    // Which state it was pulled back out of: reopening an approved dossier is a
+    // very different act from reopening a rejected one.
+    await recordEvent(
+      { recovery: id },
+      "reopened",
+      { actor: u.id, metadata: { from: row.auditStatus } },
+      tx,
+    );
+  });
   return c.body(null, 204);
+});
+
+/**
+ * The dossier's trail, oldest first.
+ *
+ * Scoped through `loadRecoveryScoped` so it inherits the same org/data-owner
+ * check as reading the dossier itself — the trail names people and carries
+ * rejection motivations, so it is no less sensitive than the record.
+ */
+recoveries.get("/:id{[0-9]+}/events", async (c) => {
+  const id = parseInt(c.req.param("id"));
+  await loadRecoveryScoped(id, dataScope(c));
+  return c.json(await listEvents({ recovery: id }));
 });
 
 export default recoveries;
