@@ -34,7 +34,7 @@ import {
   toLegacyInquiry,
   type AttributionView,
 } from "../lib/inquiry-serializer.ts";
-import { getDownloadUrl } from "../lib/s3.ts";
+import { describeDocumentFile } from "../lib/document-file.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import {
@@ -362,11 +362,12 @@ inquiries.get("/:id{[0-9]+}", async (c) => {
   return c.json(toLegacyInquiry(row, attr));
 });
 
+// `accessLink` is unchanged; the rest is additive, so existing callers are
+// unaffected. See lib/document-file.ts for why the name has to be looked up.
 inquiries.get("/:id{[0-9]+}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row } = await loadInquiryUnscoped(id);
-  const link = await getDownloadUrl(`inquiry-report/${row.documentFile}`, 1);
-  return c.json({ accessLink: link });
+  return c.json(await describeDocumentFile("inquiry-report", row.documentFile));
 });
 
 // ─────────────────────────────────────────────────────────────────────────
