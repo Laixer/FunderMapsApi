@@ -31,7 +31,7 @@ import {
   toLegacyRecovery,
 } from "../lib/recovery-serializer.ts";
 import type { AttributionView } from "../lib/inquiry-serializer.ts";
-import { getDownloadUrl } from "../lib/s3.ts";
+import { describeDocumentFile } from "../lib/document-file.ts";
 import {
   type RecoveryEmailContext,
   sendApprovedEmail,
@@ -290,11 +290,11 @@ recoveries.get("/:id{[0-9]+}", async (c) => {
   return c.json(toLegacyRecovery(row, attr));
 });
 
+// `accessLink` is unchanged; the rest is additive. See lib/document-file.ts.
 recoveries.get("/:id{[0-9]+}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row } = await loadRecoveryUnscoped(id);
-  const link = await getDownloadUrl(`recovery-report/${row.documentFile}`, 1);
-  return c.json({ accessLink: link });
+  return c.json(await describeDocumentFile("recovery-report", row.documentFile));
 });
 
 // ─────────────────────────────────────────────────────────────────────────
