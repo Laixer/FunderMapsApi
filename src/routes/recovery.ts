@@ -5,6 +5,7 @@ import {
   eq,
   and,
   count,
+  desc,
   exists,
   ilike,
   inArray,
@@ -227,7 +228,10 @@ recoveries.get("/building/:bid", async (c) => {
       attribution.contractor,
       contractor.name,
     )
-    .orderBy(sql`coalesce(${recovery.updateDate}, ${recovery.createDate}) DESC`)
+    .orderBy(
+      sql`coalesce(${recovery.updateDate}, ${recovery.createDate}) DESC`,
+      desc(recovery.id),
+    )
     .limit(limit)
     .offset(offset);
 
@@ -246,9 +250,15 @@ recoveries.get("/", async (c) => {
     where.push(inArray(recovery.dataOwnerOrganization, scope));
   if (q) where.push(buildRecoverySearchPredicate(q));
 
+  // Ends on the primary key for the same reason the inquiry list does: without
+  // a unique last key there is no total order, and paging over a partial one
+  // can repeat or skip rows.
   const rows = await recoverySelector()
     .where(and(...where))
-    .orderBy(sql`coalesce(${recovery.updateDate}, ${recovery.createDate}) DESC`)
+    .orderBy(
+      sql`coalesce(${recovery.updateDate}, ${recovery.createDate}) DESC`,
+      desc(recovery.id),
+    )
     .limit(limit)
     .offset(offset);
 
