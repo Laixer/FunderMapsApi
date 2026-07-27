@@ -233,7 +233,10 @@ inquiries.get("/building/:bid", async (c) => {
       attribution.contractor,
       contractor.name,
     )
-    .orderBy(sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`)
+    .orderBy(
+      sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`,
+      desc(inquiry.id),
+    )
     .limit(limit)
     .offset(offset);
 
@@ -302,15 +305,29 @@ inquiries.get("/", async (c) => {
   const sortColumn = sortParam
     ? LIST_SORT_COLUMNS[sortParam as keyof typeof LIST_SORT_COLUMNS]
     : null;
+  // Every ordering ends on the primary key, because none of the columns
+  // callers can sort on is unique and `LIMIT`/`OFFSET` over a partial order is
+  // a lottery — the database may place tied rows differently between two
+  // queries, so a row can arrive on two pages or on none.
+  //
+  // Not a theoretical tie: the #973 attribution backfill stamped one identical
+  // `update_date` onto 20,950 of 26,671 inquiries in a single UPDATE, which
+  // leaves 79% of the table tied under the default ordering below. `status`
+  // (five distinct values) and `type` are no better once a client sorts on
+  // them.
   const orderBy = sortColumn
-    ? c.req.query("order") === "asc"
-      ? asc(sortColumn)
-      : desc(sortColumn)
-    : sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`;
+    ? [
+        c.req.query("order") === "asc" ? asc(sortColumn) : desc(sortColumn),
+        desc(inquiry.id),
+      ]
+    : [
+        sql`coalesce(${inquiry.updateDate}, ${inquiry.createDate}) DESC`,
+        desc(inquiry.id),
+      ];
 
   const rows = await inquirySelector()
     .where(and(...where))
-    .orderBy(orderBy)
+    .orderBy(...orderBy)
     .limit(limit)
     .offset(offset);
 
