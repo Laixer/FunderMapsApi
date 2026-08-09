@@ -94,9 +94,14 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 
 // DB columns backed by report.length / report.height / report.diameter domains
 // are numeric(5,2) — max abs 999.99. Bound zod here so out-of-range values
-// surface as 400, not as a postgres "numeric field overflow" 500. Bounds match
-// the legacy C# `InquirySample` `[Range(...)]` attributes — levels (depths,
-// can be negative) vs lengths (sizes, strictly non-negative).
+// surface as 400, not as a postgres "numeric field overflow" 500. Levels are
+// heights on NAP (routinely negative); lengths are sizes (non-negative).
+//
+// NOTE: `foundationDepth` is a NAP level, not a length, despite the legacy C#
+// `InquirySample.FoundationDepth` carrying `[Range(0.0, 999.99)]`. It is backed
+// by the `report.height` domain, and the risk model subtracts `groundwater_level`
+// from it (`recreate_model_risk_dynamic_all.sql`), which only works on a shared
+// datum. The C# annotation is wrong — do not "restore" it.
 const numericLevel = z.number().gte(-999.99).lte(999.99).nullish();
 const numericLength = z.number().gte(0).lte(999.99).nullish();
 
@@ -124,7 +129,7 @@ const sampleBodySchema = z.object({
   pileDiameterBottom: numericLength,
   pileHeadLevel: numericLevel,
   pileTipLevel: numericLevel,
-  foundationDepth: numericLength,
+  foundationDepth: numericLevel,
   masonLevel: numericLevel,
   concreteChargerLength: numericLength,
   pileDistanceLength: numericLength,

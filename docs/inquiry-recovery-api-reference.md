@@ -272,7 +272,7 @@ range 0…999.99. Out-of-range numerics → **400**.
 | `constructionLevel`, `woodLevel` | level | |
 | `pileDiameterTop`, `pileDiameterBottom` | length | |
 | `pileHeadLevel`, `pileTipLevel` | level | |
-| `foundationDepth` | length | |
+| `foundationDepth` | level | underside of the foundation, m NAP |
 | `masonLevel` | level | |
 | `concreteChargerLength`, `pileDistanceLength`, `woodPenetrationDepth` | length | |
 | `overallQuality` | enum int | `foundation_quality` |
