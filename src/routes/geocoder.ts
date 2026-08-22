@@ -94,9 +94,16 @@ geocoder.get("/address/:id", async (c) => {
   // null and the consumer renders without a marker rather than 404'ing.
   // Mirror /building-info: address.building_id stores the BAG PAND id,
   // which is building.external_id, not building.id.
+  //
+  // `built_year` is the BAG construction year of the linked pand (a date,
+  // year-precision). The data studio compares a typed bouwjaar against it so
+  // century slips and swapped digits get caught at entry time. BAG encodes
+  // "unknown" as year 1005 (and a few 1000/1009) — consumers treat years
+  // before 1100 as unknown.
   const rows = await db.execute(sql`
     SELECT
       a.id, a.external_id, a.building_number, a.postal_code, a.street, a.city, a.building_id,
+      b.built_year,
       public.ST_Y(public.ST_Centroid(b.geom)) AS latitude,
       public.ST_X(public.ST_Centroid(b.geom)) AS longitude
     FROM geocoder.address a
