@@ -105,10 +105,37 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 const numericLevel = z.number().gte(-999.99).lte(999.99).nullish();
 const numericLength = z.number().gte(0).lte(999.99).nullish();
 
+// Entry rules ruled by Yorick 2026-08-22 after the inquiry data audit; both are
+// also CHECK constraints on report.inquiry_sample, so rejecting here turns a
+// postgres 23514 into a 400 with a reason.
+//
+// `settlementSpeed` ("zakkingssnelheid") is entered NEGATIVE: zakking = -mm/yr.
+// The conventions used to be split per author and every classifier assumed
+// positive, which served most measured settlements as 'nil'.
+const settlementSpeed = z
+  .number()
+  .lte(0, "settlementSpeed: zakking wordt negatief ingevoerd (mm/jaar, <= 0)")
+  .nullish();
+
+// `builtYear` is filled only when the document states the construction year;
+// otherwise it stays null and the BAG year applies. Never the document or
+// import date — and a building cannot be built after today.
+function isPlausibleBuiltYear(value: string): boolean {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getUTCFullYear() >= 1000 && date.getTime() <= Date.now();
+}
+const builtYear = z
+  .string()
+  .nullish()
+  .refine((v) => v == null || v === "" || isPlausibleBuiltYear(v), {
+    message: "builtYear: must be a date between year 1000 and today (leave empty when the document does not state it — BAG applies)",
+  });
+
 const sampleBodySchema = z.object({
   address: z.string(),
   note: z.string().nullish(),
-  builtYear: z.string().nullish(),
+  builtYear,
   substructure: z.number().int().nullish(),
   cpt: z.string().nullish(),
   monitoringWell: z.string().nullish(),
@@ -165,7 +192,7 @@ const sampleBodySchema = z.object({
   skewedParallelFacade: z.number().int().nullish(),
   skewedPerpendicular: numericLength,
   skewedPerpendicularFacade: z.number().int().nullish(),
-  settlementSpeed: z.number().nullish(),
+  settlementSpeed,
   skewedWindowFrame: z.boolean().nullish(),
   facadeScanRisk: z.number().int().nullish(),
 });
