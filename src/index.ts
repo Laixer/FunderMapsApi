@@ -24,6 +24,7 @@ import inquirySampleRoutes from "./routes/inquiry-sample.ts";
 import recoveryRoutes from "./routes/recovery.ts";
 import recoverySampleRoutes from "./routes/recovery-sample.ts";
 import incidentRoutes from "./routes/incident.ts";
+import dataopsRoutes from "./routes/dataops.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -103,6 +104,11 @@ app.route("/api/recovery", recoveryRoutes);
 
 app.use("/api/incident/*", authMiddleware);
 app.route("/api/incident", incidentRoutes);
+// The review lane is staff-only: it exposes documents from every organisation
+// that has submitted one, and the verdicts recorded here become training data.
+app.use("/api/dataops", authMiddleware);
+app.use("/api/dataops/*", authMiddleware);
+app.route("/api/dataops", dataopsRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);
