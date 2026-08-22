@@ -3,3 +3,4 @@ export * from "./report.ts";
 export * from "./geocoder.ts";
 export * from "./data.ts";
 export * from "./maplayer.ts";
+export * from "./dataops.ts";
