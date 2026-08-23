@@ -9,6 +9,17 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # better-auth ships breaking schema changes in MINOR releases (1.7.0 added
+    # ~25 columns + 3 tables to the OAuth provider models and took logins down
+    # for 3 hours on 2026-08-23). package.json pins the family to ~1.6.x;
+    # keep Dependabot from proposing the next minor until the 1.7 migration
+    # (DDL + Drizzle schema + client backfill) is done deliberately. Patches
+    # still flow. src/lib/auth-schema.test.ts is the CI guard for the drift.
+    ignore:
+      - dependency-name: "better-auth"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "@better-auth/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     # Group routine bumps into a single weekly PR.
     # Majors stay ungrouped — they get their own PR and a real review.
     # (dependency-type grouping is npm-only, so this groups by pattern.)
