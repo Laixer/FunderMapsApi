@@ -24,6 +24,7 @@ import inquirySampleRoutes from "./routes/inquiry-sample.ts";
 import recoveryRoutes from "./routes/recovery.ts";
 import recoverySampleRoutes from "./routes/recovery-sample.ts";
 import incidentRoutes from "./routes/incident.ts";
+import intakeRoutes from "./routes/intake.ts";
 import dataopsRoutes from "./routes/dataops.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
@@ -70,6 +71,12 @@ app.route("/api/geocoder", geocoderRoutes);
 
 // Public routes (continued)
 app.route("/api/data/contractor", contractorRoutes);
+
+// The public intake lane. Deliberately not folded into /api/incident, which is
+// behind authMiddleware: an anonymous write path carved out inside an
+// authenticated prefix is a mistake waiting to happen. It carries its own
+// shared-secret check instead (see routes/intake.ts).
+app.route("/api/intake", intakeRoutes);
 
 // Authenticated routes
 app.use("/api/user", authMiddleware);
