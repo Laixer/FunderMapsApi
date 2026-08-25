@@ -59,6 +59,15 @@ const envSchema = z.object({
     .string()
     .default("https://whale-app-nm9uv.ondigitalocean.app"),
 
+  // Public intake (the terugmeldformulier). The shared secret the intake app
+  // presents; absent, the whole intake lane answers 503 rather than accepting
+  // anonymous writes.
+  INTAKE_TOKEN: z.string().optional(),
+  // Portal number baked into every meldcode: FIR<client><year>-<seq>. 01 is
+  // FunderMaps' own form; 10, 22-26 and 61-70 are the municipal portals that
+  // moved off our infrastructure in March 2026.
+  INTAKE_CLIENT_ID: z.coerce.number().int().min(0).max(99).default(1),
+
   // Proxy
   PROXY_ENABLED: z
     .string()
