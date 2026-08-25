@@ -144,6 +144,11 @@ intake.post("/dossier", zValidator("json", dossierSchema), async (c) => {
           originalFilename: a.name || null,
           mimeType: a.mime ?? null,
           sizeBytes: a.size,
+          // Kept per file, because one delivery can carry a funderingsonderzoek
+          // and a QuickScan and they are not admissible to the same degree.
+          // This is what stops the pipeline reading a foundation type back off
+          // our own data.
+          declaredCategory: a.category,
           // The lane is chosen from the document, not from what the melder
           // called it — 42 of 160 `foundation_research` files are scans. The
           // ingest worker decides; until it runs, nothing is claimed.

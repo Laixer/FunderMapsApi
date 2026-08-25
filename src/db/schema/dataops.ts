@@ -68,6 +68,13 @@ export const artifact = dataopsSchema.table("artifact", {
   pageCount: integer("page_count"),
   lane: text().notNull(),
   /**
+   * What the sender said this document is, in the intake form's vocabulary.
+   * A claim, never a finding: it bounds what the pipeline may conclude — a
+   * `quickscan` cannot establish a foundation type, because the type in one is
+   * FunderMaps data coming back to us — but classification still reads the file.
+   */
+  declaredCategory: text("declared_category"),
+  /**
    * Text the preparer added on top of the source -- a cover sheet, or typed
    * lines above a scan. Withheld from every model; kept because on historical
    * documents it is the training label.
