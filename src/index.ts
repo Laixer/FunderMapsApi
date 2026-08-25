@@ -72,10 +72,14 @@ app.route("/api/geocoder", geocoderRoutes);
 // Public routes (continued)
 app.route("/api/data/contractor", contractorRoutes);
 
-// The public intake lane. Deliberately not folded into /api/incident, which is
-// behind authMiddleware: an anonymous write path carved out inside an
-// authenticated prefix is a mistake waiting to happen. It carries its own
-// shared-secret check instead (see routes/intake.ts).
+// The public intake lane (the terugmeldformulier). Deliberately not folded into
+// /api/incident, which is behind authMiddleware: an anonymous write path carved
+// out inside an authenticated prefix is a mistake waiting to happen. It carries
+// its own shared-secret check instead (see routes/intake.ts).
+//
+// It writes dataops.dossier, never report.incident — most of what the form
+// receives is a document, not a melding, and which of the two a submission
+// becomes is a reviewer's call at commit time (docs/dataops-pipeline.md §3.1).
 app.route("/api/intake", intakeRoutes);
 
 // Authenticated routes

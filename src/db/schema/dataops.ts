@@ -7,6 +7,7 @@ import {
   boolean,
   timestamp,
   uuid,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -23,7 +24,7 @@ import {
 export const dataopsSchema = pgSchema("dataops");
 
 export const dossier = dataopsSchema.table("dossier", {
-  id: bigint({ mode: "number" }).primaryKey(),
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   channel: text().notNull(),
   subject: text(),
   externalRef: text("external_ref"),
@@ -31,13 +32,32 @@ export const dossier = dataopsSchema.table("dossier", {
   duplicateOf: bigint("duplicate_of", { mode: "number" }),
   /** Set once a reviewer has committed this dossier into the report schema. */
   inquiryId: integer("inquiry_id"),
-  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+
+  // The public form (FunderMapsIntake). Null on everything that arrived by
+  // bulk drop, which is all 891 dossiers as of 2026-08-25.
+
+  /** Melder-facing code, `FM2026-000042`. Sequential — never treat as a credential. */
+  reference: text(),
+  /** BAG nummeraanduiding exactly as supplied, before resolution. */
+  bagId: text("bag_id"),
+  /** `NL.IMBAG.PAND.*`, resolved from `bagId`. */
+  buildingId: text("building_id"),
+  resolutionStatus: text("resolution_status"),
+  /** Contact details. Personal data — its own column so erasure can find it. */
+  submitter: jsonb().$type<Record<string, unknown>>(),
+  /** What the melder claims: topic, answers, form version, provenance. */
+  payload: jsonb().$type<Record<string, unknown>>(),
+  /** Dossier-level decision. Per-value decisions live in `verdict`. */
+  outcome: text(),
+  outcomeNote: text("outcome_note"),
+  outcomeAt: timestamp("outcome_at", { withTimezone: true }),
 });
 
 export const artifact = dataopsSchema.table("artifact", {
-  id: bigint({ mode: "number" }).primaryKey(),
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
   parentArtifactId: bigint("parent_artifact_id", { mode: "number" }),
   /** Key in the Spaces bucket. The bytes never enter Postgres. */
@@ -54,7 +74,7 @@ export const artifact = dataopsSchema.table("artifact", {
    */
   annotationText: text("annotation_text"),
   annotationPages: integer("annotation_pages").array(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const artifactPage = dataopsSchema.table("artifact_page", {
@@ -69,7 +89,7 @@ export const artifactPage = dataopsSchema.table("artifact_page", {
 });
 
 export const extraction = dataopsSchema.table("extraction", {
-  id: bigint({ mode: "number" }).primaryKey(),
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   artifactId: bigint("artifact_id", { mode: "number" }).notNull(),
   model: text().notNull(),
   promptVersion: text("prompt_version").notNull(),
@@ -84,7 +104,7 @@ export const extraction = dataopsSchema.table("extraction", {
 });
 
 export const extractionField = dataopsSchema.table("extraction_field", {
-  id: bigint({ mode: "number" }).primaryKey(),
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   extractionId: bigint("extraction_id", { mode: "number" }).notNull(),
   /** Column name in report.inquiry_sample, so an accepted value writes straight through. */
   field: text().notNull(),
@@ -103,7 +123,7 @@ export const extractionField = dataopsSchema.table("extraction_field", {
 });
 
 export const verdict = dataopsSchema.table("verdict", {
-  id: bigint({ mode: "number" }).primaryKey(),
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   extractionFieldId: bigint("extraction_field_id", { mode: "number" }).notNull(),
   decidedBy: uuid("decided_by"),
   decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
