@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, exists, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import {
   dossier,
@@ -26,43 +26,131 @@ import type { AppEnv } from "../types/context.ts";
  */
 const dataops = new Hono<AppEnv>();
 
-/** States a reviewer still has to look at. */
+/**
+ * States a reviewer still has to look at.
+ *
+ * `auto_accepted` is legacy: the Worker's confidence gate was removed on
+ * 2026-08-26 (100% of intake is reviewed by a person), but rows written before
+ * that still carry the value, and they were never looked at either.
+ */
 const OPEN = ["pending", "auto_accepted", "rejected"] as const;
+
+/** A dossier still on the reviewer's desk: not committed, not closed out. */
+const onDesk = () => and(isNull(dossier.inquiryId), isNull(dossier.outcome));
+
+/**
+ * Open-field count per dossier, as a correlated subquery so the queue can be
+ * driven off `dossier` alone. The outer reference is spelled out because
+ * drizzle renders `${dossier.id}` inside a select list as a bare `"id"`, which
+ * Postgres resolves to the nearest table -- the subquery's own alias. A dossier with zero open fields is still in the
+ * queue: the pipeline reading nothing off a document (a photo of a cat, a
+ * blank scan) is exactly the case a person has to look at, and until
+ * 2026-08-26 those were invisible because the queue INNER JOINed through
+ * `extraction_field`.
+ */
+const openFields = sql<number>`(
+  select count(*)::int
+  from ${extractionField} f
+  join ${extraction} e on e.id = f.extraction_id
+  join ${artifact} a on a.id = e.artifact_id
+  where a.dossier_id = "dataops"."dossier"."id"
+    and f.state in ('pending', 'auto_accepted', 'rejected')
+)`;
+
+const fileCount = sql<number>`(
+  select count(*)::int from ${artifact} a where a.dossier_id = "dataops"."dossier"."id"
+)`;
+
+/** Whether the pipeline has read the dossier at all. False = ingest not run yet. */
+const isRead = sql<boolean>`exists (
+  select 1 from ${extraction} e
+  join ${artifact} a on a.id = e.artifact_id
+  where a.dossier_id = "dataops"."dossier"."id"
+)`;
+
+/**
+ * Search across the melder's reference, the subject, the external ref, the
+ * BAG ids, the submitter's email and the uploaded filenames. Mirrors
+ * `buildInquirySearchPredicate`: a bare integer is an id lookup and nothing
+ * else, so the planner stays on the primary key.
+ */
+function buildQueueSearchPredicate(q: string): SQL {
+  if (/^\d+$/.test(q) && Number.isSafeInteger(Number(q))) {
+    return eq(dossier.id, Number(q));
+  }
+  const like = `%${q}%`;
+  const fileMatch = exists(
+    db
+      .select({ x: sql`1` })
+      .from(artifact)
+      .where(and(eq(artifact.dossierId, dossier.id), ilike(artifact.originalFilename, like))),
+  );
+  return or(
+    ilike(dossier.reference, like),
+    ilike(dossier.subject, like),
+    ilike(dossier.externalRef, like),
+    ilike(dossier.bagId, like),
+    ilike(dossier.buildingId, like),
+    sql`${dossier.submitter} ->> 'email' ilike ${like}`,
+    fileMatch,
+  )!;
+}
+
+const queueSelector = () =>
+  db
+    .select({
+      id: dossier.id,
+      channel: dossier.channel,
+      subject: dossier.subject,
+      externalRef: dossier.externalRef,
+      reference: dossier.reference,
+      buildingId: dossier.buildingId,
+      receivedAt: dossier.receivedAt,
+      inquiryId: dossier.inquiryId,
+      open: openFields,
+      files: fileCount,
+      read: isRead,
+    })
+    .from(dossier);
 
 /**
  * The queue, oldest first.
  *
  * Oldest first is deliberate: a terugmelding carries a 24-48 hour promise to
  * the person who sent it, so the queue is a waiting line, not a feed.
+ *
+ * Same contract as `GET /inquiry`: `q`, `limit`, `offset`. Bare browse pages
+ * at 100, a search at 500; the client can override either.
  */
 dataops.get("/queue", async (c) => {
-  const rows = await db
-    .select({
-      id: dossier.id,
-      channel: dossier.channel,
-      subject: dossier.subject,
-      externalRef: dossier.externalRef,
-      receivedAt: dossier.receivedAt,
-      inquiryId: dossier.inquiryId,
-      open: count(extractionField.id),
-    })
-    .from(dossier)
-    .innerJoin(artifact, eq(artifact.dossierId, dossier.id))
-    .innerJoin(extraction, eq(extraction.artifactId, artifact.id))
-    .innerJoin(extractionField, eq(extractionField.extractionId, extraction.id))
-    .where(and(isNull(dossier.inquiryId), inArray(extractionField.state, [...OPEN])))
-    .groupBy(
-      dossier.id,
-      dossier.channel,
-      dossier.subject,
-      dossier.externalRef,
-      dossier.receivedAt,
-      dossier.inquiryId,
-    )
-    .orderBy(asc(dossier.receivedAt))
-    .limit(200);
+  const q = c.req.query("q")?.trim();
+  const limit = parseInt(c.req.query("limit") ?? (q ? "500" : "100"));
+  const offset = parseInt(c.req.query("offset") ?? "0");
+  if (!Number.isFinite(limit) || limit < 1 || !Number.isFinite(offset) || offset < 0) {
+    throw new ValidationError(["limit must be >= 1 and offset >= 0"]);
+  }
+
+  const where: SQL[] = [onDesk()!];
+  if (q) where.push(buildQueueSearchPredicate(q));
+
+  const rows = await queueSelector()
+    .where(and(...where))
+    // Tie-break on the key: several dossiers share one received_at when a
+    // bulk drop lands, and LIMIT/OFFSET over a partial order loses rows.
+    .orderBy(asc(dossier.receivedAt), asc(dossier.id))
+    .limit(limit)
+    .offset(offset);
 
   return c.json(rows);
+});
+
+/** How long the line is. The sidebar counter; never derived from a page. */
+dataops.get("/queue/stats", async (c) => {
+  const [row] = await db
+    .select({ count: count() })
+    .from(dossier)
+    .where(onDesk());
+  return c.json({ count: row?.count ?? 0 });
 });
 
 /**
@@ -176,6 +264,51 @@ dataops.post("/verdict", async (c) => {
       .update(extractionField)
       .set({ state: body.outcome })
       .where(eq(extractionField.id, body.fieldId));
+  });
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Close a dossier as a whole.
+ *
+ * The per-field verdict cannot express "this document is not about anything"
+ * -- a photo of a cat, a duplicate, a report filed under the wrong address.
+ * That decision is about the dossier, so it lives on the dossier: `outcome`
+ * with a note, and every open value on it marked `superseded` so it stops
+ * counting as work. `accepted` is for a dossier that was worked through by
+ * other means (values confirmed, inquiry created elsewhere) and just needs to
+ * leave the line.
+ */
+dataops.post("/dossier/:id/outcome", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const body = await c.req.json<{ outcome: "accepted" | "rejected" | "duplicate"; note?: string | null }>();
+  if (!["accepted", "rejected", "duplicate"].includes(body.outcome)) {
+    throw new ValidationError(["outcome must be accepted, rejected or duplicate"]);
+  }
+  if (body.outcome !== "accepted" && !body.note?.trim()) {
+    throw new ValidationError(["say why: a rejected or duplicate dossier needs a note"]);
+  }
+
+  const [head] = await db
+    .select({ id: dossier.id, outcome: dossier.outcome })
+    .from(dossier)
+    .where(eq(dossier.id, id))
+    .limit(1);
+  if (!head) throw new NotFoundError("dossier not found");
+  if (head.outcome) throw new ValidationError([`dossier already closed as ${head.outcome}`]);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(dossier)
+      .set({ outcome: body.outcome, outcomeNote: body.note ?? null, outcomeAt: new Date() })
+      .where(eq(dossier.id, id));
+    await tx.execute(sql`
+      update ${extractionField} f set state = 'superseded'
+      from ${extraction} e join ${artifact} a on a.id = e.artifact_id
+      where e.id = f.extraction_id and a.dossier_id = ${id}
+        and f.state in ('pending', 'auto_accepted', 'rejected')`);
   });
 
   return c.json({ ok: true });
