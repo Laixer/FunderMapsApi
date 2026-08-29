@@ -269,49 +269,84 @@ dataops.post("/verdict", async (c) => {
   return c.json({ ok: true });
 });
 
+type DossierOutcome = "accepted" | "rejected" | "duplicate" | "no_data";
+const OUTCOMES: readonly DossierOutcome[] = ["accepted", "rejected", "duplicate", "no_data"];
+
 /**
- * Close a dossier as a whole.
+ * Close dossiers as a whole.
  *
  * The per-field verdict cannot express "this document is not about anything"
  * -- a photo of a cat, a duplicate, a report filed under the wrong address.
  * That decision is about the dossier, so it lives on the dossier: `outcome`
  * with a note, and every open value on it marked `superseded` so it stops
- * counting as work. `accepted` is for a dossier that was worked through by
- * other means (values confirmed, inquiry created elsewhere) and just needs to
- * leave the line.
+ * counting as work.
+ *
+ *   accepted   worked through; values taken over elsewhere
+ *   rejected   we could not use this -- the melder is told so (note required)
+ *   duplicate  we already held it -- the melder is NOT told it was a fault (note required)
+ *   no_data    we looked, nothing to take: a logo, a photo of the street, a
+ *              maintenance plan. Added 2026-08-29 after Don closed 30 logos as
+ *              'accepted' for lack of anything truer.
+ *
+ * Bulk is the same operation over a list, in one transaction, because the
+ * bulk case (30 promo images in a row) is exactly the one that must not fail
+ * halfway.
  */
-dataops.post("/dossier/:id/outcome", async (c) => {
-  const id = Number(c.req.param("id"));
-  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
-  const body = await c.req.json<{ outcome: "accepted" | "rejected" | "duplicate"; note?: string | null }>();
-  if (!["accepted", "rejected", "duplicate"].includes(body.outcome)) {
-    throw new ValidationError(["outcome must be accepted, rejected or duplicate"]);
-  }
-  if (body.outcome !== "accepted" && !body.note?.trim()) {
-    throw new ValidationError(["say why: a rejected or duplicate dossier needs a note"]);
-  }
-
-  const [head] = await db
+async function closeDossiers(ids: number[], outcome: DossierOutcome, note: string | null) {
+  const heads = await db
     .select({ id: dossier.id, outcome: dossier.outcome })
     .from(dossier)
-    .where(eq(dossier.id, id))
-    .limit(1);
-  if (!head) throw new NotFoundError("dossier not found");
-  if (head.outcome) throw new ValidationError([`dossier already closed as ${head.outcome}`]);
+    .where(inArray(dossier.id, ids));
+  const missing = ids.filter((id) => !heads.some((h) => h.id === id));
+  if (missing.length) throw new NotFoundError(`dossier not found: ${missing.join(", ")}`);
+  const closed = heads.filter((h) => h.outcome);
+  if (closed.length) {
+    throw new ValidationError(closed.map((h) => `dossier ${h.id} already closed as ${h.outcome}`));
+  }
 
   await db.transaction(async (tx) => {
     await tx
       .update(dossier)
-      .set({ outcome: body.outcome, outcomeNote: body.note ?? null, outcomeAt: new Date() })
-      .where(eq(dossier.id, id));
+      .set({ outcome, outcomeNote: note, outcomeAt: new Date() })
+      .where(inArray(dossier.id, ids));
     await tx.execute(sql`
       update ${extractionField} f set state = 'superseded'
       from ${extraction} e join ${artifact} a on a.id = e.artifact_id
-      where e.id = f.extraction_id and a.dossier_id = ${id}
+      where e.id = f.extraction_id and a.dossier_id in ${ids}
         and f.state in ('pending', 'auto_accepted', 'rejected')`);
   });
+}
 
+function parseOutcome(body: { outcome?: string; note?: string | null }) {
+  if (!OUTCOMES.includes(body.outcome as DossierOutcome)) {
+    throw new ValidationError([`outcome must be one of ${OUTCOMES.join(", ")}`]);
+  }
+  const outcome = body.outcome as DossierOutcome;
+  const note = body.note?.trim() || null;
+  if ((outcome === "rejected" || outcome === "duplicate") && !note) {
+    throw new ValidationError(["say why: a rejected or duplicate dossier needs a note"]);
+  }
+  return { outcome, note };
+}
+
+dataops.post("/dossier/:id/outcome", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const { outcome, note } = parseOutcome(await c.req.json());
+  await closeDossiers([id], outcome, note);
   return c.json({ ok: true });
+});
+
+dataops.post("/dossiers/outcome", async (c) => {
+  const body = await c.req.json<{ ids?: unknown; outcome?: string; note?: string | null }>();
+  const ids = Array.isArray(body.ids) ? body.ids.map(Number) : [];
+  if (!ids.length || ids.some((id) => !Number.isFinite(id))) {
+    throw new ValidationError(["ids must be a non-empty list of dossier ids"]);
+  }
+  if (ids.length > 200) throw new ValidationError(["at most 200 dossiers per call"]);
+  const { outcome, note } = parseOutcome(body);
+  await closeDossiers([...new Set(ids)], outcome, note);
+  return c.json({ ok: true, closed: new Set(ids).size });
 });
 
 export default dataops;
