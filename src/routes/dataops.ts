@@ -190,13 +190,15 @@ dataops.get("/dossier/:id", async (c) => {
             evidence: extractionField.evidence,
             evidencePage: extractionField.evidencePage,
             state: extractionField.state,
+            addressText: extractionField.addressText,
+            addressId: extractionField.addressId,
             model: extraction.model,
             promptVersion: extraction.promptVersion,
           })
           .from(extractionField)
           .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
           .where(inArray(extraction.artifactId, artifactIds))
-          .orderBy(asc(extractionField.field))
+          .orderBy(asc(extractionField.addressText), asc(extractionField.field))
       : [],
   ]);
 

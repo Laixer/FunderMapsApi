@@ -127,6 +127,9 @@ export const extractionField = dataopsSchema.table("extraction_field", {
   evidencePage: integer("evidence_page"),
   /** pending · auto_accepted · confirmed · corrected · rejected · superseded */
   state: text().notNull(),
+  /** Per-address values (phase B): the address as the report wrote it, and the geocoder row it resolved to. Null = document-level. */
+  addressText: text("address_text"),
+  addressId: text("address_id"),
 });
 
 export const verdict = dataopsSchema.table("verdict", {
