@@ -265,18 +265,13 @@ export const auth = betterAuth({
     oauthProvider({
       loginPage: env.LOGIN_PAGE_URL,
       consentPage: "https://admin.fundermaps.com/oauth/consent",
-      // Suppress boot warnings about discovery routes. The plugin defines
-      // its metadata under /api/auth/.well-known/* but the OIDC spec wants
-      // them at /.well-known/*/<issuer-path>. Grafana doesn't use discovery
-      // (its config has explicit auth_url/token_url/userinfo_url), so this
-      // doesn't block prod. If/when the auth SPA needs discovery, wire the
+      // Discovery: the plugin serves its metadata under /api/auth/.well-known/*
+      // while the OIDC spec wants /.well-known/*/<issuer-path>. None of our
+      // clients use discovery (Grafana has explicit auth_url/token_url/
+      // userinfo_url; the SPAs are hard-wired). If that changes, mount the
       // exported `oauthProviderAuthServerMetadata` /
-      // `oauthProviderOpenIdConfigMetadata` helpers into Hono at the root
-      // /.well-known/* paths and clear these flags.
-      silenceWarnings: {
-        oauthAuthServerConfig: true,
-        openidConfig: true,
-      },
+      // `oauthProviderOpenIdConfigMetadata` helpers in Hono at the root.
+      // (1.7 removed the `silenceWarnings` option and the warnings with it.)
       customAccessTokenClaims: ({ user: u }) => ({
         role: (u as { role?: string } | null | undefined)?.role ?? "user",
       }),

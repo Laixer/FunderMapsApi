@@ -27,6 +27,8 @@ await db.insert(account).values({
   userId: created.id,
   accountId: created.id,
   providerId: "credential",
+  // Better Auth 1.7: password accounts are keyed on this synthetic issuer.
+  issuer: "local:credential",
   password: passwordHash,
 });
 

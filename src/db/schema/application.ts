@@ -10,6 +10,7 @@ import {
   bigserial,
   serial,
   primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -71,6 +72,10 @@ export const account = applicationSchema.table("account", {
     .references(() => user.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
+  // Better Auth 1.7: accounts are keyed on (issuer, account_id). Password
+  // accounts carry the synthetic issuer "local:credential" (and account_id
+  // = user id); sign-in matches on all three, so the value is not cosmetic.
+  issuer: text().notNull(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
@@ -99,6 +104,10 @@ export const jwks = applicationSchema.table("jwks", {
   privateKey: text("private_key").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at"),
+  // Better Auth 1.7: per-key algorithm/curve. NULL inherits the plugin's
+  // keyPairConfig (EdDSA / Ed25519); the existing prod key is backfilled.
+  alg: text(),
+  crv: text(),
 });
 
 // OAuth 2.1 / OIDC client registrations (e.g. Grafana). Read+written by
@@ -115,8 +124,9 @@ export const oauthClient = applicationSchema.table("oauth_application", {
   // SHA-256 → base64url-no-padding hash (the plugin's `defaultHasher`);
   // verified at request time against the plaintext sent by the client.
   clientSecret: text("client_secret"),
-  type: text(),
-  public: boolean(),
+  // 1.7 replaced the legacy `type`/`public` pair: "web" | "native" here, and
+  // `tokenEndpointAuthMethod = "none"` is what marks a public client.
+  applicationType: text("application_type"),
   disabled: boolean().default(false),
   // Bypass the consent screen for first-party SSO consumers. Read directly
   // from DB by the new plugin (the bundled plugin couldn't).
@@ -142,9 +152,74 @@ export const oauthClient = applicationSchema.table("oauth_application", {
   softwareStatement: text("software_statement"),
   referenceId: text("reference_id"),
   userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+  // Better Auth 1.7 additions. None of our first-party clients use them yet
+  // (no client_credentials grant, no backchannel logout, no DPoP, no
+  // private_key_jwt); they exist because the adapter writes/reads them.
+  clientDiscoveryId: text("client_discovery_id"),
+  clientCredentialsScopes: text("client_credentials_scopes")
+    .array()
+    .default([])
+    .notNull(),
+  backchannelLogoutUri: text("backchannel_logout_uri"),
+  backchannelLogoutSessionRequired: boolean(
+    "backchannel_logout_session_required",
+  ),
+  jwks: text(),
+  jwksUri: text("jwks_uri"),
+  dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Better Auth 1.7: OAuth protected resources (RFC 8707 resource indicators)
+// and the client ↔ resource links. Empty for FunderMaps — every first-party
+// app talks to this API directly, no resource indicators are requested —
+// but the plugin's token path selects from both tables.
+export const oauthResource = applicationSchema.table("oauth_resource", {
+  id: text().primaryKey(),
+  identifier: text().notNull().unique(),
+  name: text().notNull(),
+  accessTokenTtl: integer("access_token_ttl"),
+  refreshTokenTtl: integer("refresh_token_ttl"),
+  signingAlgorithm: text("signing_algorithm"),
+  signingKeyId: text("signing_key_id"),
+  allowedScopes: text("allowed_scopes").array(),
+  customClaims: jsonb("custom_claims").$type<Record<string, unknown>>(),
+  dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required")
+    .default(false)
+    .notNull(),
+  disabled: boolean().default(false).notNull(),
+  policyVersion: integer("policy_version").default(1).notNull(),
+  metadata: jsonb().$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const oauthClientResource = applicationSchema.table(
+  "oauth_client_resource",
+  {
+    id: text().primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => oauthResource.identifier, { onDelete: "cascade" }),
+    metadata: jsonb().$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.clientId, table.resourceId)],
+);
+
+// Better Auth 1.7: single-use `jti` registry for private_key_jwt client
+// assertions (RFC 7523 replay protection). The id IS the jti; rows expire.
+export const oauthClientAssertion = applicationSchema.table(
+  "oauth_client_assertion",
+  {
+    id: text().primaryKey(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+);
 
 export const oauthAccessToken = applicationSchema.table("oauth_access_token", {
   id: text().primaryKey(),
@@ -161,6 +236,12 @@ export const oauthAccessToken = applicationSchema.table("oauth_access_token", {
   scopes: text().array().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Better Auth 1.7.
+  authorizationCodeId: text("authorization_code_id"),
+  resources: text().array(),
+  requestedUserInfoClaims: text("requested_user_info_claims").array(),
+  revoked: timestamp(),
+  confirmation: jsonb().$type<Record<string, unknown>>(),
 });
 
 export const oauthRefreshToken = applicationSchema.table(
@@ -183,6 +264,15 @@ export const oauthRefreshToken = applicationSchema.table(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     revoked: timestamp(),
     authTime: timestamp("auth_time"),
+    // Better Auth 1.7: refresh-token rotation + replay window, resource
+    // indicators, requested claims, and the token-binding confirmation.
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text().array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    rotatedAt: timestamp("rotated_at"),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
+    confirmation: jsonb().$type<Record<string, unknown>>(),
   },
 );
 
@@ -196,6 +286,9 @@ export const oauthConsent = applicationSchema.table("oauth_consent", {
   scopes: text().array().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // Better Auth 1.7.
+  resources: text().array(),
+  requestedUserInfoClaims: text("requested_user_info_claims").array(),
 });
 
 export const organization = applicationSchema.table("organization", {
