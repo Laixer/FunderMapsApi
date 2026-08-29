@@ -309,11 +309,16 @@ async function closeDossiers(ids: number[], outcome: DossierOutcome, note: strin
       .update(dossier)
       .set({ outcome, outcomeNote: note, outcomeAt: new Date() })
       .where(inArray(dossier.id, ids));
+    // Only values nobody judged. 'rejected' is also what a reviewer's Afkeuren
+    // sets, and the first version of this relabelled 16 of Don's rejections
+    // as superseded when he closed the dossier (2026-08-29). A field with a
+    // verdict is a decision taken; closing the dossier does not undo it.
     await tx.execute(sql`
       update ${extractionField} f set state = 'superseded'
       from ${extraction} e join ${artifact} a on a.id = e.artifact_id
       where e.id = f.extraction_id and a.dossier_id in ${ids}
-        and f.state in ('pending', 'auto_accepted', 'rejected')`);
+        and f.state in ('pending', 'auto_accepted', 'rejected')
+        and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
   });
 }
 
