@@ -26,6 +26,7 @@ import recoverySampleRoutes from "./routes/recovery-sample.ts";
 import incidentRoutes from "./routes/incident.ts";
 import intakeRoutes from "./routes/intake.ts";
 import dataopsRoutes from "./routes/dataops.ts";
+import dataopsCommitRoutes from "./routes/dataops-commit.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -120,6 +121,7 @@ app.route("/api/incident", incidentRoutes);
 app.use("/api/dataops", authMiddleware);
 app.use("/api/dataops/*", authMiddleware);
 app.route("/api/dataops", dataopsRoutes);
+app.route("/api/dataops", dataopsCommitRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);

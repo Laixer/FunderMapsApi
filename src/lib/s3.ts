@@ -4,6 +4,11 @@ import { env } from "../config.ts";
 
 let _client: S3Client | null = null;
 
+/** The shared client, for callers that need a command this module does not wrap (dataops commit copies objects). */
+export function s3Client(): S3Client {
+  return client();
+}
+
 function client(): S3Client {
   if (_client) return _client;
   if (!env.S3_ACCESS_KEY || !env.S3_SECRET_KEY || !env.S3_BUCKET) {
