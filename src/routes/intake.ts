@@ -192,6 +192,13 @@ function describe(
           note ??
           "Wij hebben uw melding bekeken. Deze gegevens waren al bij ons bekend, dus er is niets gewijzigd.",
       };
+    case "no_data":
+      return {
+        state: "verwerkt",
+        explanation:
+          note ??
+          "Wij hebben uw melding bekeken. Het meegestuurde materiaal bevatte geen gegevens over de fundering, dus er is niets gewijzigd.",
+      };
     case "rejected":
       return {
         state: "afgewezen",
