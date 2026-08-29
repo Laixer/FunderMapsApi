@@ -198,7 +198,7 @@ users.post("/:user_id/api-key", async (c) => {
   // (see node_modules/@better-auth/api-key/dist/index.mjs:726). The
   // legacy application.auth_key table is no longer written to; existing
   // rows there continue to work via the dual-read middleware (Phase B.1)
-  // and via the C# Webservice's direct SQL until Dec 2026.
+  // (the C# Webservice that also read it was retired 2026-08-29).
   //
   // We deliberately do NOT pass `prefix: "fmsk."` in the body — BA's
   // body validator (`/^[a-zA-Z0-9_-]+$/`) rejects the trailing `.`. The

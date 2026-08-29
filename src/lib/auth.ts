@@ -177,8 +177,8 @@ export const auth = betterAuth({
     // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
     // via schema overrides onto the EXISTING application.organization +
     // organization_user tables — BA reads/writes the same rows the API
-    // already uses, so there is no dual-write phase and the C# Webservice
-    // (EOL Aug 2026) keeps seeing the columns it knows.
+    // already uses, so there is no dual-write phase (the C# Webservice that
+    // shared these columns was retired 2026-08-29).
     //
     // Roles keep the exact names stored in organization_user.role (reader/
     // writer/verifier/superuser — see permissions.ts), so zero data

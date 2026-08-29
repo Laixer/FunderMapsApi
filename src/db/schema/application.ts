@@ -315,7 +315,7 @@ export const authKey = applicationSchema.table("auth_key", {
 // Better Auth `@better-auth/api-key` plugin. New `fmsk.`-prefixed keys
 // flow through this table; the legacy `application.auth_key` table stays
 // the read source for keys created before the plugin landed. The two
-// tables coexist until the C# Webservice retires (Dec 2026) and customers
+// tables coexist until customers
 // rotate to BA-issued keys; see project_better_auth_migration.md.
 export const apikey = applicationSchema.table("apikey", {
   id: text().primaryKey(),
