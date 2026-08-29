@@ -532,27 +532,6 @@ export const organizationMapset = applicationSchema.table(
   ],
 );
 
-// product_tracker_mismatch — TimescaleDB hypertable, populated by a
-// trigger when product_tracker rows mismatch organization geolock.
-export const productTrackerMismatch = applicationSchema.table(
-  "product_tracker_mismatch",
-  {
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organization.id),
-    identifier: text().notNull(),
-    createDate: timestamp("create_date", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-);
-
-// Generic key/value store — legacy.
-export const keyStore = applicationSchema.table("key_store", {
-  name: text().primaryKey(),
-  value: text().notNull(),
-});
-
 // Other views in the application schema not modeled here:
 //   file_resources_orphaned (VIEW) — maintenance/cleanup view over
 //     file_resources rows whose key has no S3 object behind it.
