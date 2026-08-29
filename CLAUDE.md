@@ -50,7 +50,7 @@ Better Auth handles email/password login, sessions, password reset, and an OAuth
 
 **Single accepted delivery: `Authorization: Bearer fmsk.…`**. Same shape as FunderMapsWebservice — one header works against both surfaces. The pre-2026-05-13 alternatives (`X-API-Key`, `Authorization: AuthKey`) were dropped to match the Webservice. Bearer-without-`fmsk.` falls through to the BA session path (session tokens via the bearer plugin).
 
-`KEY_DISABLED`/`KEY_EXPIRED`/`RATE_LIMIT_EXCEEDED` are hard rejects with no fallback. The legacy path will be removed in Phase D after the C# Webservice retires end of December 2026 and `auth_key` drains.
+`KEY_DISABLED`/`KEY_EXPIRED`/`RATE_LIMIT_EXCEEDED` are hard rejects with no fallback. The legacy path will be removed in Phase D once `auth_key` drains (the C# Webservice was retired 2026-08-29).
 
 Admin routes require `c.get("user").role === "administrator"`. Two writers to that column today: BA's `setRole` (via the admin plugin's `/api/auth/admin/*` surface) and this repo's `routes/management/user.ts`. Same literal both sides — fine, but a co-existence point to keep in mind.
 
@@ -84,7 +84,7 @@ Pending items here are **load-bearing, not aspirational**. Speculative parity ga
 
 **Auth migration (Better Auth, see `~/.claude/projects/-home-eve/memory/project_better_auth_migration.md`):**
 - **Legacy PBKDF2 verify hook removal** (Phase 1, step 1, finish). Auto-upgrade is live (`src/lib/auth.ts` + `src/lib/legacy-password.ts`). When `SELECT count(*) FROM application.account WHERE provider_id='credential' AND password NOT LIKE '%:%'` reaches 0, the legacy verify hook + helper become dead code and should be deleted.
-- **apiKey Phase C drain** (operational, customer-paced). New keys go through BA; legacy `application.auth_key` rows are only validated, never rotated server-side. Monitor with the query pinned in the migration plan memory. Phase D (legacy fallback + table drop) lands post-Dec-2026 when the C# Webservice retires.
+- **apiKey Phase C drain** (operational, customer-paced). New keys go through BA; legacy `application.auth_key` rows are only validated, never rotated server-side. Monitor with the query pinned in the migration plan memory. Phase D (legacy fallback + table drop) lands once the legacy keys have drained; the C# Webservice is gone since 2026-08-29.
 - **Better Auth `organization` plugin** (Phase 2). Biggest blast radius — BA's org/member tables don't match `application.organization` + `organization_user`; preferred shape is per-plugin schema override so C# joins keep compiling until retirement.
 
 **DB hygiene** (see `~/.claude/projects/-home-eve/memory/project_todos.md`):
@@ -98,4 +98,4 @@ Pending items here are **load-bearing, not aspirational**. Speculative parity ga
 ## Reference Codebases
 
 - **C# WebApi** at `~/Projects/FunderMaps/src/FunderMaps.WebApi` — the parity reference for ported features. Not running anywhere in prod; retired in favor of this repo.
-- **C# Webservice** at `~/Projects/FunderMaps/src/FunderMaps.Webservice` — still serves `ws.fundermaps.com` until **end of December 2026**. Coexistence shape matters for auth-key and org-context changes; see the BA migration memory.
+- **C# Webservice** at `~/src/FunderMaps/src/FunderMaps.Webservice` — **retired 2026-08-29**, reference only. Nothing in production runs C# any more.

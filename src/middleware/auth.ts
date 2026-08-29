@@ -67,8 +67,8 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     // BA-first ordering is deliberate: as customers rotate to plugin-
     // issued keys, the hot path moves naturally to BA without any code
     // change. The legacy fallback shrinks over time and gets removed
-    // once application.auth_key is empty (Phase D, post-Dec-2026 when
-    // the C# Webservice retires).
+    // once application.auth_key is empty (Phase D; the C# Webservice that
+    // shared the table was retired 2026-08-29).
     const baResult = await auth.api
       .verifyApiKey({ body: { key: apiKeyValue } })
       .catch(() => null);
