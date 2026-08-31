@@ -191,17 +191,59 @@ inquiries.post("/upload-document", async (c) => {
 // Reads
 // ─────────────────────────────────────────────────────────────────────────
 
+// The list filters, shared between `GET /` and `GET /stats` so a count always
+// answers the same question as the page it accompanies. `status` and `type`
+// take wire-format integers, comma-separated; `creator`/`reviewer` take a
+// user id (ClientApp #263 item 8; type + counts: Laixer/FunderMaps#1011).
+function listFilters(c: Context<AppEnv>, scope: string[] | null): SQL[] {
+  const where: SQL[] = [];
+  if (scope !== null)
+    where.push(inArray(inquiry.dataOwnerOrganization, scope));
+
+  const q = c.req.query("q")?.trim();
+  if (q) where.push(buildInquirySearchPredicate(q));
+
+  for (const [param, column, enumName] of [
+    ["status", inquiry.auditStatus, "audit_status"],
+    ["type", inquiry.type, "inquiry_type"],
+  ] as const) {
+    const value = c.req.query(param);
+    if (!value) continue;
+    let labels: string[];
+    try {
+      labels = value
+        .split(",")
+        .map((s) => intToEnum(enumName, parseInt(s.trim(), 10))!);
+    } catch {
+      throw new ValidationError([`Invalid ${param} filter: ${value}`]);
+    }
+    where.push(inArray(column, labels));
+  }
+
+  for (const [param, column] of [
+    ["creator", attribution.creator],
+    ["reviewer", attribution.reviewer],
+  ] as const) {
+    const value = c.req.query(param);
+    if (!value) continue;
+    if (!UUID_RE.test(value)) {
+      throw new ValidationError([`Invalid ${param} filter: expected a user id`]);
+    }
+    where.push(eq(column, value));
+  }
+
+  return where;
+}
+
+// Exact count for the current filter set — the number the list endpoint
+// itself cannot return. No filters = the whole scoped collection.
 inquiries.get("/stats", async (c) => {
   const scope = dataScope(c);
   const [stat] = await db
     .select({ value: count() })
     .from(inquiry)
     .innerJoin(attribution, eq(attribution.id, inquiry.attribution))
-    .where(
-      scope === null
-        ? undefined
-        : inArray(inquiry.dataOwnerOrganization, scope),
-    );
+    .where(and(...listFilters(c, scope)));
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
@@ -250,6 +292,10 @@ const LIST_SORT_COLUMNS = {
   document_name: inquiry.documentName,
   type: inquiry.type,
   document_date: inquiry.documentDate,
+  // When the dossier entered the system, as opposed to the date on the
+  // document itself — a decades-old report entered yesterday sorts on top
+  // (Laixer/FunderMaps#1011, issue 4).
+  create_date: inquiry.createDate,
   creator: creatorU.email,
   reviewer: reviewerU.email,
   status: inquiry.auditStatus,
@@ -267,36 +313,7 @@ inquiries.get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const where: SQL[] = [];
-  if (scope !== null)
-    where.push(inArray(inquiry.dataOwnerOrganization, scope));
-  if (q) where.push(buildInquirySearchPredicate(q));
-
-  // Column filters (ClientApp #263, item 8). `status` takes wire-format
-  // integers, comma-separated; `creator`/`reviewer` take a user id.
-  const statusParam = c.req.query("status");
-  if (statusParam) {
-    let statuses: string[];
-    try {
-      statuses = statusParam
-        .split(",")
-        .map((s) => intToEnum("audit_status", parseInt(s.trim(), 10))!);
-    } catch {
-      throw new ValidationError([`Invalid status filter: ${statusParam}`]);
-    }
-    where.push(inArray(inquiry.auditStatus, statuses));
-  }
-  for (const [param, column] of [
-    ["creator", attribution.creator],
-    ["reviewer", attribution.reviewer],
-  ] as const) {
-    const value = c.req.query(param);
-    if (!value) continue;
-    if (!UUID_RE.test(value)) {
-      throw new ValidationError([`Invalid ${param} filter: expected a user id`]);
-    }
-    where.push(eq(column, value));
-  }
+  const where = listFilters(c, scope);
 
   const sortParam = c.req.query("sort");
   if (sortParam && !(sortParam in LIST_SORT_COLUMNS)) {

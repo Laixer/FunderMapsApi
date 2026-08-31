@@ -111,13 +111,20 @@ accepts:
 
 - `?status=` — one or more `auditStatus` wire integers, comma-separated
   (e.g. `status=4` or `status=0,1,5`).
+- `?type=` — one or more inquiry `type` wire integers, comma-separated
+  (e.g. `type=11` for foundation research).
 - `?creator=` / `?reviewer=` — a user id; filters on the report's attribution.
-- `?sort=` — one of `id`, `document_name`, `type`, `document_date`, `creator`,
-  `reviewer`, `status` (creator/reviewer sort on the user's email). Combine
-  with `?order=asc|desc` (default `desc`). Without `sort`, the default
-  recency ordering above applies.
+- `?sort=` — one of `id`, `document_name`, `type`, `document_date`,
+  `create_date`, `creator`, `reviewer`, `status` (creator/reviewer sort on the
+  user's email; `create_date` is when the dossier entered the system, as
+  opposed to the date on the document). Combine with `?order=asc|desc`
+  (default `desc`). Without `sort`, the default recency ordering above applies.
 
-Unknown sort columns, malformed status integers, and non-UUID
+`GET /api/inquiry/stats` accepts the same filter parameters (`q`, `status`,
+`type`, `creator`, `reviewer`) and returns the exact count for that filter
+set — the total the paginated list itself does not report.
+
+Unknown sort columns, malformed status/type integers, and non-UUID
 creator/reviewer values return `400`.
 
 **Dates.** `documentDate` / `permitDate` / `recoveryDate` are date strings
@@ -177,7 +184,7 @@ fields on create/update: `documentName`, `documentDate`, `documentFile`,
 | Method | Path | Role | Returns |
 |---|---|---|---|
 | GET | `/api/inquiry` | member | 200 — list (paginated) |
-| GET | `/api/inquiry/stats` | member | 200 — `{ "count": n }` for the org |
+| GET | `/api/inquiry/stats` | member | 200 — `{ "count": n }` for the org (accepts the list filters) |
 | GET | `/api/inquiry/{id}` | member | 200 — single inquiry |
 | GET | `/api/inquiry/building/{building_id}` | member | 200 — inquiries with a sample on that building |
 | GET | `/api/inquiry/{id}/download` | member | 200 — `{ "accessLink": "<1h signed URL>" }` |
