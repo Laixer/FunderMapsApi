@@ -59,6 +59,7 @@ export const auth = betterAuth({
   trustedOrigins: env.TRUSTED_ORIGINS,
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
     password: {
       hash: baHashPassword,
       verify: async ({ hash, password }) => {
@@ -194,6 +195,7 @@ export const auth = betterAuth({
       ac: orgAc,
       roles: orgRoles,
       creatorRole: "superuser",
+      allowUserToCreateOrganization: false,
       dynamicAccessControl: {
         enabled: true,
       },
