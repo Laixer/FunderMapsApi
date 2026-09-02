@@ -35,6 +35,7 @@ import {
   type AttributionView,
 } from "../lib/inquiry-serializer.ts";
 import { describeDocumentFile } from "../lib/document-file.ts";
+import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import {
@@ -166,13 +167,13 @@ async function emailContext(
   inq: typeof inquiry.$inferSelect,
   attr: AttributionView,
 ): Promise<InquiryEmailContext> {
-  // Stub helper kept for future Mailgun wiring; current emails are no-ops.
+  const emails = await lookupUserEmails([attr.creator, attr.reviewer]);
   return {
     inquiryId: inq.id,
     documentName: inq.documentName,
-    creatorEmail: attr.creatorName ?? "",
+    creatorEmail: emails.get(attr.creator) ?? "",
     creatorName: attr.creatorName ?? "",
-    reviewerEmail: attr.reviewerName ?? "",
+    reviewerEmail: emails.get(attr.reviewer) ?? "",
     reviewerName: attr.reviewerName ?? "",
     organizationName: attr.ownerName ?? "",
   };
@@ -668,9 +669,9 @@ inquiries.post(
     const next = transitionStatus(row.auditStatus, "rejected");
     await db.transaction(async (tx) => {
       await tx.update(inquiry).set({ auditStatus: next }).where(eq(inquiry.id, id));
-      // The motivation was previously handed to Mailgun and stored nowhere, so
-      // the person who has to fix the report could only learn why from their
-      // inbox — one api-prod without MAILGUN_* envs away from nowhere at all.
+      // The motivation was previously handed to the mail provider and stored
+      // nowhere, so the person who has to fix the report could only learn why
+      // from their inbox — one unset RESEND_API_KEY away from nowhere at all.
       await recordEvent({ inquiry: id }, "rejected", { actor: u.id, note: message }, tx);
     });
 

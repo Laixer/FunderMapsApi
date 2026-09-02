@@ -393,7 +393,7 @@ report progresses:
 - `reset` forces `pending` from any state (writer convenience).
 - Approve/reject require `pending_review`; an illegal transition → **400**.
 
-Status transitions trigger notification emails (Mailgun) to the relevant
+Status transitions trigger notification emails (Resend) to the relevant
 parties — `status_review` notifies the reviewer; approve/reject notify the
 creator and reviewer. This is server-side; clients take no action. There is no
 status webhook back to the provider — poll `GET /api/{inquiry|recovery}/{id}`

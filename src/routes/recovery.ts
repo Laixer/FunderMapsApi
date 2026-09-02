@@ -33,6 +33,7 @@ import {
 } from "../lib/recovery-serializer.ts";
 import type { AttributionView } from "../lib/inquiry-serializer.ts";
 import { describeDocumentFile } from "../lib/document-file.ts";
+import { lookupUserEmails } from "../lib/report-emails.ts";
 import {
   type RecoveryEmailContext,
   sendApprovedEmail,
@@ -161,13 +162,13 @@ async function emailContext(
   rec: typeof recovery.$inferSelect,
   attr: AttributionView,
 ): Promise<RecoveryEmailContext> {
-  // Stub helper kept for future Mailgun wiring; current emails are no-ops.
+  const emails = await lookupUserEmails([attr.creator, attr.reviewer]);
   return {
     recoveryId: rec.id,
     documentName: rec.documentName,
-    creatorEmail: attr.creatorName ?? "",
+    creatorEmail: emails.get(attr.creator) ?? "",
     creatorName: attr.creatorName ?? "",
-    reviewerEmail: attr.reviewerName ?? "",
+    reviewerEmail: emails.get(attr.reviewer) ?? "",
     reviewerName: attr.reviewerName ?? "",
     organizationName: attr.ownerName ?? "",
   };
@@ -554,7 +555,7 @@ recoveries.post(
     const next = transitionStatus(row.auditStatus, "rejected");
     await db.transaction(async (tx) => {
       await tx.update(recovery).set({ auditStatus: next }).where(eq(recovery.id, id));
-      // The motivation was previously handed to Mailgun and stored nowhere.
+      // The motivation was previously handed to the mail provider and stored nowhere.
       await recordEvent({ recovery: id }, "rejected", { actor: u.id, note: message }, tx);
     });
 

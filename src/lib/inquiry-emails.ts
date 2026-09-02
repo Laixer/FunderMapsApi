@@ -1,12 +1,12 @@
-// Inquiry audit-workflow emails. Mirrors C# InquiryController + Mailgun
-// templates `report-reviewer`, `report-declined`, `report-approved`. The
-// template variables (id, creatorName, organizationName, reviewerName,
-// documentName, motivation) must match the names baked into the Mailgun
-// template HTML — do not rename without updating Mailgun.
+// Inquiry audit-workflow emails — thin wrapper over the shared report
+// templates in report-emails.ts.
 
-import { sendMail } from "../services/mail.ts";
-
-const FROM = "FunderMaps <noreply@fundermaps.com>";
+import {
+  type ReportEmailContext,
+  sendApprovedEmail as sendApproved,
+  sendRejectedEmail as sendRejected,
+  sendReviewRequestedEmail as sendReviewRequested,
+} from "./report-emails.ts";
 
 export interface InquiryEmailContext {
   inquiryId: number;
@@ -18,63 +18,21 @@ export interface InquiryEmailContext {
   organizationName: string;
 }
 
-function recipient(email: string, name: string): string {
-  return name ? `${name} <${email}>` : email;
+function toReport(ctx: InquiryEmailContext): ReportEmailContext {
+  const { inquiryId, ...rest } = ctx;
+  return { kind: "inquiry", id: inquiryId, ...rest };
 }
 
-export async function sendReviewRequestedEmail(
-  ctx: InquiryEmailContext,
-): Promise<void> {
-  await sendMail({
-    from: FROM,
-    to: [recipient(ctx.reviewerEmail, ctx.reviewerName)],
-    subject: "FunderMaps - Rapportage ter review",
-    template: "report-reviewer",
-    variables: {
-      id: ctx.inquiryId,
-      creatorName: ctx.creatorName,
-      organizationName: ctx.organizationName,
-      reviewerName: ctx.reviewerName,
-      documentName: ctx.documentName,
-    },
-  });
+export async function sendReviewRequestedEmail(ctx: InquiryEmailContext): Promise<void> {
+  await sendReviewRequested(toReport(ctx));
 }
 
-export async function sendApprovedEmail(
-  ctx: InquiryEmailContext,
-): Promise<void> {
-  await sendMail({
-    from: FROM,
-    to: [
-      recipient(ctx.creatorEmail, ctx.creatorName),
-      recipient(ctx.reviewerEmail, ctx.reviewerName),
-    ],
-    subject: "FunderMaps - Rapportage is goedgekeurd",
-    template: "report-approved",
-    variables: {
-      id: ctx.inquiryId,
-      reviewerName: ctx.reviewerName,
-      documentName: ctx.documentName,
-    },
-  });
+export async function sendApprovedEmail(ctx: InquiryEmailContext): Promise<void> {
+  await sendApproved(toReport(ctx));
 }
 
 export async function sendRejectedEmail(
   ctx: InquiryEmailContext & { motivation: string },
 ): Promise<void> {
-  await sendMail({
-    from: FROM,
-    to: [
-      recipient(ctx.creatorEmail, ctx.creatorName),
-      recipient(ctx.reviewerEmail, ctx.reviewerName),
-    ],
-    subject: "FunderMaps - Rapportage is afgekeurd",
-    template: "report-declined",
-    variables: {
-      id: ctx.inquiryId,
-      reviewerName: ctx.reviewerName,
-      documentName: ctx.documentName,
-      motivation: ctx.motivation,
-    },
-  });
+  await sendRejected({ ...toReport(ctx), motivation: ctx.motivation });
 }
