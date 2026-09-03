@@ -17,17 +17,28 @@ export interface MailOptions {
   replyTo?: string;
 }
 
+/**
+ * What became of the send. Still fail-soft -- nothing here throws -- but a
+ * caller keeping a send log (intake-emails.ts) needs to know whether to mark
+ * the row sent or failed. `id` is Resend's message id on success.
+ */
+export interface MailResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+}
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
-export async function sendMail(opts: MailOptions): Promise<void> {
+export async function sendMail(opts: MailOptions): Promise<MailResult> {
   if (!env.RESEND_API_KEY) {
     console.warn("RESEND_API_KEY not set, skipping email:", opts.subject);
-    return;
+    return { ok: false, error: "RESEND_API_KEY not set" };
   }
 
   if (opts.to.length === 0) {
     console.warn("No recipients, skipping email:", opts.subject);
-    return;
+    return { ok: false, error: "no recipients" };
   }
 
   const payload = {
@@ -51,9 +62,15 @@ export async function sendMail(opts: MailOptions): Promise<void> {
     });
 
     if (!response.ok) {
-      console.error("Resend error:", response.status, await response.text());
+      const detail = await response.text();
+      console.error("Resend error:", response.status, detail);
+      return { ok: false, error: `${response.status} ${detail}`.slice(0, 500) };
     }
+
+    const data = (await response.json().catch(() => ({}))) as { id?: string };
+    return { ok: true, id: data.id };
   } catch (err) {
     console.error("Resend request failed:", err);
+    return { ok: false, error: String(err).slice(0, 500) };
   }
 }

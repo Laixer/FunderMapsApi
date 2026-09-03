@@ -68,6 +68,12 @@ const envSchema = z.object({
   // FunderMaps' own form; 10, 22-26 and 61-70 are the municipal portals that
   // moved off our infrastructure in March 2026.
   INTAKE_CLIENT_ID: z.coerce.number().int().min(0).max(99).default(1),
+  // Where the melder follows their melding: `${INTAKE_URL}/melding/<meldcode>`.
+  INTAKE_URL: z.url().default("https://melden.fundermaps.com"),
+  // Reply-To on melder-facing mail, and the address the copy tells them to
+  // write to. Defaults to the sender until an inbound (reply) route exists;
+  // tracker #1020 wants replies keyed on the meldcode back onto the dossier.
+  INTAKE_REPLY_TO: z.string().default("noreply@funderdata.nl"),
 
   // Proxy
   PROXY_ENABLED: z

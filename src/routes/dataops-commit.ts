@@ -9,6 +9,7 @@ import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { s3Client } from "../lib/s3.ts";
 import { env } from "../config.ts";
 import { recordEvent } from "../lib/dossier-events.ts";
+import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -257,6 +258,11 @@ commit.post("/dossier/:id/commit", async (c) => {
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
     return { inquiryId: inq!.id, samples };
   });
+
+  // Moment 3 of tracker #1020. A dossier closed as 'accepted' first and
+  // committed later gets ONE mail: the send log in dataops.dossier_mail is
+  // keyed on (dossier, kind).
+  await sendDossierClosedMail([id]);
 
   return c.json({ ok: true, ...created, unresolved });
 });

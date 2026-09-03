@@ -149,3 +149,25 @@ export const verdict = dataopsSchema.table("verdict", {
   /** Seconds spent. The business case is invoerder time saved; it has to be measured. */
   reviewSeconds: integer("review_seconds"),
 });
+
+/**
+ * Send log for melder-facing mail (tracker #1020). One row per (dossier, kind),
+ * claimed BEFORE the send: that unique key is what stops a retry, or a close
+ * followed by a commit, mailing the same person twice. `status` is 'pending'
+ * while in flight, then 'sent' (with Resend's id) or 'failed' (with the
+ * error); a failed row may be claimed again. The API is the only writer.
+ */
+export const dossierMail = dataopsSchema.table("dossier_mail", {
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+  dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
+  /** received | closed */
+  kind: text().notNull(),
+  recipient: text().notNull(),
+  subject: text().notNull(),
+  /** pending | sent | failed */
+  status: text().notNull().default("pending"),
+  providerId: text("provider_id"),
+  error: text(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
