@@ -42,11 +42,12 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
 
-  // Mailgun
-  MAILGUN_API_KEY: z.string().optional(),
-  MAILGUN_DOMAIN: z.string().optional(),
-  MAILGUN_API_BASE: z.string().default("https://api.eu.mailgun.net/v3"),
-  EMAIL_RECEIVERS: z.string().optional(),
+  // Email (Resend). Unset key = emails are logged and skipped. MAIL_FROM must
+  // be on a domain verified in Resend; today that is only funderdata.nl.
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().default("FunderMaps <noreply@funderdata.nl>"),
+  // Data Studio base URL, used for deep links in workflow emails.
+  STUDIO_URL: z.url().default("https://studio.fundermaps.com"),
 
   // PDF renderer (Gotenberg, self-hosted; replaces pdf.co).
   // GOTENBERG_URL is the base URL of the Gotenberg HTTP API — for prod that's

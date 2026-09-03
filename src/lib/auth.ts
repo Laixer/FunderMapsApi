@@ -90,10 +90,9 @@ export const auth = betterAuth({
     // with ?token=<valid_token> in the query.
     sendResetPassword: async ({ user, url }) => {
       await sendMail({
-        from: "FunderMaps <noreply@fundermaps.com>",
         to: [user.email],
         subject: "Reset your FunderMaps password",
-        body:
+        text:
           `Hi ${user.name || user.email},\n\n` +
           `A password reset was requested for your FunderMaps account.\n\n` +
           `Open the link below to set a new password (valid for 1 hour):\n${url}\n\n` +

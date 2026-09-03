@@ -1,47 +1,59 @@
+// Transactional email via Resend (https://resend.com/docs/api-reference/emails/send-email).
+// Replaced Mailgun on 2026-09-01. The only verified sending domain is
+// funderdata.nl, so MAIL_FROM must stay on that domain until more are added.
+//
+// Fail-soft on purpose: a missing key logs and returns, a Resend error logs
+// and returns. Mail is a notification side-channel, never the record of truth
+// (see dossier_event), so it must never break an inquiry/recovery transition.
+
 import { env } from "../config.ts";
 
-interface MailOptions {
-  from: string;
+export interface MailOptions {
   to: string[];
   subject: string;
-  body?: string;
-  template?: string;
-  variables?: Record<string, unknown>;
+  text: string;
+  html?: string;
+  from?: string;
+  replyTo?: string;
 }
 
+const RESEND_ENDPOINT = "https://api.resend.com/emails";
+
 export async function sendMail(opts: MailOptions): Promise<void> {
-  if (!env.MAILGUN_API_KEY || !env.MAILGUN_DOMAIN) {
-    console.warn("Mailgun not configured, skipping email");
+  if (!env.RESEND_API_KEY) {
+    console.warn("RESEND_API_KEY not set, skipping email:", opts.subject);
     return;
   }
 
-  const form = new FormData();
-  form.append("from", opts.from);
-  opts.to.forEach((t) => form.append("to", t));
-  form.append("subject", opts.subject);
-
-  if (opts.template) {
-    form.append("template", opts.template);
-    if (opts.variables) {
-      form.append("h:X-Mailgun-Variables", JSON.stringify(opts.variables));
-    }
-  } else if (opts.body) {
-    form.append("text", opts.body);
+  if (opts.to.length === 0) {
+    console.warn("No recipients, skipping email:", opts.subject);
+    return;
   }
 
-  const response = await fetch(
-    `${env.MAILGUN_API_BASE}/${env.MAILGUN_DOMAIN}/messages`,
-    {
+  const payload = {
+    from: opts.from ?? env.MAIL_FROM,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    ...(opts.html ? { html: opts.html } : {}),
+    ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
+  };
+
+  try {
+    const response = await fetch(RESEND_ENDPOINT, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${btoa(`api:${env.MAILGUN_API_KEY}`)}`,
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
       },
-      body: form,
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
-    },
-  );
+    });
 
-  if (!response.ok) {
-    console.error("Mailgun error:", response.status, await response.text());
+    if (!response.ok) {
+      console.error("Resend error:", response.status, await response.text());
+    }
+  } catch (err) {
+    console.error("Resend request failed:", err);
   }
 }

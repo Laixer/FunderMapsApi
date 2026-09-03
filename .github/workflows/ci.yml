@@ -26,7 +26,7 @@ jobs:
         # test that transitively imports it needs the required env vars set
         # even if no test actually opens connections to those services.
         # Dummy values are fine — DB-touching tests don't exist in this
-        # repo yet, and the auth/s3/mailgun clients are lazily created on
+        # repo yet, and the auth/s3/mail clients are lazily created on
         # first use.
         env:
           DATABASE_URL: postgres://test@localhost:5432/test

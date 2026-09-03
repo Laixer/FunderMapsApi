@@ -12,7 +12,7 @@ FunderMaps API — TypeScript port of the legacy C# `FunderMaps.WebApi`. REST AP
 - **Auth**: Better Auth (sessions, bearer plugin, admin plugin, `@better-auth/oauth-provider`, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
 - **Validation**: Zod v4 + `@hono/zod-validator`
 - **Storage**: `@aws-sdk/client-s3` (DigitalOcean Spaces compatible)
-- **Email**: Mailgun (direct REST API via `fetch`)
+- **Email**: Resend (direct REST API via `fetch`, sender domain funderdata.nl; templates inline in `src/lib/report-emails.ts`)
 
 ## Commands
 
@@ -70,7 +70,7 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/reviewer` — users with `verifier`/`superuser` role in the session org
 - `/api/product/:building_id` — analysis/statistics/subsidence (billable, runs through `trackerMiddleware`)
 - `/api/report/:building_id` — building report bundle
-- `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (Mailgun templates `report-reviewer`/`report-approved`/`report-declined`)
+- `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (reviewer / approved / declined, see `src/lib/report-emails.ts`)
 - `/api/recovery`, `/api/recovery/:recovery_id/sample` — same shape as inquiry
 - `/api/incident` — read-only listing by building (no submission surface — incidents reach `report.incident` via other channels)
 - `/api/pdf` — async PDF generation through the worker

@@ -144,7 +144,7 @@ curl -s -X POST "$API/api/inquiry/$INQ_ID/status_review" \
 # → 204
 ```
 
-Transitions `pending` → `pending_review` and sends a Mailgun `report-reviewer` email to the assigned reviewer.
+Transitions `pending` → `pending_review` and sends a "ter review" email to the assigned reviewer.
 
 ## Reviewer (customer side): approve or reject
 
@@ -182,7 +182,7 @@ Transition gates:
 
 ## Recovery reports
 
-Recovery is structurally identical — replace `/api/inquiry` with `/api/recovery` and `inquiry-report/` with `recovery-report/` in storage paths. Same role gates, same state machine, same Mailgun templates.
+Recovery is structurally identical — replace `/api/inquiry` with `/api/recovery` and `inquiry-report/` with `recovery-report/` in storage paths. Same role gates, same state machine, same email templates.
 
 ## Known gaps (today)
 
