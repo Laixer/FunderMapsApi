@@ -12,7 +12,7 @@ FunderMaps API — TypeScript port of the legacy C# `FunderMaps.WebApi`. REST AP
 - **Auth**: Better Auth (sessions, bearer plugin, admin plugin, `@better-auth/oauth-provider`, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
 - **Validation**: Zod v4 + `@hono/zod-validator`
 - **Storage**: `@aws-sdk/client-s3` (DigitalOcean Spaces compatible)
-- **Email**: Resend (direct REST API via `fetch`, sender domain funderdata.nl; templates inline in `src/lib/report-emails.ts`)
+- **Email**: Resend (direct REST API via `fetch`, sender domain funderdata.nl; templates inline in `src/lib/report-emails.ts` for the audit workflow and `src/lib/intake-emails.ts` for melder notifications, the latter logged in `dataops.dossier_mail`)
 
 ## Commands
 

@@ -11,6 +11,7 @@ import {
 } from "../db/schema/dataops.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
+import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -322,6 +323,11 @@ async function closeDossiers(ids: number[], outcome: DossierOutcome, note: strin
         and f.state in ('pending', 'auto_accepted', 'rejected')
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
   });
+
+  // Moment 3 of tracker #1020: the melder hears what became of it. Only
+  // dossiers with a submitter get mail (bulk drops have none); one mail per
+  // dossier however often this or /commit runs (dataops.dossier_mail).
+  await sendDossierClosedMail(ids);
 }
 
 function parseOutcome(body: { outcome?: string; note?: string | null }) {
