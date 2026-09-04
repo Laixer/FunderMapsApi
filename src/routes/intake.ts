@@ -10,6 +10,7 @@ import { AppError, NotFoundError } from "../lib/errors.ts";
 import { timingSafeEqual } from "node:crypto";
 import { describeOutcome } from "../lib/intake-outcome.ts";
 import { sendDossierReceivedMail } from "../lib/intake-emails.ts";
+import { addEntry } from "../lib/dossier-entries.ts";
 
 /**
  * The public intake lane.
@@ -165,6 +166,12 @@ intake.post("/dossier", zValidator("json", dossierSchema), async (c) => {
   // Moment 1 of tracker #1020: the ontvangstbevestiging. After the commit, so
   // the meldcode it quotes is real; before the 201, so a failure is logged in
   // the context of this request. Fail-soft -- the helper never throws.
+  await addEntry({
+    dossierId: created.id,
+    kind: "received", actorKind: "melder", actor: "upload",
+    text: `Melding ${created.reference} ontvangen`,
+    visibleToMelder: true,
+  });
   await sendDossierReceivedMail(created.id);
 
   return c.json({ reference: created.reference }, 201);
