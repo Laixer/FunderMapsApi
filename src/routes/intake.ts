@@ -10,6 +10,7 @@ import { AppError, NotFoundError } from "../lib/errors.ts";
 import { timingSafeEqual } from "node:crypto";
 import { describeOutcome } from "../lib/intake-outcome.ts";
 import { sendDossierReceivedMail } from "../lib/intake-emails.ts";
+import { addEntry } from "../lib/dossier-entries.ts";
 
 /**
  * The public intake lane.
