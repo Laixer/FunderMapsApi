@@ -171,3 +171,27 @@ export const dossierMail = dataopsSchema.table("dossier_mail", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });
+
+/**
+ * The dossier's append-only timeline (§11.1). Everyone writes, nobody edits;
+ * the review screen and the melder's status page render the same rows,
+ * filtered by visibleToMelder.
+ */
+export const dossierEntry = dataopsSchema.table("dossier_entry", {
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+  dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
+  at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  /** received · extraction · finding · verdict · remark · question · reply · status */
+  kind: text().notNull(),
+  /** melder · reviewer · pipeline · model · system */
+  actorKind: text("actor_kind").notNull(),
+  actor: text(),
+  body: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  /** The human-readable line, Dutch, always filled. */
+  text: text().notNull(),
+  artifactId: bigint("artifact_id", { mode: "number" }),
+  extractionId: bigint("extraction_id", { mode: "number" }),
+  verdictId: bigint("verdict_id", { mode: "number" }),
+  visibleToMelder: boolean("visible_to_melder").notNull(),
+  mailMessageId: text("mail_message_id"),
+});

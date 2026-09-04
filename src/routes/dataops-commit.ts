@@ -9,6 +9,7 @@ import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { s3Client } from "../lib/s3.ts";
 import { env } from "../config.ts";
 import { recordEvent } from "../lib/dossier-events.ts";
+import { addEntry } from "../lib/dossier-entries.ts";
 import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
@@ -263,6 +264,12 @@ commit.post("/dossier/:id/commit", async (c) => {
   // committed later gets ONE mail: the send log in dataops.dossier_mail is
   // keyed on (dossier, kind).
   await sendDossierClosedMail([id]);
+
+  await addEntry({
+    dossierId: id, kind: "status", actorKind: "reviewer", actor: u.id,
+    text: `Overgenomen als rapportage — ${created.samples} adres${created.samples === 1 ? "" : "sen"}`,
+    body: { inquiry_id: created.inquiryId }, visibleToMelder: true,
+  });
 
   return c.json({ ok: true, ...created, unresolved });
 });
