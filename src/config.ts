@@ -45,6 +45,9 @@ const envSchema = z.object({
   // Email (Resend). Unset key = emails are logged and skipped. MAIL_FROM must
   // be on a domain verified in Resend; today that is only funderdata.nl.
   RESEND_API_KEY: z.string().optional(),
+  // Signs inbound-mail webhook deliveries (routes/webhooks.ts). Unset = the
+  // endpoint answers 503 and Resend keeps retrying, so nothing is lost.
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
   MAIL_FROM: z.string().default("FunderMaps <noreply@funderdata.nl>"),
   // Data Studio base URL, used for deep links in workflow emails.
   STUDIO_URL: z.url().default("https://studio.fundermaps.com"),

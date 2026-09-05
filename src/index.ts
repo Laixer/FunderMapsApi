@@ -25,6 +25,7 @@ import recoveryRoutes from "./routes/recovery.ts";
 import recoverySampleRoutes from "./routes/recovery-sample.ts";
 import incidentRoutes from "./routes/incident.ts";
 import intakeRoutes from "./routes/intake.ts";
+import webhookRoutes from "./routes/webhooks.ts";
 import dataopsRoutes from "./routes/dataops.ts";
 import dataopsCommitRoutes from "./routes/dataops-commit.ts";
 import pdfRoutes from "./routes/pdf.ts";
@@ -82,6 +83,10 @@ app.route("/api/data/contractor", contractorRoutes);
 // receives is a document, not a melding, and which of the two a submission
 // becomes is a reviewer's call at commit time (docs/dataops-pipeline.md §3.1).
 app.route("/api/intake", intakeRoutes);
+
+// Inbound-mail webhook (Resend). Unauthenticated by nature — the caller is a
+// machine; the Svix signature inside the route is the authentication.
+app.route("/api/webhooks", webhookRoutes);
 
 // Authenticated routes
 app.use("/api/user", authMiddleware);
