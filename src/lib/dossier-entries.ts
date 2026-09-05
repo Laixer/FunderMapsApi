@@ -18,6 +18,8 @@ export async function addEntry(
     body?: Record<string, unknown>;
     verdictId?: number | null;
     visibleToMelder: boolean;
+    /** Resend message id; the unique index on it deduplicates webhook replays. */
+    mailMessageId?: string | null;
   },
   on: Executor = db,
 ): Promise<void> {
@@ -31,7 +33,8 @@ export async function addEntry(
       body: e.body ?? {},
       verdictId: e.verdictId ?? null,
       visibleToMelder: e.visibleToMelder,
-    });
+      mailMessageId: e.mailMessageId ?? null,
+    }).onConflictDoNothing();
   } catch (err) {
     console.error(`dossier_entry write failed (dossier ${e.dossierId}, ${e.kind}): ${String(err).slice(0, 200)}`);
   }

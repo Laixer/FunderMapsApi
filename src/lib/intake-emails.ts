@@ -28,6 +28,7 @@ import { model_risk_static } from "../db/schema/data.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
 import { describeOutcome } from "./intake-outcome.ts";
+import { addEntry } from "./dossier-entries.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // The promise
@@ -513,6 +514,9 @@ async function claim(dossierId: number, kind: MailKind, recipient: string, subje
     .values({ dossierId, kind, recipient, subject })
     .onConflictDoUpdate({
       target: [dossierMail.dossierId, dossierMail.kind],
+      // The unique guard is partial since 'question' mails became repeatable;
+      // the arbiter must name the index predicate to keep matching it.
+      targetWhere: inArray(dossierMail.kind, ["received", "closed"]),
       set: { recipient, subject, status: "pending", error: null, createdAt: new Date() },
       setWhere: eq(dossierMail.status, "failed"),
     })
@@ -543,6 +547,18 @@ async function deliver(head: DossierHead, kind: MailKind, to: Recipient, mail: R
         : { status: "failed", error: result.error ?? "unknown", sentAt: null },
     )
     .where(eq(dossierMail.id, logId));
+
+  if (result.ok) {
+    await addEntry({
+      dossierId: head.id,
+      kind: "status",
+      actorKind: "system",
+      actor: "resend",
+      text: kind === "received" ? "Ontvangstbevestiging gemaild" : "Uitkomst gemaild",
+      visibleToMelder: true,
+      mailMessageId: result.id ?? null,
+    });
+  }
 }
 
 async function loadHeads(ids: number[]): Promise<DossierHead[]> {
@@ -783,4 +799,79 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
 /** Dossier heads by id, for callers that preview. */
 export async function loadDossierHeads(ids: number[]): Promise<DossierHead[]> {
   return loadHeads(ids);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// A question from the reviewer (docs/dataops-pipeline.md §11)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * The mailbox questions go out from and come back to. The plus suffix carries
+ * the dossier reference, so the inbound webhook can route a reply even when
+ * the subject line got mangled (routes/webhooks.ts reads it back).
+ */
+export const QUESTION_MAILBOX = "melding@funderdata.nl";
+
+export function questionReplyAddress(reference: string): string {
+  const [box, domain] = QUESTION_MAILBOX.split("@");
+  return `${box}+${reference}@${domain}`;
+}
+
+export interface QuestionMailResult {
+  ok: boolean;
+  /** Resend message id when sent. */
+  id?: string;
+  error?: string;
+  recipient: string;
+}
+
+/**
+ * Mail one reviewer question to the melder. NOT fail-soft, unlike the two
+ * courtesy mails above: here the mail IS the action, so the caller must learn
+ * whether it went out and tell the reviewer when it did not. Repeatable by
+ * design -- a dossier can carry any number of questions, each its own
+ * dossier_mail row.
+ */
+export async function sendDossierQuestionMail(
+  head: DossierHead,
+  question: string,
+): Promise<QuestionMailResult> {
+  const to = recipientOf(head);
+  if (!to) return { ok: false, error: "dossier has no melder email", recipient: "" };
+  const reference = head.reference!;
+
+  const subject = `Vraag over uw melding ${reference}`;
+  const mail = render(subject, [
+    { p: `Beste ${to.name || "melder"},` },
+    { p: `Bij de behandeling van uw melding ${reference} hebben wij een vraag:` },
+    { p: question },
+    { p: "U kunt deze e-mail direct beantwoorden; uw antwoord wordt aan het dossier toegevoegd." },
+    { p: "De actuele stand van uw melding vindt u op:" },
+    { url: statusUrl(reference) },
+  ]);
+
+  const [log] = await db
+    .insert(dossierMail)
+    .values({ dossierId: head.id, kind: "question", recipient: to.email, subject })
+    .returning({ id: dossierMail.id });
+
+  const result = await sendMail({
+    to: [to.name ? `${to.name} <${to.email}>` : to.email],
+    subject,
+    text: mail.text,
+    html: mail.html,
+    from: `FunderMaps <${QUESTION_MAILBOX}>`,
+    replyTo: questionReplyAddress(reference),
+  });
+
+  await db
+    .update(dossierMail)
+    .set(
+      result.ok
+        ? { status: "sent", providerId: result.id ?? null, error: null, sentAt: new Date() }
+        : { status: "failed", error: result.error ?? "unknown", sentAt: null },
+    )
+    .where(eq(dossierMail.id, log!.id));
+
+  return { ok: result.ok, id: result.id, error: result.error, recipient: to.email };
 }

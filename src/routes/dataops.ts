@@ -3,6 +3,7 @@ import { and, asc, count, eq, exists, ilike, inArray, isNull, or, sql, type SQL 
 import { db } from "../db/client.ts";
 import {
   dossier,
+  dossierEntry,
   artifact,
   artifactPage,
   extraction,
@@ -10,8 +11,9 @@ import {
   verdict,
 } from "../db/schema/dataops.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
-import { NotFoundError, ValidationError } from "../lib/errors.ts";
-import { sendDossierClosedMail } from "../lib/intake-emails.ts";
+import { AppError, NotFoundError, ValidationError } from "../lib/errors.ts";
+import { sendDossierClosedMail, sendDossierQuestionMail } from "../lib/intake-emails.ts";
+import { addEntry } from "../lib/dossier-entries.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -204,15 +206,18 @@ dataops.get("/dossier/:id", async (c) => {
   ]);
 
   // Signed links are minted here; the browser never sees storage credentials.
-  const withLinks = await Promise.all(
-    artifacts.map(async (a) => ({
-      ...a,
-      accessLink: await getDownloadUrl(a.storageKey, 4),
-      pages: pages.filter((p) => p.artifactId === a.id),
-    })),
-  );
+  const [withLinks, entries] = await Promise.all([
+    Promise.all(
+      artifacts.map(async (a) => ({
+        ...a,
+        accessLink: await getDownloadUrl(a.storageKey, 4),
+        pages: pages.filter((p) => p.artifactId === a.id),
+      })),
+    ),
+    db.select().from(dossierEntry).where(eq(dossierEntry.dossierId, id)).orderBy(asc(dossierEntry.at), asc(dossierEntry.id)),
+  ]);
 
-  return c.json({ dossier: head, artifacts: withLinks, fields });
+  return c.json({ dossier: head, artifacts: withLinks, fields, entries });
 });
 
 /**
@@ -247,26 +252,57 @@ dataops.post("/verdict", async (c) => {
   }
 
   const [field] = await db
-    .select({ id: extractionField.id })
+    .select({
+      id: extractionField.id,
+      field: extractionField.field,
+      value: extractionField.value,
+      dossierId: artifact.dossierId,
+    })
     .from(extractionField)
+    .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
+    .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
     .where(eq(extractionField.id, body.fieldId))
     .limit(1);
   if (!field) throw new NotFoundError("field not found");
 
-  await db.transaction(async (tx) => {
-    await tx.insert(verdict).values({
-      extractionFieldId: body.fieldId,
-      decidedBy: u.id,
-      outcome: body.outcome,
-      finalValue: body.finalValue ?? null,
-      note: body.note ?? null,
-      reviewSeconds: body.reviewSeconds ?? null,
-    } as typeof verdict.$inferInsert);
+  const verdictId = await db.transaction(async (tx) => {
+    const [v] = await tx
+      .insert(verdict)
+      .values({
+        extractionFieldId: body.fieldId,
+        decidedBy: u.id,
+        outcome: body.outcome,
+        finalValue: body.finalValue ?? null,
+        note: body.note ?? null,
+        reviewSeconds: body.reviewSeconds ?? null,
+      } as typeof verdict.$inferInsert)
+      .returning({ id: verdict.id });
 
     await tx
       .update(extractionField)
       .set({ state: body.outcome })
       .where(eq(extractionField.id, body.fieldId));
+
+    return v!.id;
+  });
+
+  // Same wording the 2026-09-04 backfill used, so old and new lines read alike.
+  const verb =
+    body.outcome === "confirmed"
+      ? "Waarde overgenomen"
+      : body.outcome === "corrected"
+        ? "Waarde aangepast"
+        : "Waarde afgekeurd";
+  await addEntry({
+    dossierId: field.dossierId,
+    kind: "verdict",
+    actorKind: "reviewer",
+    actor: u.id,
+    text:
+      `${verb}: ${field.field} = ${body.finalValue ?? field.value ?? "—"}` +
+      (body.note?.trim() ? ` — ${body.note.trim()}` : ""),
+    verdictId,
+    visibleToMelder: false,
   });
 
   return c.json({ ok: true });
@@ -295,7 +331,19 @@ const OUTCOMES: readonly DossierOutcome[] = ["accepted", "rejected", "duplicate"
  * bulk case (30 promo images in a row) is exactly the one that must not fail
  * halfway.
  */
-async function closeDossiers(ids: number[], outcome: DossierOutcome, note: string | null) {
+const OUTCOME_LINE: Record<DossierOutcome, string> = {
+  accepted: "Afgehandeld",
+  rejected: "Afgewezen",
+  duplicate: "Gesloten als duplicaat",
+  no_data: "Gesloten: geen funderingsgegevens",
+};
+
+async function closeDossiers(
+  ids: number[],
+  outcome: DossierOutcome,
+  note: string | null,
+  actor: string,
+) {
   const heads = await db
     .select({ id: dossier.id, outcome: dossier.outcome })
     .from(dossier)
@@ -324,6 +372,18 @@ async function closeDossiers(ids: number[], outcome: DossierOutcome, note: strin
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
   });
 
+  for (const id of ids) {
+    await addEntry({
+      dossierId: id,
+      kind: "status",
+      actorKind: "reviewer",
+      actor,
+      text: OUTCOME_LINE[outcome] + (note ? ` — ${note}` : ""),
+      body: { outcome },
+      visibleToMelder: true,
+    });
+  }
+
   // Moment 3 of tracker #1020: the melder hears what became of it. Only
   // dossiers with a submitter get mail (bulk drops have none); one mail per
   // dossier however often this or /commit runs (dataops.dossier_mail).
@@ -346,7 +406,7 @@ dataops.post("/dossier/:id/outcome", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
   const { outcome, note } = parseOutcome(await c.req.json());
-  await closeDossiers([id], outcome, note);
+  await closeDossiers([id], outcome, note, c.get("user").id);
   return c.json({ ok: true });
 });
 
@@ -358,8 +418,75 @@ dataops.post("/dossiers/outcome", async (c) => {
   }
   if (ids.length > 200) throw new ValidationError(["at most 200 dossiers per call"]);
   const { outcome, note } = parseOutcome(body);
-  await closeDossiers([...new Set(ids)], outcome, note);
+  await closeDossiers([...new Set(ids)], outcome, note, c.get("user").id);
   return c.json({ ok: true, closed: new Set(ids).size });
+});
+
+/**
+ * A note on the dossier itself, for what the per-field verdicts cannot say:
+ * "called the melder", "waiting for the offerte", "check the second address".
+ * Internal -- the melder never sees these.
+ */
+dataops.post("/dossier/:id/remark", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const body = await c.req.json<{ text?: string }>();
+  const text = body.text?.trim() ?? "";
+  if (!text) throw new ValidationError(["text is required"]);
+  if (text.length > 4000) throw new ValidationError(["text must be at most 4000 characters"]);
+
+  const [head] = await db.select({ id: dossier.id }).from(dossier).where(eq(dossier.id, id)).limit(1);
+  if (!head) throw new NotFoundError("dossier not found");
+
+  await addEntry({
+    dossierId: id,
+    kind: "remark",
+    actorKind: "reviewer",
+    actor: c.get("user").id,
+    text,
+    visibleToMelder: false,
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * Ask the melder something. The question is mailed (Resend, from
+ * melding@funderdata.nl with the dossier reference in the reply address) and
+ * recorded on the timeline; the melder's answer comes back through the
+ * inbound webhook (routes/webhooks.ts) as a 'reply' entry.
+ *
+ * Unlike the courtesy mails this endpoint fails loudly: a reviewer who asks a
+ * question must know whether it actually went out.
+ */
+dataops.post("/dossier/:id/question", async (c) => {
+  const u = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const body = await c.req.json<{ text?: string }>();
+  const text = body.text?.trim() ?? "";
+  if (!text) throw new ValidationError(["text is required"]);
+  if (text.length > 4000) throw new ValidationError(["text must be at most 4000 characters"]);
+
+  const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
+  if (!head) throw new NotFoundError("dossier not found");
+  if (head.outcome) throw new ValidationError(["dossier is closed"]);
+
+  const sent = await sendDossierQuestionMail(head, text);
+  if (!sent.ok) {
+    if (!sent.recipient) throw new ValidationError(["dossier has no melder email"]);
+    throw new AppError(502, `mail not sent: ${sent.error ?? "unknown"}`);
+  }
+
+  await addEntry({
+    dossierId: id,
+    kind: "question",
+    actorKind: "reviewer",
+    actor: u.id,
+    text,
+    visibleToMelder: true,
+    mailMessageId: sent.id ?? null,
+  });
+  return c.json({ ok: true });
 });
 
 export default dataops;
