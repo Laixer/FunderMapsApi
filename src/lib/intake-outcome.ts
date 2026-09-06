@@ -34,7 +34,7 @@ export function describeOutcome(
         state: "verwerkt",
         explanation:
           note ??
-          "Uw melding is verwerkt. De gegevens van dit pand zijn bijgewerkt.",
+          "De gegevens van dit pand zijn overgenomen in de Funderingsdatabase.",
       };
     case "duplicate":
       return {
