@@ -37,10 +37,13 @@ import { addEntry } from "./dossier-entries.ts";
 /**
  * How long the melder is told to wait, in working days after the day the
  * melding arrived (Amsterdam time). Don's suggestion; the queue is worked as a
- * waiting line precisely so this can be kept. Weekends are skipped, national
- * holidays are not (yet) -- a melding on Good Friday promises a Tuesday.
+ * waiting line precisely so this can be kept. Weekends and the Dutch national
+ * holidays (`isDutchPublicHoliday`) are skipped -- Don's ruling 2026-09-06.
  */
 export const RESPONSE_BUSINESS_DAYS = 2;
+
+/** The mailbox every dossier mail is sent from; replies (plus-addressed with the reference) come back via the Resend webhook. */
+export const QUESTION_MAILBOX = "melding@funderdata.nl";
 
 const TZ = "Europe/Amsterdam";
 
@@ -56,14 +59,58 @@ export function localDay(d: Date): Date {
   return new Date(Date.UTC(y!, m! - 1, day!));
 }
 
-/** `days` working days after the Amsterdam calendar day of `from`. */
+/** Easter Sunday (Gregorian, Anonymous/Meeus algorithm) as a UTC-midnight Date. */
+function easterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function plusDays(day: Date, n: number): Date {
+  const d = new Date(day.getTime());
+  d.setUTCDate(d.getUTCDate() + n);
+  return d;
+}
+
+/**
+ * The "algemeen erkende feestdagen" (rijksoverheid.nl) for a UTC-midnight
+ * calendar day: Nieuwjaarsdag, Goede Vrijdag, Eerste + Tweede Paasdag,
+ * Koningsdag (26 April when the 27th is a Sunday), Bevrijdingsdag (every year:
+ * promising a day late beats promising a day early), Hemelvaartsdag,
+ * Eerste + Tweede Pinksterdag, Eerste + Tweede Kerstdag.
+ */
+export function isDutchPublicHoliday(day: Date): boolean {
+  const y = day.getUTCFullYear();
+  const md = `${String(day.getUTCMonth() + 1).padStart(2, "0")}-${String(day.getUTCDate()).padStart(2, "0")}`;
+  if (md === "01-01" || md === "05-05" || md === "12-25" || md === "12-26") return true;
+  const kingsDay = new Date(Date.UTC(y, 3, 27));
+  if (kingsDay.getUTCDay() === 0) kingsDay.setUTCDate(26);
+  if (day.getTime() === kingsDay.getTime()) return true;
+  const easter = easterSunday(y);
+  const t = day.getTime();
+  return [-2, 0, 1, 39, 49, 50].some((offset) => plusDays(easter, offset).getTime() === t);
+}
+
+/** `days` working days after the Amsterdam calendar day of `from`; weekends and Dutch national holidays do not count. */
 export function addBusinessDays(from: Date, days: number): Date {
   const d = localDay(from);
   let left = days;
   while (left > 0) {
     d.setUTCDate(d.getUTCDate() + 1);
     const dow = d.getUTCDay();
-    if (dow !== 0 && dow !== 6) left--;
+    if (dow !== 0 && dow !== 6 && !isDutchPublicHoliday(d)) left--;
   }
   return d;
 }
@@ -536,7 +583,8 @@ async function deliver(head: DossierHead, kind: MailKind, to: Recipient, mail: R
     subject: mail.subject,
     text: mail.text,
     html: mail.html,
-    replyTo: env.INTAKE_REPLY_TO,
+    from: `FunderMaps <${QUESTION_MAILBOX}>`,
+    replyTo: questionReplyAddress(head.reference!),
   });
 
   await db
@@ -609,7 +657,7 @@ export async function prepareReceivedMail(head: DossierHead): Promise<PreparedMa
     receivedAt: head.receivedAt,
     files: files.map((f) => ({ name: displayFilename(f.name), category: f.category })),
     statusUrl: statusUrl(head.reference!),
-    replyTo: env.INTAKE_REPLY_TO,
+    replyTo: questionReplyAddress(head.reference!),
   });
   return { head, to, mail };
 }
@@ -791,7 +839,7 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
     hasInquiry: head.inquiryId !== null,
     addresses,
     statusUrl: statusUrl(head.reference!),
-    replyTo: env.INTAKE_REPLY_TO,
+    replyTo: questionReplyAddress(head.reference!),
   });
   return { head, to, mail };
 }
@@ -810,7 +858,6 @@ export async function loadDossierHeads(ids: number[]): Promise<DossierHead[]> {
  * the dossier reference, so the inbound webhook can route a reply even when
  * the subject line got mangled (routes/webhooks.ts reads it back).
  */
-export const QUESTION_MAILBOX = "melding@funderdata.nl";
 
 export function questionReplyAddress(reference: string): string {
   const [box, domain] = QUESTION_MAILBOX.split("@");
