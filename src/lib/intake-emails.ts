@@ -206,6 +206,46 @@ const ENFORCEMENT_TERM_LABEL: Record<string, string> = {
   term40: "40 jaar",
 };
 
+const FOUNDATION_QUALITY_LABEL: Record<string, string> = {
+  bad: "slecht",
+  mediocre: "matig",
+  tolerable: "redelijk",
+  good: "goed",
+  mediocre_good: "matig tot goed",
+  mediocre_bad: "matig tot slecht",
+};
+
+const DAMAGE_CAUSE_LABEL: Record<string, string> = {
+  drainage: "ontwatering",
+  construction_flaw: "constructiefout",
+  drystand: "droogstand",
+  overcharge: "overbelasting",
+  overcharge_negative_cling: "overbelasting door negatieve kleef",
+  negative_cling: "negatieve kleef",
+  bio_infection: "bacteriële aantasting",
+  fungus_infection: "schimmelaantasting",
+  bio_fungus_infection: "bacteriële aantasting en schimmelaantasting",
+  foundation_flaw: "funderingsgebrek",
+  construction_heave: "opbolling door de constructie",
+  subsidence: "zetting",
+  vegetation: "boomwortels / vegetatie",
+  gas: "gaswinning",
+  vibrations: "trillingen",
+  partial_foundation_recovery: "gedeeltelijk funderingsherstel",
+  japanese_knotweed: "Japanse duizendknoop",
+  groundwater_level_reduction: "grondwaterstandverlaging",
+};
+
+const DAMAGE_CHARACTERISTICS_LABEL: Record<string, string> = {
+  jamming_door_window: "klemmende deuren en ramen",
+  crack: "scheurvorming",
+  skewed: "scheefstand",
+  crawlspace_flooding: "water in de kruipruimte",
+  threshold_above_subsurface: "drempel boven het maaiveld",
+  threshold_below_subsurface: "drempel onder het maaiveld",
+  crooked_floor_wall: "scheve vloeren of wanden",
+};
+
 const RISK_LABEL: Record<string, string> = {
   a: "A (geen risico)",
   b: "B (laag risico)",
@@ -243,6 +283,12 @@ export function formatFieldValue(field: string, value: string): string {
       return value === "true" ? "ja" : value === "false" ? "nee" : value;
     case "enforcement_term":
       return ENFORCEMENT_TERM_LABEL[value] ?? value;
+    case "foundation_quality":
+      return FOUNDATION_QUALITY_LABEL[value] ?? value.replaceAll("_", " ");
+    case "damage_cause":
+      return DAMAGE_CAUSE_LABEL[value] ?? value.replaceAll("_", " ");
+    case "damage_characteristics":
+      return DAMAGE_CHARACTERISTICS_LABEL[value] ?? value.replaceAll("_", " ");
     default:
       if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${value} m NAP`;
       return value.replaceAll("_", " ");
@@ -437,14 +483,19 @@ function describeRisk(r: RegisteredRisk): string {
 export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
   const { state, explanation } = describeOutcome(input.outcome, input.note, input.hasInquiry);
 
+  const taken = input.addresses.filter((a) => a.fields.length > 0);
+  const listed = input.outcome === "accepted" && taken.length > 0;
+  // The default "overgenomen" sentence only repeats the list heading below;
+  // a reviewer's own note is always worth a line.
+  const reviewerNote = explanation === input.note;
+
   const blocks: Block[] = [
     { p: `Beste ${input.recipientName || "melder"},` },
     { p: `Uw melding met meldcode ${input.reference} is ${state}.` },
-    { p: explanation },
+    ...(listed && !reviewerNote ? [] : [{ p: explanation }]),
   ];
 
-  const taken = input.addresses.filter((a) => a.fields.length > 0);
-  if (input.outcome === "accepted" && taken.length > 0) {
+  if (listed) {
     blocks.push({ p: "Dit hebben wij overgenomen in de Funderingsdatabase:" });
     for (const a of taken) {
       blocks.push({ p: `${a.address}:` }, { ul: a.fields.map(describeField) });

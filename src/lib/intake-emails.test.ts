@@ -98,8 +98,16 @@ describe("formatFieldValue", () => {
     expect(formatFieldValue("recovery_advised", "true")).toBe("ja");
     expect(formatFieldValue("enforcement_term", "term510")).toBe("5-10 jaar");
   });
+  test("quality, damage cause and damage characteristics read as Dutch", () => {
+    expect(formatFieldValue("foundation_quality", "mediocre")).toBe("matig");
+    expect(formatFieldValue("foundation_quality", "mediocre_bad")).toBe("matig tot slecht");
+    expect(formatFieldValue("damage_cause", "drainage")).toBe("ontwatering");
+    expect(formatFieldValue("damage_cause", "negative_cling")).toBe("negatieve kleef");
+    expect(formatFieldValue("damage_characteristics", "jamming_door_window")).toBe("klemmende deuren en ramen");
+  });
   test("unknown values fall back to the recorded text", () => {
-    expect(formatFieldValue("damage_cause", "drainage")).toBe("drainage");
+    expect(formatFieldValue("damage_cause", "meteorite")).toBe("meteorite");
+    expect(formatFieldValue("substructure", "some_thing")).toBe("some thing");
   });
 });
 
@@ -286,7 +294,7 @@ describe("describeOutcome hides the commit's internal note", () => {
     expect(isAutoCommitNote("Overgenomen als rapportage #157806")).toBe(true);
     expect(isAutoCommitNote("Overgenomen; de tekening bevestigt houten palen.")).toBe(false);
     expect(describeOutcome("accepted", "Overgenomen als rapportage #157806", true).explanation).toBe(
-      "Uw melding is verwerkt. De gegevens van dit pand zijn bijgewerkt.",
+      "De gegevens van dit pand zijn overgenomen in de Funderingsdatabase.",
     );
     expect(describeOutcome("accepted", "Bedankt, tekening overgenomen.", true).explanation).toBe(
       "Bedankt, tekening overgenomen.",
