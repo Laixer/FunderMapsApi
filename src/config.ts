@@ -76,7 +76,6 @@ const envSchema = z.object({
   // Reply-To on melder-facing mail, and the address the copy tells them to
   // write to. Defaults to the sender until an inbound (reply) route exists;
   // tracker #1020 wants replies keyed on the meldcode back onto the dossier.
-  INTAKE_REPLY_TO: z.string().default("noreply@funderdata.nl"),
 
   // Proxy
   PROXY_ENABLED: z

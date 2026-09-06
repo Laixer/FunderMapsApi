@@ -10,6 +10,7 @@ const {
   addressLine,
   displayFilename,
   addBusinessDays,
+  isDutchPublicHoliday,
   buildClosedEmail,
   buildReceivedEmail,
   compareWithRegistered,
@@ -45,6 +46,36 @@ describe("addBusinessDays", () => {
 
   test("the promise is two working days", () => {
     expect(RESPONSE_BUSINESS_DAYS).toBe(2);
+  });
+
+  test("Dutch national holidays do not count (Don, 2026-09-06)", () => {
+    // Thu 2026-04-02 -> Fri 3 April is Good Friday, Mon 6 April is Easter Monday -> Wed 8 April.
+    expect(iso(addBusinessDays(new Date("2026-04-02T10:00:00Z"), 2))).toBe("2026-04-08");
+    // Wed 2026-12-23 -> Thu 24 counts, Christmas Fri+Sat, Sun -> Mon 28.
+    expect(iso(addBusinessDays(new Date("2026-12-23T10:00:00Z"), 2))).toBe("2026-12-28");
+    // Thu 2026-04-23 -> Fri 24, Mon 27 April is Koningsdag -> Tue 28.
+    expect(iso(addBusinessDays(new Date("2026-04-23T10:00:00Z"), 2))).toBe("2026-04-28");
+  });
+});
+
+describe("isDutchPublicHoliday", () => {
+  const day = (s: string) => new Date(`${s}T00:00:00Z`);
+  test("movable feasts for 2026 (Easter 5 April)", () => {
+    for (const d of ["2026-04-03", "2026-04-05", "2026-04-06", "2026-05-14", "2026-05-24", "2026-05-25"]) {
+      expect(isDutchPublicHoliday(day(d))).toBe(true);
+    }
+  });
+  test("fixed days and Koningsdag", () => {
+    for (const d of ["2026-01-01", "2026-04-27", "2026-05-05", "2026-12-25", "2026-12-26", "2025-04-26"]) {
+      expect(isDutchPublicHoliday(day(d))).toBe(true);
+    }
+    // 27 April 2025 was a Sunday -> Koningsdag moved to Saturday the 26th.
+    expect(isDutchPublicHoliday(day("2025-04-27"))).toBe(false);
+  });
+  test("ordinary days are not holidays", () => {
+    for (const d of ["2026-09-07", "2026-04-04", "2026-05-13", "2026-12-24"]) {
+      expect(isDutchPublicHoliday(day(d))).toBe(false);
+    }
   });
 });
 
@@ -83,7 +114,7 @@ describe("buildReceivedEmail", () => {
       { name: "foto <voorgevel>.jpg", category: "foto" },
     ],
     statusUrl: "https://melden.fundermaps.com/melding/FM2026-000042",
-    replyTo: "noreply@funderdata.nl",
+    replyTo: "melding+FM2026-000042@funderdata.nl",
   };
 
   test("carries meldcode, files with count, deadline, status link and reply address", () => {
@@ -98,7 +129,7 @@ describe("buildReceivedEmail", () => {
     expect(mail.text).toContain("Wat gebeurt er nu?");
     expect(mail.text).toContain("U hoort uiterlijk maandag 7 september 2026 van ons.");
     expect(mail.text).toContain("https://melden.fundermaps.com/melding/FM2026-000042");
-    expect(mail.text).toContain("Stuur een e-mail naar noreply@funderdata.nl en vermeld daarbij uw meldcode.");
+    expect(mail.text).toContain("Stuur een e-mail naar melding+FM2026-000042@funderdata.nl en vermeld daarbij uw meldcode.");
     expect(mail.text.trimEnd().endsWith("Met vriendelijke groet,\nFunderMaps")).toBe(true);
   });
 
@@ -150,7 +181,7 @@ describe("buildClosedEmail", () => {
     reference: "FM2026-000042",
     recipientName: "Jan Poland",
     statusUrl: "https://melden.fundermaps.com/melding/FM2026-000042",
-    replyTo: "noreply@funderdata.nl",
+    replyTo: "melding+FM2026-000042@funderdata.nl",
   };
 
   test("accepted: per address what was taken over, how it compares, and the risk", () => {
