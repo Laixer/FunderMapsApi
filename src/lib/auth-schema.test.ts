@@ -15,8 +15,12 @@ process.env.AUTH_SECRET ??= "ci-test-secret-not-used-for-anything-real";
 process.env.BASE_URL ??= "http://localhost:3000";
 
 const { getAuthTables } = await import("better-auth/db");
+const { diffSchema, getExpectedSchema } = await import(
+  "@better-auth/core/db/internal"
+);
 const { getTableColumns, getTableName, is } = await import("drizzle-orm");
 const { PgTable } = await import("drizzle-orm/pg-core");
+const { Table } = await import("drizzle-orm");
 const { auth } = await import("./auth");
 const schema = await import("../db/schema");
 
@@ -54,4 +58,47 @@ describe("Better Auth ↔ Drizzle schema", () => {
       ).toEqual([]);
     });
   }
+});
+
+// Since 1.7.3 the Drizzle adapter runs this exact comparison on first use and
+// rejects every auth request while it reports a finding (SCHEMA_MISMATCH).
+// Two things trip it that the field-presence test above cannot see:
+//   - a column in a BA table that is NOT NULL without a default and that BA
+//     never writes (account.issuer after 1.7.3 dropped the issuer key);
+//   - an additionalField whose `fieldName` does not match the Drizzle
+//     property (BA indexes the Drizzle table by fieldName, not by column).
+// Mirror the adapter's introspection so the build fails, not the login.
+describe("Better Auth 1.7.3 init-time schema check", () => {
+  test("the adapter finds nothing to complain about", () => {
+    const tables = [];
+    for (const [name, table] of Object.entries(schema)) {
+      if (!is(table, Table)) continue;
+      tables.push({
+        name,
+        columns: Object.entries(getTableColumns(table as never)).map(
+          ([key, column]) => {
+            const c = column as {
+              notNull: boolean;
+              hasDefault: boolean;
+              generated?: unknown;
+              generatedIdentity?: unknown;
+            };
+            return {
+              name: key,
+              nullable: !c.notNull,
+              hasDefault:
+                c.hasDefault ||
+                c.generated !== undefined ||
+                c.generatedIdentity !== undefined,
+            };
+          },
+        ),
+      });
+    }
+    const findings = diffSchema(getExpectedSchema(auth.options), tables);
+    expect(
+      findings,
+      `Better Auth would refuse to start on this schema:\n${JSON.stringify(findings, null, 2)}`,
+    ).toEqual([]);
+  });
 });
