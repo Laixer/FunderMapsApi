@@ -20,6 +20,12 @@ const envSchema = z.object({
   // The dedicated auth SPA's login page — where the OIDC provider sends
   // unauthenticated users (`loginPage`). Prod: https://auth.fundermaps.com/login.
   LOGIN_PAGE_URL: z.url().default("https://auth.fundermaps.com/login"),
+  // WebAuthn relying party. rpID is the registrable domain, so one passkey
+  // serves auth/maps/studio/admin today and the single 5.0 app later. origin
+  // is where the WebAuthn ceremony runs: the auth SPA.
+  PASSKEY_RP_ID: z.string().default("fundermaps.com"),
+  PASSKEY_RP_NAME: z.string().default("FunderMaps"),
+  PASSKEY_ORIGIN: z.url().default("https://auth.fundermaps.com"),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
   // Required when the frontend is on a different domain than BASE_URL,
   // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.
