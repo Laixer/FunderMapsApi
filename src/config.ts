@@ -59,6 +59,10 @@ const envSchema = z.object({
   // Gotenberg renders into a PDF (defaults to the existing whale-app DO
   // instance).
   GOTENBERG_URL: z.url().optional(),
+  // Optional HTTP basic auth for Gotenberg (`--api-enable-basic-auth`). Both
+  // must be set to send the header; either alone is treated as unset.
+  GOTENBERG_USERNAME: z.string().optional(),
+  GOTENBERG_PASSWORD: z.string().optional(),
   REPORT_RENDER_URL: z
     .string()
     .default("https://whale-app-nm9uv.ondigitalocean.app"),

@@ -30,10 +30,18 @@ pdf.post("/:id", async (c) => {
     "document.documentElement.getAttribute('data-pdf-ready') === 'true'",
   );
 
+  const headers: Record<string, string> = {};
+  if (env.GOTENBERG_USERNAME && env.GOTENBERG_PASSWORD) {
+    headers.Authorization = `Basic ${btoa(
+      `${env.GOTENBERG_USERNAME}:${env.GOTENBERG_PASSWORD}`,
+    )}`;
+  }
+
   const response = await fetch(
     `${env.GOTENBERG_URL}/forms/chromium/convert/url`,
     {
       method: "POST",
+      headers,
       body: form,
       // Stay under Bun.serve's max idleTimeout (255s) — see src/index.ts.
       signal: AbortSignal.timeout(240_000),
