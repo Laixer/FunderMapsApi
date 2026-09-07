@@ -11,8 +11,11 @@ updates:
     open-pull-requests-limit: 5
     # better-auth ships breaking schema changes in MINOR releases (1.7.0 added
     # ~25 columns + 3 tables to the OAuth provider models and took logins down
-    # for 3 hours on 2026-08-23). package.json pins the family with `~` so
-    # only patches are proposed here; a minor/major bump is a deliberate PR
+    # for 3 hours on 2026-08-23) -- and in PATCH releases too (1.7.3 reverted
+    # the account identity and added a start-up schema check that rejects
+    # every auth request on a mismatch). package.json pins the family with `~`
+    # so only patches are proposed here, and those get their OWN group below,
+    # never the routine bundle: a Better Auth bump is always a deliberate PR
     # that ships its DDL (FunderMapsWorker sql/migrate) alongside.
     # src/lib/auth-schema.test.ts fails CI on any schema drift.
     ignore:
@@ -24,8 +27,12 @@ updates:
     # Majors stay ungrouped — they get their own PR and a real review.
     # (dependency-type grouping is npm-only, so this groups by pattern.)
     groups:
+      better-auth:
+        patterns: ["better-auth", "@better-auth/*"]
+        update-types: ["patch"]
       minor-and-patch:
         patterns: ["*"]
+        exclude-patterns: ["better-auth", "@better-auth/*"]
         update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
