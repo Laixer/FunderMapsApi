@@ -4,7 +4,7 @@ import { CopyObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "../db/client.ts";
 import { dossier, artifact, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
-import { attribution, fileResource, user as userTable } from "../db/schema/application.ts";
+import { attribution, contractor as contractorTable, fileResource, user as userTable } from "../db/schema/application.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { s3Client } from "../lib/s3.ts";
 import { env } from "../config.ts";
@@ -12,6 +12,7 @@ import { recordEvent } from "../lib/dossier-events.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
+import { matchContractor } from "../lib/contractor-match.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -33,6 +34,14 @@ import type { AppEnv } from "../types/context.ts";
  * The document is COPIED from dataops/ to inquiry-report/: the pipeline never
  * writes to inquiry-report/ (the survey record), and the commit is the one
  * place a reviewed file legitimately enters it.
+ *
+ * What the document says about itself -- document_date, inquiry_type,
+ * contractor -- is read by the pipeline like any other field and judged like
+ * any other field, but lands on the inquiry (and its attribution), never on a
+ * sample. Until 2026-09-07 all three were guessed: the upload date, the
+ * melder's label, FunderMaps B.V. as the bureau. A Fugro report from 2014 went
+ * in as "archive_research, 2026-09-01", and Don's precedence rule (a 5-year-old
+ * funderingsonderzoek beats a 3-year-old QuickScan) keys on exactly that date.
  */
 const commit = new Hono<AppEnv>();
 
@@ -56,6 +65,9 @@ const INQUIRY_TYPES = new Set([
   "foundation_research", "additional_research", "ground_water_level_research",
   "soil_investigation", "facade_scan",
 ]);
+
+/** Judged values that describe the document, not a sample. Keys = extraction_field.field. */
+const DOCUMENT_FIELDS = new Set(["document_date", "inquiry_type", "contractor"]);
 
 type SampleValues = Partial<typeof inquirySample.$inferInsert>;
 
@@ -154,9 +166,11 @@ commit.post("/dossier/:id/commit", async (c) => {
     return groups.get(key)!;
   };
   const unresolved: string[] = [];
+  const documentValues = new Map<string, { value: string; fieldId: number }>();
   for (const j of latest.values()) {
     const value = (j.outcome === "corrected" ? j.finalValue : j.value) ?? "";
     if (!value) continue;
+    if (DOCUMENT_FIELDS.has(j.field)) { documentValues.set(j.field, { value: value.trim(), fieldId: j.fieldId }); continue; }
     if (j.addressText && !j.addressId) { unresolved.push(`${j.addressText}: ${j.field} = ${value}`); continue; }
     const g = group(j.addressId ?? "");
     applyField(g.values, g.notes, j.field, value);
@@ -180,10 +194,36 @@ commit.post("/dossier/:id/commit", async (c) => {
     : [];
   const byAddress = new Map(resolvedRows.map((r) => [r.id, r]));
 
-  // Type: explicit > the melder's label > what the pages looked like.
-  const type = body.type ?? TYPE_FROM_CATEGORY[document.declaredCategory ?? ""] ?? (document.lane === "text" ? "foundation_research" : "archive_research");
-  const documentDate = body.documentDate ?? head.receivedAt.toISOString().slice(0, 10);
+  // Type and date: explicit at commit > what the reviewer took over from the
+  // document > the melder's label / the day it arrived. The judged value has
+  // already passed the same validation the body gets; a stray one is skipped,
+  // not trusted.
+  const judgedType = documentValues.get("inquiry_type")?.value;
+  const judgedDate = documentValues.get("document_date")?.value;
+  const type = body.type
+    ?? (judgedType && INQUIRY_TYPES.has(judgedType) ? judgedType : undefined)
+    ?? TYPE_FROM_CATEGORY[document.declaredCategory ?? ""]
+    ?? (document.lane === "text" ? "foundation_research" : "archive_research");
+  const documentDate = body.documentDate
+    ?? (judgedDate && /^\d{4}-\d{2}-\d{2}$/.test(judgedDate) ? judgedDate : undefined)
+    ?? head.receivedAt.toISOString().slice(0, 10);
   const documentName = document.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `dossier-${id}`;
+
+  // The bureau. The reviewer's correction is a contractor id (the Studio
+  // offers the list); the pipeline's reading is the name as printed, matched
+  // against application.contractor. No match means FunderMaps B.V. as before,
+  // with the printed name kept in the note so a person can add the row.
+  const judgedContractor = documentValues.get("contractor")?.value;
+  let contractorId = CONTRACTOR_FUNDERMAPS;
+  let contractorUnmatched: string | null = null;
+  if (judgedContractor) {
+    const rows = (await db.select({ id: contractorTable.id, name: contractorTable.name }).from(contractorTable))
+      .filter((r): r is { id: number; name: string } => !!r.name);
+    const byId = /^\d+$/.test(judgedContractor) ? rows.find((r) => r.id === Number(judgedContractor)) : undefined;
+    const match = byId ?? matchContractor(judgedContractor, rows);
+    if (match) contractorId = match.id;
+    else contractorUnmatched = judgedContractor;
+  }
 
   // Copy the file into the survey record under a fresh uuid key.
   const ext = (document.storageKey.split(".").pop() ?? "pdf").toLowerCase();
@@ -196,7 +236,7 @@ commit.post("/dossier/:id/commit", async (c) => {
     MetadataDirective: "COPY",
   }));
 
-  const inquiryNote = [body.note?.trim(), head.subject ? `Dossier: ${head.subject}` : null, head.reference ? `Meldcode ${head.reference}` : null, unresolved.length ? `Niet aan een adres gekoppeld:\n${unresolved.join("\n")}` : null]
+  const inquiryNote = [body.note?.trim(), head.subject ? `Dossier: ${head.subject}` : null, head.reference ? `Meldcode ${head.reference}` : null, contractorUnmatched ? `Uitvoerder (niet in de lijst): ${contractorUnmatched}` : null, unresolved.length ? `Niet aan een adres gekoppeld:\n${unresolved.join("\n")}` : null]
     .filter(Boolean)
     .join("\n");
 
@@ -210,7 +250,7 @@ commit.post("/dossier/:id/commit", async (c) => {
     });
     const [attr] = await tx
       .insert(attribution)
-      .values({ reviewer: u.id, creator: svc.id, owner: orgId, contractor: CONTRACTOR_FUNDERMAPS })
+      .values({ reviewer: u.id, creator: svc.id, owner: orgId, contractor: contractorId })
       .returning();
     const [inq] = await tx
       .insert(inquiry)
@@ -257,7 +297,7 @@ commit.post("/dossier/:id/commit", async (c) => {
       where e.id = f.extraction_id and a.dossier_id = ${id}
         and f.state in ('pending', 'auto_accepted', 'rejected')
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
-    return { inquiryId: inq!.id, samples };
+    return { inquiryId: inq!.id, samples, type, documentDate, contractorId, contractorUnmatched };
   });
 
   // Moment 3 of tracker #1020. A dossier closed as 'accepted' first and
