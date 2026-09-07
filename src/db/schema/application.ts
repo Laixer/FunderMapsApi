@@ -72,10 +72,11 @@ export const account = applicationSchema.table("account", {
     .references(() => user.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
-  // Better Auth 1.7: accounts are keyed on (issuer, account_id). Password
-  // accounts carry the synthetic issuer "local:credential" (and account_id
-  // = user id); sign-in matches on all three, so the value is not cosmetic.
-  issuer: text().notNull(),
+  // Legacy of Better Auth 1.7.0–1.7.2, which keyed accounts on
+  // (issuer, account_id). 1.7.3 went back to (provider_id, account_id) and
+  // never writes issuer; it must be nullable or BA refuses to start
+  // (init-time schema check). Kept nullable until a later drop migration.
+  issuer: text(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),

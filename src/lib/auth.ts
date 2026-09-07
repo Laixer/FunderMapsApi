@@ -110,25 +110,26 @@ export const auth = betterAuth({
       image: "avatar",
     },
     additionalFields: {
+      // No `fieldName` here on purpose. The Drizzle adapter addresses columns
+      // by the Drizzle *property* name (givenName), and Drizzle itself maps
+      // that to the given_name column. A snake_case fieldName made Better Auth
+      // look for a `given_name` property that does not exist; 1.7.3 refuses
+      // to start on exactly that mismatch.
       givenName: {
         type: "string",
         required: false,
-        fieldName: "given_name",
       },
       lastName: {
         type: "string",
         required: false,
-        fieldName: "last_name",
       },
       jobTitle: {
         type: "string",
         required: false,
-        fieldName: "job_title",
       },
       phoneNumber: {
         type: "string",
         required: false,
-        fieldName: "phone_number",
       },
       role: {
         type: "string",
