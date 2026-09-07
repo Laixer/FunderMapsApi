@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { HTTPException } from "hono/http-exception";
+import { ValidationError } from "../lib/errors.ts";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and } from "drizzle-orm";
@@ -50,7 +50,7 @@ async function applySelfUpdate(
   // Drizzle throws "No values to set" (a 500) on an all-undefined update;
   // an empty body is the client's mistake, so say so.
   if (Object.values(changes).every((v) => v === undefined)) {
-    throw new HTTPException(400, { message: "No fields to update" });
+    throw new ValidationError(["No fields to update"]);
   }
 
   await db.update(user).set(changes).where(eq(user.id, userId));
