@@ -11,6 +11,8 @@ import {
   serial,
   primaryKey,
   unique,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -87,6 +89,32 @@ export const account = applicationSchema.table("account", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// WebAuthn credentials for the Better Auth passkey plugin. Property names
+// MUST equal the plugin's field keys (the Drizzle adapter indexes the table by
+// them); the snake_case column names are ours.
+export const passkey = applicationSchema.table(
+  "passkey",
+  {
+    id: text().primaryKey(),
+    name: text(),
+    publicKey: text("public_key").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    counter: integer().notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text(),
+    createdAt: timestamp("created_at").defaultNow(),
+    aaguid: text(),
+  },
+  (t) => [
+    index("passkey_user_id_idx").on(t.userId),
+    uniqueIndex("passkey_credential_id_key").on(t.credentialID),
+  ],
+);
 
 export const verification = applicationSchema.table("verification", {
   id: text().primaryKey(),

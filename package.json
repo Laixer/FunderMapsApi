@@ -24,6 +24,7 @@
     "@better-auth/api-key": "~1.7.3",
     "@better-auth/core": "~1.7.3",
     "@better-auth/oauth-provider": "~1.7.3",
+    "@better-auth/passkey": "~1.7.3",
     "@hono/zod-validator": "^0.9.0",
     "better-auth": "~1.7.3",
     "drizzle-orm": "^0.45.2",
