@@ -28,7 +28,12 @@ import type { AppEnv } from "../types/context.ts";
  */
 const upload = new Hono<AppEnv>();
 
-/** What the uploader says the document is. Drives admissibility in the Worker; a QuickScan may not establish a foundation type. */
+/**
+ * What the uploader says the document is, if they say. Optional since
+ * 2026-09-08: the pipeline reads the document's kind itself (inquiry_type,
+ * with a citation) and the Worker's gate uses that read, so the Studio no
+ * longer asks. Still accepted for a caller that knows.
+ */
 const CATEGORIES = new Set(["foundationresearch", "archieveresearch", "quickscan", "herstelbewijs", "foto", "overig"]);
 const MAX_FILES = 10;
 
@@ -51,8 +56,8 @@ upload.post("/dossier", async (c) => {
   }
 
   const str = (k: string) => { const v = form[k]; return typeof v === "string" ? v.trim() : ""; };
-  const category = str("category") || "overig";
-  if (!CATEGORIES.has(category)) throw new ValidationError([`unknown category: ${category}`]);
+  const category = str("category") || null;
+  if (category && !CATEGORIES.has(category)) throw new ValidationError([`unknown category: ${category}`]);
   const subject = str("subject").slice(0, 200) || files[0]!.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 200);
   const building = str("building");
 
@@ -90,7 +95,7 @@ upload.post("/dossier", async (c) => {
         buildingId,
         resolutionStatus,
         submitter: null,
-        payload: { uploadedBy: u.id, organization: orgId, category },
+        payload: { uploadedBy: u.id, organization: orgId, ...(category ? { category } : {}) },
       })
       .returning({ id: dossier.id, reference: dossier.reference });
     if (!head) throw new ValidationError(["dossier not created"]);
