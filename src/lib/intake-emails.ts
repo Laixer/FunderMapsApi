@@ -142,6 +142,10 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 /** extraction_field.field -> how the melder knows it. Mirrors the Studio's sample labels. */
 const FIELD_LABEL: Record<string, string> = {
+  // About the document itself (vision.DOCUMENT_FIELDS, 2026-09-07).
+  document_date: "Datum van het rapport",
+  inquiry_type: "Soort document",
+  contractor: "Opgesteld door",
   foundation_type: "Funderingstype",
   built_year: "Bouwjaar",
   foundation_quality: "Funderingskwaliteit",
@@ -169,6 +173,46 @@ const FIELD_LABEL: Record<string, string> = {
   crack_indoor_type: "Scheurvorming binnen",
   skewed_parallel: "Lintvoegmeting",
   skewed_perpendicular: "Scheefstand haaks op de gevel",
+  threshold_front_level: "Drempelniveau voorzijde",
+  threshold_back_level: "Drempelniveau achterzijde",
+  settlement_speed: "Zakkingssnelheid",
+};
+
+const INQUIRY_TYPE_LABEL: Record<string, string> = {
+  foundation_research: "funderingsonderzoek",
+  archive_research: "archiefonderzoek",
+  quickscan: "QuickScan",
+  inspectionpit: "inspectieput",
+  monitoring: "monitoring",
+  ground_water_level_research: "grondwateronderzoek",
+  soil_investigation: "grondonderzoek",
+  architectural_research: "bouwkundig onderzoek",
+  foundation_advice: "funderingsadvies",
+  second_opinion: "second opinion",
+  demolition_research: "sloop- of nieuwbouwonderzoek",
+  additional_research: "aanvullend onderzoek",
+  note: "notitie",
+  unknown: "onbekend",
+};
+
+const CRACK_LABEL: Record<string, string> = { none: "geen", nil: "geen", small: "licht", mediocre: "matig", big: "ernstig" };
+const WOOD_TYPE_LABEL: Record<string, string> = { pine: "grenen", spruce: "vuren" };
+const WOOD_ENCROACHMENT_LABEL: Record<string, string> = {
+  fungus_infection: "schimmelaantasting",
+  bio_infection: "bacteriële aantasting",
+  bio_fungus_infection: "bacteriële aantasting en schimmelaantasting",
+};
+
+/** Units for the measurements, so 850 reads as millimetres and -2.3 as metres. Don's #321 §7. */
+const UNIT: Record<string, string> = {
+  concrete_charger_length: "m",
+  pile_diameter_top: "mm",
+  pile_diameter_bottom: "mm",
+  pile_distance_length: "m",
+  wood_penetration_depth: "mm",
+  skewed_parallel: "mm/m",
+  skewed_perpendicular: "mm/m",
+  settlement_speed: "mm per jaar",
 };
 
 /** report.foundation_type, in words a homeowner uses. */
@@ -289,8 +333,29 @@ export function formatFieldValue(field: string, value: string): string {
       return DAMAGE_CAUSE_LABEL[value] ?? value.replaceAll("_", " ");
     case "damage_characteristics":
       return DAMAGE_CHARACTERISTICS_LABEL[value] ?? value.replaceAll("_", " ");
+    case "inquiry_type":
+      return INQUIRY_TYPE_LABEL[value] ?? value.replaceAll("_", " ");
+    case "wood_type":
+      return WOOD_TYPE_LABEL[value] ?? value;
+    case "wood_encroachment":
+      return WOOD_ENCROACHMENT_LABEL[value] ?? value.replaceAll("_", " ");
+    case "crack_facade_front_type":
+    case "crack_facade_back_type":
+    case "crack_indoor_type":
+      return CRACK_LABEL[value] ?? value;
+    case "document_date": {
+      // YYYY-MM-DD -> "3 november 2014"; anything else as written.
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return value;
+      return new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+    }
+    case "built_year":
+      return value;
+    case "contractor":
+      return value;
     default:
       if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${value} m NAP`;
+      if (UNIT[field] && Number.isFinite(parseFloat(value))) return `${value} ${UNIT[field]}`;
       return value.replaceAll("_", " ");
   }
 }
@@ -451,6 +516,10 @@ export interface ClosedEmailInput {
   note: string | null;
   hasInquiry: boolean;
   addresses: ClosedAddressSummary[];
+  /** What was taken over about the document itself: date, kind, bureau. */
+  document?: TakenField[];
+  /** Addresses the report names that could not be matched to a pand; their values were kept as a note, not taken over. */
+  unresolved?: string[];
   statusUrl: string;
   replyTo: string;
 }
@@ -496,10 +565,24 @@ export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
   ];
 
   if (listed) {
+    // The report's own facts first, once, apart from the per-pand values
+    // (Don's #321 §5: "algemene rapportgegevens apart").
+    if (input.document?.length) {
+      blocks.push({ p: "Over het document:" }, { ul: input.document.map((f) => `${fieldLabel(f.field)}: ${formatFieldValue(f.field, f.value)}`) });
+    }
     blocks.push({ p: "Dit hebben wij overgenomen in de Funderingsdatabase:" });
     for (const a of taken) {
       blocks.push({ p: `${a.address}:` }, { ul: a.fields.map(describeField) });
       if (a.risk) blocks.push({ p: describeRisk(a.risk) });
+    }
+    // Say what was NOT taken over, rather than let a complete-looking list
+    // imply it was (Don's #321 §4 and §7).
+    if (input.unresolved?.length) {
+      blocks.push({
+        p:
+          `Het rapport noemt ook ${input.unresolved.length === 1 ? "een adres dat" : "adressen die"} wij niet aan een pand konden koppelen; ` +
+          `de gegevens daarvan zijn als notitie bij de rapportage bewaard en niet in de database opgenomen:`,
+      }, { ul: [...input.unresolved].sort() });
     }
     const anyDiffers = taken.some((a) => a.fields.some((f) => f.comparison === "differs"));
     blocks.push({
@@ -514,9 +597,9 @@ export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
   blocks.push(
     { p: "De status van uw melding kunt u teruglezen via:" },
     { url: input.statusUrl },
-    {
-      p: `Vragen over deze afhandeling? Stuur een e-mail naar ${input.replyTo} en vermeld daarbij uw meldcode.`,
-    },
+    // The reply address carries the meldcode already; asking for it again
+    // is the instruction Don flagged as overbodig (#321 §8).
+    { p: "Vragen over deze afhandeling? Beantwoord deze e-mail. Uw reactie wordt automatisch aan uw melding gekoppeld." },
   );
 
   return render(`FunderMaps - Uw melding ${input.reference} is ${state}`, blocks);
@@ -735,7 +818,16 @@ export async function sendDossierReceivedMail(dossierId: number): Promise<void> 
  * values the commit writes to report.inquiry_sample, so the mail and the
  * database agree on "overgenomen".
  */
-async function summarizeTaken(head: DossierHead): Promise<ClosedAddressSummary[]> {
+/** Judged values that describe the document, not a sample; mirrors dataops-commit. */
+const DOCUMENT_FIELDS = new Set(["document_date", "inquiry_type", "contractor"]);
+
+interface TakenSummary {
+  addresses: ClosedAddressSummary[];
+  document: TakenField[];
+  unresolved: string[];
+}
+
+async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
   const judged = await db
     .select({
       fieldId: extractionField.id,
@@ -758,15 +850,18 @@ async function summarizeTaken(head: DossierHead): Promise<ClosedAddressSummary[]
   const latest = new Map<number, (typeof judged)[number]>();
   for (const j of judged) latest.set(j.fieldId, j);
   const groups = new Map<string, { field: string; value: string }[]>();
+  const document: TakenField[] = [];
+  const unresolved = new Set<string>();
   for (const j of latest.values()) {
     const value = (j.outcome === "corrected" ? j.finalValue : j.value) ?? "";
     if (!value) continue;
-    if (j.addressText && !j.addressId) continue;
+    if (DOCUMENT_FIELDS.has(j.field)) { document.push({ field: j.field, value, registered: null, comparison: "none" }); continue; }
+    if (j.addressText && !j.addressId) { unresolved.add(j.addressText); continue; }
     const key = j.addressId ?? "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push({ field: j.field, value });
   }
-  if (groups.size === 0) return [];
+  if (groups.size === 0) return { addresses: [], document, unresolved: [...unresolved] };
 
   const addressIds = [...groups.keys()].filter(Boolean);
   const [rows, main] = await Promise.all([
@@ -776,6 +871,20 @@ async function summarizeTaken(head: DossierHead): Promise<ClosedAddressSummary[]
     mainAddress(head.buildingId),
   ]);
   const byAddress = new Map(rows.map((r) => [r.id, r]));
+
+  // The header's values and a per-address table can describe the same pand;
+  // the commit merges those into one sample (dataops-commit), so the mail
+  // must not name Molenwal 15 twice (Don's #321 §5).
+  const docGroup = groups.get("");
+  if (docGroup && main) {
+    const twin = [...groups.keys()].find((key) => key && byAddress.get(key)?.buildingId === main.buildingId);
+    if (twin) {
+      const own = groups.get(twin)!;
+      const seen = new Set(own.map((f) => f.field));
+      groups.set(twin, [...own, ...docGroup.filter((f) => !seen.has(f.field))]);
+      groups.delete("");
+    }
+  }
 
   const buildingIds = [...new Set([...rows.map((r) => r.buildingId), main?.buildingId, head.buildingId].filter((b): b is string => !!b))];
   const registered = buildingIds.length
@@ -815,7 +924,7 @@ async function summarizeTaken(head: DossierHead): Promise<ClosedAddressSummary[]
         : null,
     });
   }
-  return out;
+  return { addresses: out, document, unresolved: [...unresolved] };
 }
 
 export function compareWithRegistered(
@@ -881,7 +990,8 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
   const to = recipientOf(head);
   if (!to || !head.outcome) return null;
 
-  const addresses = head.outcome === "accepted" ? await summarizeTaken(head) : [];
+  const taken = head.outcome === "accepted" ? await summarizeTaken(head) : { addresses: [], document: [], unresolved: [] };
+  const addresses = taken.addresses;
   const mail = buildClosedEmail({
     reference: head.reference!,
     recipientName: to.name,
@@ -889,6 +999,8 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
     note: head.outcomeNote,
     hasInquiry: head.inquiryId !== null,
     addresses,
+    document: taken.document,
+    unresolved: taken.unresolved,
     statusUrl: statusUrl(head.reference!),
     replyTo: questionReplyAddress(head.reference!),
   });
