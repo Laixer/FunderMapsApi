@@ -87,6 +87,13 @@ const envSchema = z.object({
   // write to. Defaults to the sender until an inbound (reply) route exists;
   // tracker #1020 wants replies keyed on the meldcode back onto the dossier.
 
+  // Windmill, for kicking the Data Ops pipeline the moment a staff member
+  // uploads a document (the Studio's "Nieuwe rapportage"). Without a token the
+  // upload still lands; the hourly sweep reads it instead.
+  WINDMILL_URL: z.url().default("https://windmill.fundermaps.com"),
+  WINDMILL_WORKSPACE: z.string().default("fundermaps"),
+  WINDMILL_TOKEN: z.string().optional(),
+
   // Proxy
   PROXY_ENABLED: z
     .string()

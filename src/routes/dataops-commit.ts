@@ -240,6 +240,13 @@ commit.post("/dossier/:id/commit", async (c) => {
     .filter(Boolean)
     .join("\n");
 
+  // Nothing taken over (the pipeline read nothing, or the reviewer refused it
+  // all) still makes an inquiry: the document is archived and the person
+  // fills the samples in by hand. That record is not done, it is pending --
+  // and the API only accepts sample writes on todo/pending/rejected.
+  const willHaveSamples = [...groups.keys()].some((key) => (key ? byAddress.get(key) : mainAddress)?.building);
+  const auditStatus = willHaveSamples ? "done" : "pending";
+
   const created = await db.transaction(async (tx) => {
     await tx.insert(fileResource).values({
       key: targetKey,
@@ -267,7 +274,7 @@ commit.post("/dossier/:id/commit", async (c) => {
         accessPolicy: "private",
         type,
         standardF3o: false,
-        auditStatus: "done",
+        auditStatus,
       })
       .returning();
 
@@ -297,7 +304,7 @@ commit.post("/dossier/:id/commit", async (c) => {
       where e.id = f.extraction_id and a.dossier_id = ${id}
         and f.state in ('pending', 'auto_accepted', 'rejected')
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
-    return { inquiryId: inq!.id, samples, type, documentDate, contractorId, contractorUnmatched };
+    return { inquiryId: inq!.id, samples, auditStatus, type, documentDate, contractorId, contractorUnmatched };
   });
 
   // Moment 3 of tracker #1020. A dossier closed as 'accepted' first and
