@@ -37,6 +37,7 @@ import {
 import { describeDocumentFile } from "../lib/document-file.ts";
 import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
+import { dossier } from "../db/schema/dataops.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import {
   sendApprovedEmail,
@@ -394,7 +395,16 @@ function buildInquirySearchPredicate(q: string): SQL {
 inquiries.get("/:id{[0-9]+}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
-  return c.json(toLegacyInquiry(row, attr));
+  // The dossier this rapportage came out of, when the review lane made it.
+  // Additive: a link that used to appear for a moment in a toast and then
+  // went with the next dossier (Don's #321 §6).
+  const [d] = await db
+    .select({ id: dossier.id, reference: dossier.reference })
+    .from(dossier)
+    .where(eq(dossier.inquiryId, id))
+    .orderBy(asc(dossier.id))
+    .limit(1);
+  return c.json({ ...toLegacyInquiry(row, attr), dossier: d ?? null });
 });
 
 // `accessLink` is unchanged; the rest is additive, so existing callers are

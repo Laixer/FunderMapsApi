@@ -194,6 +194,23 @@ commit.post("/dossier/:id/commit", async (c) => {
     : [];
   const byAddress = new Map(resolvedRows.map((r) => [r.id, r]));
 
+  // The document-level group and an address group can be the same pand: a
+  // report about Molenwal 15 puts its bouwjaar in the header and its
+  // scheefstand in a table under "Molenwal 15". Two samples for one address
+  // (rapportage 158274, Don's #321 §5) is what happens without this. The
+  // address group wins on a field they both carry; the header fills the gaps.
+  const docGroup = groups.get("");
+  if (docGroup && mainAddress) {
+    const twin = [...groups.keys()].find((key) => key && byAddress.get(key)?.building === mainAddress!.building);
+    if (twin) {
+      const g = groups.get(twin)!;
+      g.values = { ...docGroup.values, ...g.values };
+      g.notes = [...docGroup.notes, ...g.notes];
+      g.ids = [...docGroup.ids, ...g.ids];
+      groups.delete("");
+    }
+  }
+
   // Type and date: explicit at commit > what the reviewer took over from the
   // document > the melder's label / the day it arrived. The judged value has
   // already passed the same validation the body gets; a stray one is skipped,
@@ -284,6 +301,10 @@ commit.post("/dossier/:id/commit", async (c) => {
       if (!addr?.building) continue;
       await tx.insert(inquirySample).values({
         ...g.values,
+        // Explicit: the report.year domain defaults to CURRENT_TIMESTAMP, so
+        // an omitted bouwjaar becomes today's date (30 samples, all from
+        // this commit, before 2026-09-08).
+        builtYear: g.values.builtYear ?? null,
         inquiry: inq!.id,
         address: addr.id,
         building: addr.building,

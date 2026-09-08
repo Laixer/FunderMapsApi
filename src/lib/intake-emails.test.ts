@@ -230,6 +230,44 @@ describe("buildClosedEmail", () => {
     expect(mail.text).toContain(base.statusUrl);
   });
 
+  test("document facts once, units on measurements, unresolved addresses named (Don #321 §4/§5/§7)", () => {
+    const mail = buildClosedEmail({
+      ...base,
+      outcome: "accepted",
+      note: null,
+      hasInquiry: true,
+      document: [
+        { field: "document_date", value: "2014-11-03", registered: null, comparison: "none" },
+        { field: "inquiry_type", value: "foundation_research", registered: null, comparison: "none" },
+        { field: "contractor", value: "Fugro GeoServices B.V.", registered: null, comparison: "none" },
+      ],
+      addresses: [
+        {
+          address: "Derde Schinkelstraat 14-22, Amsterdam",
+          fields: [
+            { field: "skewed_parallel", value: "300", registered: null, comparison: "none" },
+            { field: "crack_facade_front_type", value: "mediocre", registered: null, comparison: "none" },
+            { field: "wood_type", value: "spruce", registered: null, comparison: "none" },
+          ],
+          risk: null,
+        },
+      ],
+      unresolved: ["Derde Schinkelstraat 14R", "Derde Schinkelstraat 14L"],
+    });
+    expect(mail.text).toContain("Over het document:");
+    expect(mail.text).toContain("- Datum van het rapport: 3 november 2014");
+    expect(mail.text).toContain("- Soort document: funderingsonderzoek");
+    expect(mail.text).toContain("- Opgesteld door: Fugro GeoServices B.V.");
+    expect(mail.text).toContain("- Lintvoegmeting: 300 mm/m");
+    expect(mail.text).toContain("- Scheurvorming voorgevel: matig");
+    expect(mail.text).toContain("- Houtsoort: vuren");
+    expect(mail.text).toContain("niet aan een pand konden koppelen");
+    expect(mail.text).toContain("- Derde Schinkelstraat 14L\n- Derde Schinkelstraat 14R");
+    expect(mail.text).not.toContain("contractor");
+    expect(mail.text).not.toContain("vermeld daarbij uw meldcode");
+    expect(mail.text).toContain("Beantwoord deze e-mail.");
+  });
+
   test("accepted with nothing differing says the risk is not expected to change", () => {
     const mail = buildClosedEmail({
       ...base,
