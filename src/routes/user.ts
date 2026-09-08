@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { ValidationError } from "../lib/errors.ts";
 import { z } from "zod/v4";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and } from "drizzle-orm";
@@ -39,16 +40,20 @@ async function applySelfUpdate(
   const toNullable = (v: string | undefined) =>
     v === undefined ? undefined : v === "" ? null : v;
 
-  await db
-    .update(user)
-    .set({
-      givenName: toNullable(input.given_name ?? input.givenName),
-      lastName: toNullable(input.family_name ?? input.lastName),
-      avatar: toNullable(input.picture ?? input.avatar),
-      jobTitle: toNullable(input.job_title ?? input.jobTitle),
-      phoneNumber: toNullable(input.phone_number ?? input.phoneNumber),
-    })
-    .where(eq(user.id, userId));
+  const changes = {
+    givenName: toNullable(input.given_name ?? input.givenName),
+    lastName: toNullable(input.family_name ?? input.lastName),
+    avatar: toNullable(input.picture ?? input.avatar),
+    jobTitle: toNullable(input.job_title ?? input.jobTitle),
+    phoneNumber: toNullable(input.phone_number ?? input.phoneNumber),
+  };
+  // Drizzle throws "No values to set" (a 500) on an all-undefined update;
+  // an empty body is the client's mistake, so say so.
+  if (Object.values(changes).every((v) => v === undefined)) {
+    throw new ValidationError(["No fields to update"]);
+  }
+
+  await db.update(user).set(changes).where(eq(user.id, userId));
 
   const [updated] = await db
     .select()

@@ -10,6 +10,7 @@ import { organization } from "better-auth/plugins/organization";
 import { bearer } from "better-auth/plugins/bearer";
 import { jwt } from "better-auth/plugins/jwt";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { passkey } from "@better-auth/passkey";
 import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
@@ -110,25 +111,26 @@ export const auth = betterAuth({
       image: "avatar",
     },
     additionalFields: {
+      // No `fieldName` here on purpose. The Drizzle adapter addresses columns
+      // by the Drizzle *property* name (givenName), and Drizzle itself maps
+      // that to the given_name column. A snake_case fieldName made Better Auth
+      // look for a `given_name` property that does not exist; 1.7.3 refuses
+      // to start on exactly that mismatch.
       givenName: {
         type: "string",
         required: false,
-        fieldName: "given_name",
       },
       lastName: {
         type: "string",
         required: false,
-        fieldName: "last_name",
       },
       jobTitle: {
         type: "string",
         required: false,
-        fieldName: "job_title",
       },
       phoneNumber: {
         type: "string",
         required: false,
-        fieldName: "phone_number",
       },
       role: {
         type: "string",
@@ -140,6 +142,15 @@ export const auth = betterAuth({
   },
   session: {
     modelName: "session",
+    // Every API request from the frontends now authenticates with the
+    // session cookie, so getSession() would hit the database on each call.
+    // The cookie cache carries a signed copy of the session for 5 minutes;
+    // a revoked or banned session lingers at most that long. That matches
+    // the "no extra component" answer to Valkey in the 5.0 review.
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
   },
   account: {
     modelName: "account",
@@ -173,6 +184,18 @@ export const auth = betterAuth({
   },
   plugins: [
     bearer(),
+    // Passkeys (WebAuthn). Optional next to the password; registered and
+    // managed in the auth SPA. Schema: application.passkey (Worker migration
+    // create_passkey_table.sql).
+    passkey({
+      rpID: env.PASSKEY_RP_ID,
+      rpName: env.PASSKEY_RP_NAME,
+      origin: env.PASSKEY_ORIGIN,
+      authenticatorSelection: {
+        residentKey: "preferred",
+        userVerification: "preferred",
+      },
+    }),
     jwt(),
     // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
     // via schema overrides onto the EXISTING application.organization +

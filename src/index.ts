@@ -6,6 +6,7 @@ import { env } from "./config.ts";
 import { auth } from "./lib/auth.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { authMiddleware } from "./middleware/auth.ts";
+import { csrfGuard } from "./middleware/csrf.ts";
 import { adminMiddleware } from "./middleware/admin.ts";
 import { trackerMiddleware } from "./middleware/tracker.ts";
 import type { AppEnv } from "./types/context.ts";
@@ -57,6 +58,9 @@ app.use("*", (c, next) => {
     ? credentialedCors(c, next)
     : publicCors(c, next);
 });
+
+// CSRF guard for cookie sessions (see middleware/csrf.ts).
+app.use("/api/*", csrfGuard);
 
 // Error handler
 app.onError(errorHandler);

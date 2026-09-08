@@ -11,6 +11,8 @@ import {
   serial,
   primaryKey,
   unique,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -72,10 +74,11 @@ export const account = applicationSchema.table("account", {
     .references(() => user.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
-  // Better Auth 1.7: accounts are keyed on (issuer, account_id). Password
-  // accounts carry the synthetic issuer "local:credential" (and account_id
-  // = user id); sign-in matches on all three, so the value is not cosmetic.
-  issuer: text().notNull(),
+  // Legacy of Better Auth 1.7.0–1.7.2, which keyed accounts on
+  // (issuer, account_id). 1.7.3 went back to (provider_id, account_id) and
+  // never writes issuer; it must be nullable or BA refuses to start
+  // (init-time schema check). Kept nullable until a later drop migration.
+  issuer: text(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
@@ -86,6 +89,32 @@ export const account = applicationSchema.table("account", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// WebAuthn credentials for the Better Auth passkey plugin. Property names
+// MUST equal the plugin's field keys (the Drizzle adapter indexes the table by
+// them); the snake_case column names are ours.
+export const passkey = applicationSchema.table(
+  "passkey",
+  {
+    id: text().primaryKey(),
+    name: text(),
+    publicKey: text("public_key").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    counter: integer().notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text(),
+    createdAt: timestamp("created_at").defaultNow(),
+    aaguid: text(),
+  },
+  (t) => [
+    index("passkey_user_id_idx").on(t.userId),
+    uniqueIndex("passkey_credential_id_key").on(t.credentialID),
+  ],
+);
 
 export const verification = applicationSchema.table("verification", {
   id: text().primaryKey(),

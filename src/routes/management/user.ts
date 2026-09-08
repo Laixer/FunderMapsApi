@@ -76,9 +76,6 @@ users.post("/", zValidator("json", createUserSchema), async (c) => {
     userId: created.id,
     accountId: created.id,
     providerId: "credential",
-    // Better Auth 1.7 keys accounts on (issuer, accountId); this is the
-    // synthetic issuer it uses for password accounts (sign-in matches on it).
-    issuer: "local:credential",
     password: passwordHash,
   });
 
