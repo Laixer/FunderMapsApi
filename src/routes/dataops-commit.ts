@@ -127,6 +127,7 @@ commit.post("/dossier/:id/commit", async (c) => {
   const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
   if (!head) throw new NotFoundError("dossier not found");
   if (head.inquiryId) throw new ValidationError([`dossier already committed as inquiry ${head.inquiryId}`]);
+  if (head.auditInquiryId) return c.json(await applyAudit(head as typeof head & { auditInquiryId: number }, u.id));
 
   const [svc] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, SERVICE_USER_EMAIL)).limit(1);
   if (!svc) throw new ValidationError([`service user ${SERVICE_USER_EMAIL} is missing`]);
@@ -341,5 +342,127 @@ commit.post("/dossier/:id/commit", async (c) => {
 
   return c.json({ ok: true, ...created, unresolved });
 });
+
+/**
+ * The nalezing's commit: no new rapportage. Every confirmed or corrected
+ * value goes onto the sample it was compared with (the one on the same
+ * address; the document-level group onto the dossier's pand), the document
+ * fields onto the inquiry itself, and the rapportage's trail gets an
+ * 'audited' event naming the dossier. Values for addresses the report names
+ * but we could not match are appended to the inquiry note, as on an intake
+ * commit. The dossier then closes, linked to the rapportage.
+ */
+async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: number }, userId: string) {
+  const inquiryId = head.auditInquiryId;
+  const [inq] = await db.select({ id: inquiry.id, note: inquiry.note, attribution: inquiry.attribution }).from(inquiry).where(eq(inquiry.id, inquiryId)).limit(1);
+  if (!inq) throw new NotFoundError(`rapportage ${inquiryId} not found`);
+
+  const judged = await db
+    .select({
+      fieldId: extractionField.id,
+      field: extractionField.field,
+      value: extractionField.value,
+      addressId: extractionField.addressId,
+      addressText: extractionField.addressText,
+      outcome: verdict.outcome,
+      finalValue: verdict.finalValue,
+      decidedAt: verdict.decidedAt,
+    })
+    .from(extractionField)
+    .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
+    .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
+    .innerJoin(verdict, eq(verdict.extractionFieldId, extractionField.id))
+    .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"])))
+    .orderBy(asc(verdict.decidedAt));
+  const latest = new Map<number, (typeof judged)[number]>();
+  for (const j of judged) latest.set(j.fieldId, j);
+
+  const samples = await db
+    .select({ id: inquirySample.id, address: inquirySample.address, building: inquirySample.building, note: inquirySample.note })
+    .from(inquirySample)
+    .where(eq(inquirySample.inquiry, inquiryId));
+  const byAddress = new Map(samples.map((s) => [s.address, s]));
+  const mainSample = samples.length === 1 ? samples[0]! : (samples.find((s) => s.building === head.buildingId) ?? null);
+
+  // Per target sample: the columns to set and the note lines to append.
+  const updates = new Map<number, { values: SampleValues; notes: string[]; ids: number[] }>();
+  const forSample = (sid: number) => {
+    if (!updates.has(sid)) updates.set(sid, { values: {}, notes: [], ids: [] });
+    return updates.get(sid)!;
+  };
+  const documentValues = new Map<string, string>();
+  const unresolved: string[] = [];
+  for (const j of latest.values()) {
+    const value = (j.outcome === "corrected" ? j.finalValue : j.value) ?? "";
+    if (!value) continue;
+    if (DOCUMENT_FIELDS.has(j.field)) { documentValues.set(j.field, value.trim()); continue; }
+    const target = j.addressId ? byAddress.get(j.addressId) : j.addressText ? undefined : mainSample;
+    if (!target) { unresolved.push(`${j.addressText ?? "?"}: ${j.field} = ${value}`); continue; }
+    const u = forSample(target.id);
+    applyField(u.values, u.notes, j.field, value);
+    u.ids.push(j.fieldId);
+  }
+
+  // Document fields onto the inquiry. Contractor by the same matching as an
+  // intake commit; an unmatched name goes into the note, never a new row.
+  const inquiryPatch: Partial<typeof inquiry.$inferInsert> = {};
+  const noteLines: string[] = [];
+  const t = documentValues.get("inquiry_type");
+  if (t && INQUIRY_TYPES.has(t)) inquiryPatch.type = t;
+  const d = documentValues.get("document_date");
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) inquiryPatch.documentDate = d;
+  const cName = documentValues.get("contractor");
+  let contractorId: number | null = null;
+  if (cName) {
+    const rows = (await db.select({ id: contractorTable.id, name: contractorTable.name }).from(contractorTable)).filter((r): r is { id: number; name: string } => !!r.name);
+    const byId = /^\d+$/.test(cName) ? rows.find((r) => r.id === Number(cName)) : undefined;
+    const match = byId ?? matchContractor(cName, rows);
+    if (match) contractorId = match.id;
+    else noteLines.push(`Uitvoerder volgens nalezing (niet in de lijst): ${cName}`);
+  }
+  if (unresolved.length) noteLines.push(`Nalezing, niet aan een adres gekoppeld:\n${unresolved.join("\n")}`);
+
+  let samplesUpdated = 0;
+  let fieldsApplied = 0;
+  await db.transaction(async (tx) => {
+    for (const [sid, u] of updates) {
+      const target = samples.find((s) => s.id === sid)!;
+      const note = [target.note, ...u.notes].filter(Boolean).join("\n") || null;
+      await tx.update(inquirySample).set({ ...u.values, note }).where(eq(inquirySample.id, sid));
+      samplesUpdated++;
+      fieldsApplied += u.ids.length;
+    }
+    if (Object.keys(inquiryPatch).length || noteLines.length) {
+      const note = [inq.note, ...noteLines].filter(Boolean).join("\n") || null;
+      await tx.update(inquiry).set({ ...inquiryPatch, ...(noteLines.length ? { note } : {}) }).where(eq(inquiry.id, inquiryId));
+    }
+    if (contractorId) await tx.update(attribution).set({ contractor: contractorId }).where(eq(attribution.id, inq.attribution));
+
+    await recordEvent({ inquiry: inquiryId }, "audited", {
+      actor: userId,
+      note: `Nalezing (dossier #${head.id}): ${fieldsApplied} waarde${fieldsApplied === 1 ? "" : "n"} bijgewerkt op ${samplesUpdated} adres${samplesUpdated === 1 ? "" : "sen"}` +
+        (Object.keys(inquiryPatch).length || contractorId ? ", rapportagegegevens aangepast" : ""),
+      metadata: { dossier_id: head.id, fields: fieldsApplied, samples: samplesUpdated, unresolved: unresolved.length },
+    }, tx);
+    await tx
+      .update(dossier)
+      .set({ inquiryId, outcome: head.outcome ?? "accepted", outcomeNote: head.outcomeNote ?? `Nalezing doorgevoerd op rapportage #${inquiryId}`, outcomeAt: head.outcomeAt ?? new Date() })
+      .where(eq(dossier.id, head.id));
+    await tx.execute(sql`
+      update ${extractionField} f set state = 'superseded'
+      from ${extraction} e join ${artifact} a on a.id = e.artifact_id
+      where e.id = f.extraction_id and a.dossier_id = ${head.id}
+        and f.state in ('pending', 'auto_accepted', 'rejected')
+        and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
+  });
+
+  await addEntry({
+    dossierId: head.id, kind: "status", actorKind: "reviewer", actor: userId,
+    text: `Nalezing doorgevoerd: ${fieldsApplied} waarde${fieldsApplied === 1 ? "" : "n"} bijgewerkt op rapportage #${inquiryId}`,
+    body: { inquiry_id: inquiryId, fields: fieldsApplied, samples: samplesUpdated }, visibleToMelder: false,
+  });
+
+  return { ok: true, inquiryId, audit: true, samples: samplesUpdated, fields: fieldsApplied, auditStatus: "done", unresolved };
+}
 
 export default commit;

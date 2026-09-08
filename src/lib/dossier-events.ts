@@ -30,7 +30,9 @@ export type DossierEventKind =
   /** Arrived as a document rather than being typed (Data Ops pipeline). */
   | "imported"
   /** A field the pipeline filled in for a reviewer to confirm. */
-  | "proposed";
+  | "proposed"
+  /** Fundie re-read the document (the nalezing) and a person applied what differed. */
+  | "audited";
 
 /**
  * Which dossier the event is about. Exactly one key — the DB enforces it with a

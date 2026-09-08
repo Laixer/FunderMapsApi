@@ -54,6 +54,8 @@ export const dossier = dataopsSchema.table("dossier", {
   outcome: text(),
   outcomeNote: text("outcome_note"),
   outcomeAt: timestamp("outcome_at", { withTimezone: true }),
+  /** The rapportage this dossier re-reads (channel audit). Null on intake dossiers. */
+  auditInquiryId: integer("audit_inquiry_id"),
 });
 
 export const artifact = dataopsSchema.table("artifact", {
@@ -130,6 +132,8 @@ export const extractionField = dataopsSchema.table("extraction_field", {
   /** Per-address values (phase B): the address as the report wrote it, and the geocoder row it resolved to. Null = document-level. */
   addressText: text("address_text"),
   addressId: text("address_id"),
+  /** On an audit: what the database held for this field when the document was read. */
+  currentValue: text("current_value"),
 });
 
 export const verdict = dataopsSchema.table("verdict", {
