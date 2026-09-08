@@ -1,5 +1,5 @@
-import { Hono } from "hono";
-import { and, asc, count, eq, exists, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { Hono, type Context } from "hono";
+import { and, asc, count, desc, eq, exists, ilike, inArray, isNull, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import {
   dossier,
@@ -99,6 +99,23 @@ function buildQueueSearchPredicate(q: string): SQL {
   )!;
 }
 
+/**
+ * What kind of document the pipeline read this to be -- the `inquiry_type`
+ * proposal (vision.DOCUMENT_FIELDS, 2026-09-07), latest reading first. Null
+ * until read, or when the model could not tell. The queue's "Soort" column and
+ * its `kind` filter: "toon alle QuickScans" is a question a reviewer asks.
+ */
+const readKind = sql<string | null>`(
+  select f.value
+  from ${extractionField} f
+  join ${extraction} e on e.id = f.extraction_id
+  join ${artifact} a on a.id = e.artifact_id
+  where a.dossier_id = "dataops"."dossier"."id"
+    and f.field = 'inquiry_type' and f.state <> 'superseded'
+  order by f.id desc
+  limit 1
+)`;
+
 const queueSelector = () =>
   db
     .select({
@@ -113,8 +130,96 @@ const queueSelector = () =>
       open: openFields,
       files: fileCount,
       read: isRead,
+      kind: readKind,
     })
     .from(dossier);
+
+/**
+ * The queue's filters, every one server-side, same contract as the inquiry
+ * explorer (`GET /inquiry`): comma-separated sets, combined as OR within a
+ * parameter and AND across them.
+ *
+ *   channel   upload,email,bulk_drop,api,invoer_app
+ *   state     unread (not read yet) · empty (read, nothing proposed) ·
+ *             proposals (something to judge)
+ *   age       overdue -- received more than a week ago; the 24-48 h promise
+ *             to a melder is long broken by then
+ *   building  resolved · unresolved -- whether the submission is filed under
+ *             a pand
+ *   kind      report.inquiry_type codes as the pipeline read them
+ */
+const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app"]);
+const STATES = new Set(["unread", "empty", "proposals"]);
+const KINDS = new Set([
+  "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
+  "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
+  "foundation_research", "additional_research", "ground_water_level_research", "soil_investigation",
+]);
+const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
+function queueFilters(c: Context<AppEnv>): SQL[] {
+  const where: SQL[] = [];
+
+  const channels = csv(c.req.query("channel"));
+  if (channels.length) {
+    const bad = channels.filter((x) => !CHANNELS.has(x));
+    if (bad.length) throw new ValidationError([`unknown channel: ${bad.join(", ")}`]);
+    where.push(inArray(dossier.channel, channels));
+  }
+
+  const states = csv(c.req.query("state"));
+  if (states.length) {
+    const bad = states.filter((x) => !STATES.has(x));
+    if (bad.length) throw new ValidationError([`unknown state: ${bad.join(", ")}`]);
+    const parts: SQL[] = [];
+    if (states.includes("unread")) parts.push(sql`not ${isRead}`);
+    if (states.includes("empty")) parts.push(sql`(${isRead} and ${openFields} = 0)`);
+    if (states.includes("proposals")) parts.push(sql`${openFields} > 0`);
+    where.push(or(...parts)!);
+  }
+
+  const age = c.req.query("age");
+  if (age === "overdue") where.push(sql`${dossier.receivedAt} < now() - interval '7 days'`);
+  else if (age) throw new ValidationError([`unknown age: ${age}`]);
+
+  const building = c.req.query("building");
+  if (building === "resolved") where.push(isNotNull(dossier.buildingId));
+  else if (building === "unresolved") where.push(isNull(dossier.buildingId));
+  else if (building) throw new ValidationError([`unknown building filter: ${building}`]);
+
+  const kinds = csv(c.req.query("kind"));
+  if (kinds.length) {
+    const bad = kinds.filter((x) => !KINDS.has(x));
+    if (bad.length) throw new ValidationError([`unknown kind: ${bad.join(", ")}`]);
+    where.push(inArray(readKind, kinds));
+  }
+
+  return where;
+}
+
+/**
+ * Sort columns. Every ordering ends on the primary key so LIMIT/OFFSET pages
+ * are total (the lesson of FunderMapsApi #101). The default stays oldest
+ * first: this is a waiting line.
+ */
+const SORTS = {
+  received_at: dossier.receivedAt,
+  open: openFields,
+  files: fileCount,
+  subject: dossier.subject,
+  id: dossier.id,
+} as const;
+type QueueSort = keyof typeof SORTS;
+
+function queueOrder(c: Context<AppEnv>): SQL[] {
+  const sort = c.req.query("sort") ?? "received_at";
+  if (!(sort in SORTS)) throw new ValidationError([`unknown sort: ${sort}`]);
+  const order = c.req.query("order") ?? (sort === "received_at" ? "asc" : "desc");
+  if (order !== "asc" && order !== "desc") throw new ValidationError([`order must be asc or desc`]);
+  const dir = order === "asc" ? asc : desc;
+  const col = SORTS[sort as QueueSort];
+  return sort === "id" ? [dir(dossier.id)] : [dir(col), asc(dossier.id)];
+}
 
 /**
  * The queue, oldest first.
@@ -133,14 +238,14 @@ dataops.get("/queue", async (c) => {
     throw new ValidationError(["limit must be >= 1 and offset >= 0"]);
   }
 
-  const where: SQL[] = [onDesk()!];
+  const where: SQL[] = [onDesk()!, ...queueFilters(c)];
   if (q) where.push(buildQueueSearchPredicate(q));
 
   const rows = await queueSelector()
     .where(and(...where))
     // Tie-break on the key: several dossiers share one received_at when a
     // bulk drop lands, and LIMIT/OFFSET over a partial order loses rows.
-    .orderBy(asc(dossier.receivedAt), asc(dossier.id))
+    .orderBy(...queueOrder(c))
     .limit(limit)
     .offset(offset);
 
@@ -149,10 +254,15 @@ dataops.get("/queue", async (c) => {
 
 /** How long the line is. The sidebar counter; never derived from a page. */
 dataops.get("/queue/stats", async (c) => {
+  // Takes the same filters as the queue, so a count always answers the
+  // question the page it accompanies asks. Bare = the whole line.
+  const q = c.req.query("q")?.trim();
+  const where: SQL[] = [onDesk()!, ...queueFilters(c)];
+  if (q) where.push(buildQueueSearchPredicate(q));
   const [row] = await db
     .select({ count: count() })
     .from(dossier)
-    .where(onDesk());
+    .where(and(...where));
   return c.json({ count: row?.count ?? 0 });
 });
 
