@@ -30,7 +30,7 @@ Database schema is **not** managed from this repo — `FunderMapsWorker` owns th
 - `src/config.ts` — Zod-validated env vars (Bun loads `.env` automatically)
 - `src/db/schema/` — One file per PG schema (`application`, `report`, `geocoder`, `data`, `maplayer`)
 - `src/db/client.ts` — Drizzle + postgres.js pool
-- `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `tracker.ts` (product-tracker billing), `error-handler.ts`
+- `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `staff.ts` (platform-org membership via `isPlatformMember`, gates `/api/dataops/*`), `tracker.ts` (product-tracker billing), `error-handler.ts`
 - `src/routes/` — HTTP handlers organized by domain; `management/` subdir for `/api/management/*` (admin-only)
 - `src/services/` — External integrations (`geocoder`, `job`, `mail`, `storage`)
 - `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set + Grafana OIDC client config — and `legacy-password.ts` for the PBKDF2 verify hook)

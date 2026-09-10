@@ -8,6 +8,7 @@ import { errorHandler } from "./middleware/error-handler.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { csrfGuard } from "./middleware/csrf.ts";
 import { adminMiddleware } from "./middleware/admin.ts";
+import { staffMiddleware } from "./middleware/staff.ts";
 import { trackerMiddleware } from "./middleware/tracker.ts";
 import type { AppEnv } from "./types/context.ts";
 
@@ -128,8 +129,8 @@ app.use("/api/incident/*", authMiddleware);
 app.route("/api/incident", incidentRoutes);
 // The review lane is staff-only: it exposes documents from every organisation
 // that has submitted one, and the verdicts recorded here become training data.
-app.use("/api/dataops", authMiddleware);
-app.use("/api/dataops/*", authMiddleware);
+app.use("/api/dataops", authMiddleware, staffMiddleware);
+app.use("/api/dataops/*", authMiddleware, staffMiddleware);
 app.route("/api/dataops", dataopsRoutes);
 app.route("/api/dataops", dataopsCommitRoutes);
 app.route("/api/dataops", dataopsUploadRoutes);

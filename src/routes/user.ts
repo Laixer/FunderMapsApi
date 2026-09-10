@@ -7,13 +7,20 @@ import { db } from "../db/client.ts";
 import { user, applicationUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
 import { toLegacyUser } from "../lib/user-serializer.ts";
+import { isPlatformMember } from "../lib/auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const users = new Hono<AppEnv>();
 
+// `platform_member` tells the frontends whether this is staff (member of
+// the platform organisation): the Data Studio refuses non-members, the
+// other apps ignore it. Same predicate the API uses server-side.
 const getSelf = (c: Context<AppEnv>) => {
   const u = c.get("user");
-  return c.json(toLegacyUser(u, u.organizations));
+  return c.json({
+    ...toLegacyUser(u, u.organizations),
+    platform_member: isPlatformMember(u),
+  });
 };
 
 users.get("/", getSelf);
