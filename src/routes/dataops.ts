@@ -127,6 +127,7 @@ const queueSelector = () =>
       buildingId: dossier.buildingId,
       receivedAt: dossier.receivedAt,
       inquiryId: dossier.inquiryId,
+      auditInquiryId: dossier.auditInquiryId,
       open: openFields,
       files: fileCount,
       read: isRead,
@@ -148,7 +149,7 @@ const queueSelector = () =>
  *             a pand
  *   kind      report.inquiry_type codes as the pipeline read them
  */
-const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app"]);
+const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
 const STATES = new Set(["unread", "empty", "proposals"]);
 const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
@@ -305,6 +306,7 @@ dataops.get("/dossier/:id", async (c) => {
             state: extractionField.state,
             addressText: extractionField.addressText,
             addressId: extractionField.addressId,
+            currentValue: extractionField.currentValue,
             model: extraction.model,
             promptVersion: extraction.promptVersion,
           })
