@@ -120,9 +120,11 @@ commit.post("/dossier/:id/commit", async (c) => {
   if (!orgId) throw new ForbiddenError("User is not a member of any organization");
   await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
-  const body = await c.req.json<{ type?: string; documentDate?: string; note?: string }>().catch(() => ({}) as { type?: string; documentDate?: string; note?: string });
+  type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string };
+  const body = await c.req.json<CommitBody>().catch(() => ({}) as CommitBody);
   if (body.type && !INQUIRY_TYPES.has(body.type)) throw new ValidationError([`unknown inquiry type: ${body.type}`]);
   if (body.documentDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.documentDate)) throw new ValidationError(["documentDate must be YYYY-MM-DD"]);
+  if (body.contractor != null && (!Number.isInteger(body.contractor) || body.contractor <= 0)) throw new ValidationError(["contractor must be a contractor id"]);
 
   const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
   if (!head) throw new NotFoundError("dossier not found");
@@ -227,20 +229,28 @@ commit.post("/dossier/:id/commit", async (c) => {
     ?? head.receivedAt.toISOString().slice(0, 10);
   const documentName = document.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `dossier-${id}`;
 
-  // The bureau. The reviewer's correction is a contractor id (the Studio
-  // offers the list); the pipeline's reading is the name as printed, matched
-  // against application.contractor. No match means FunderMaps B.V. as before,
-  // with the printed name kept in the note so a person can add the row.
+  // The bureau. Explicit at commit (the Studio's Uitvoerder control, an id)
+  // > the reviewer's correction (also an id) > the pipeline's reading, the
+  // name as printed, matched against application.contractor. No match means
+  // FunderMaps B.V. as before, with the printed name kept in the note so a
+  // person can add the row. An explicit id that does not exist is an error,
+  // not a silent fallback (ClientApp #333, point 8).
   const judgedContractor = documentValues.get("contractor")?.value;
   let contractorId = CONTRACTOR_FUNDERMAPS;
   let contractorUnmatched: string | null = null;
-  if (judgedContractor) {
+  if (body.contractor != null || judgedContractor) {
     const rows = (await db.select({ id: contractorTable.id, name: contractorTable.name }).from(contractorTable))
       .filter((r): r is { id: number; name: string } => !!r.name);
-    const byId = /^\d+$/.test(judgedContractor) ? rows.find((r) => r.id === Number(judgedContractor)) : undefined;
-    const match = byId ?? matchContractor(judgedContractor, rows);
-    if (match) contractorId = match.id;
-    else contractorUnmatched = judgedContractor;
+    if (body.contractor != null) {
+      const explicit = rows.find((r) => r.id === body.contractor);
+      if (!explicit) throw new ValidationError([`unknown contractor: ${body.contractor}`]);
+      contractorId = explicit.id;
+    } else if (judgedContractor) {
+      const byId = /^\d+$/.test(judgedContractor) ? rows.find((r) => r.id === Number(judgedContractor)) : undefined;
+      const match = byId ?? matchContractor(judgedContractor, rows);
+      if (match) contractorId = match.id;
+      else contractorUnmatched = judgedContractor;
+    }
   }
 
   // Copy the file into the survey record under a fresh uuid key.
