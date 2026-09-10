@@ -132,6 +132,10 @@ const queueSelector = () =>
       files: fileCount,
       read: isRead,
       kind: readKind,
+      outcome: dossier.outcome,
+      outcomeAt: dossier.outcomeAt,
+      outcomeNote: dossier.outcomeNote,
+      duplicateOf: dossier.duplicateOf,
     })
     .from(dossier);
 
@@ -148,8 +152,15 @@ const queueSelector = () =>
  *   building  resolved · unresolved -- whether the submission is filed under
  *             a pand
  *   kind      report.inquiry_type codes as the pipeline read them
+ *   outcome   rejected · duplicate · no_data · accepted -- closed dossiers
+ *             instead of the desk. Absent = the desk (open, uncommitted).
+ *             A rejected report and a duplicate used to vanish the moment
+ *             they were closed, with no way to list them again; a reviewer
+ *             who wants to check yesterday's rejections needs this
+ *             (ClientApp #333, point 11).
  */
 const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
+const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
 const STATES = new Set(["unread", "empty", "proposals"]);
 const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
@@ -157,6 +168,19 @@ const KINDS = new Set([
   "foundation_research", "additional_research", "ground_water_level_research", "soil_investigation",
 ]);
 const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Which line the request is about: the desk (default), or dossiers closed
+ * with one of the given outcomes. Shared by the queue and its count so the
+ * number always belongs to the page it accompanies.
+ */
+function queueScope(c: Context<AppEnv>): SQL {
+  const outcomes = csv(c.req.query("outcome"));
+  if (!outcomes.length) return onDesk()!;
+  const bad = outcomes.filter((x) => !CLOSED_OUTCOMES.has(x));
+  if (bad.length) throw new ValidationError([`unknown outcome: ${bad.join(", ")}`]);
+  return inArray(dossier.outcome, outcomes);
+}
 
 function queueFilters(c: Context<AppEnv>): SQL[] {
   const where: SQL[] = [];
@@ -205,6 +229,7 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
  */
 const SORTS = {
   received_at: dossier.receivedAt,
+  outcome_at: dossier.outcomeAt,
   open: openFields,
   files: fileCount,
   subject: dossier.subject,
@@ -239,7 +264,7 @@ dataops.get("/queue", async (c) => {
     throw new ValidationError(["limit must be >= 1 and offset >= 0"]);
   }
 
-  const where: SQL[] = [onDesk()!, ...queueFilters(c)];
+  const where: SQL[] = [queueScope(c), ...queueFilters(c)];
   if (q) where.push(buildQueueSearchPredicate(q));
 
   const rows = await queueSelector()
@@ -258,7 +283,7 @@ dataops.get("/queue/stats", async (c) => {
   // Takes the same filters as the queue, so a count always answers the
   // question the page it accompanies asks. Bare = the whole line.
   const q = c.req.query("q")?.trim();
-  const where: SQL[] = [onDesk()!, ...queueFilters(c)];
+  const where: SQL[] = [queueScope(c), ...queueFilters(c)];
   if (q) where.push(buildQueueSearchPredicate(q));
   const [row] = await db
     .select({ count: count() })
