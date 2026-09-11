@@ -163,9 +163,10 @@ commit.post("/dossier/:id/commit", async (c) => {
   // One sample per address. Document-level values go on the dossier's own
   // building (its first address); per-address values on the address they
   // resolved to. Unresolved address rows are kept in the note, never guessed.
-  const groups = new Map<string, { values: SampleValues; notes: string[]; ids: number[] }>();
-  const group = (key: string) => {
-    if (!groups.has(key)) groups.set(key, { values: {}, notes: [], ids: [] });
+  type Group = { values: SampleValues; notes: string[]; ids: number[]; raw: string[]; label: string };
+  const groups = new Map<string, Group>();
+  const group = (key: string, label: string) => {
+    if (!groups.has(key)) groups.set(key, { values: {}, notes: [], ids: [], raw: [], label });
     return groups.get(key)!;
   };
   const unresolved: string[] = [];
@@ -175,9 +176,10 @@ commit.post("/dossier/:id/commit", async (c) => {
     if (!value) continue;
     if (DOCUMENT_FIELDS.has(j.field)) { documentValues.set(j.field, { value: value.trim(), fieldId: j.fieldId }); continue; }
     if (j.addressText && !j.addressId) { unresolved.push(`${j.addressText}: ${j.field} = ${value}`); continue; }
-    const g = group(j.addressId ?? "");
+    const g = group(j.addressId ?? "", j.addressText ?? "Het rapport");
     applyField(g.values, g.notes, j.field, value);
     g.ids.push(j.fieldId);
+    g.raw.push(`${j.field} = ${value}`);
   }
 
   // Resolve the document-level group to the dossier's building.
@@ -210,8 +212,21 @@ commit.post("/dossier/:id/commit", async (c) => {
       g.values = { ...docGroup.values, ...g.values };
       g.notes = [...docGroup.notes, ...g.notes];
       g.ids = [...docGroup.ids, ...g.ids];
+      g.raw = [...docGroup.raw, ...g.raw];
       groups.delete("");
     }
+  }
+
+  // A group with nowhere to land: the document-level values when the dossier
+  // has no building (every bulk_drop dossier, API #167), or an address whose
+  // geocoder row has no pand. Those verdicts used to vanish on commit. They
+  // go into the inquiry note next to the unresolved addresses instead, and
+  // the reviewer is told, so the sample can be filled in by hand.
+  for (const [key, g] of groups) {
+    const addr = key ? byAddress.get(key) : mainAddress;
+    if (addr?.building) continue;
+    for (const line of g.raw) unresolved.push(`${g.label}: ${line}`);
+    groups.delete(key);
   }
 
   // Type and date: explicit at commit > what the reviewer took over from the
