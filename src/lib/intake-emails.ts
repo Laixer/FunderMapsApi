@@ -29,6 +29,7 @@ import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
 import { describeOutcome } from "./intake-outcome.ts";
 import { addEntry } from "./dossier-entries.ts";
+import { storeRiskSnapshot } from "./intake-risk-followup.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // The promise
@@ -504,6 +505,8 @@ export interface RegisteredRisk {
 
 export interface ClosedAddressSummary {
   address: string;
+  /** The pand the address sits on; what the risk follow-up (#143) compares against later. */
+  buildingId?: string | null;
   fields: TakenField[];
   /** As registered at the moment of closing. Null when the model has no row for the building. */
   risk: RegisteredRisk | null;
@@ -609,7 +612,16 @@ export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
 // Delivery, with the send log
 // ─────────────────────────────────────────────────────────────────────────
 
-type MailKind = "received" | "closed";
+export type MailKind = "received" | "closed" | "risk_changed";
+
+/** Once-only mail kinds; the partial unique index on dossier_mail names the same set. */
+const ONCE_KINDS: MailKind[] = ["received", "closed", "risk_changed"];
+
+const SENT_LINE: Record<MailKind, string> = {
+  received: "Ontvangstbevestiging gemaild",
+  closed: "Uitkomst gemaild",
+  risk_changed: "Herberekend funderingsrisico gemaild",
+};
 
 export interface DossierHead {
   id: number;
@@ -629,7 +641,7 @@ export interface Recipient {
 }
 
 /** Who to write to, or null when the dossier has nobody (bulk drops, no email). */
-function recipientOf(head: DossierHead): Recipient | null {
+export function recipientOf(head: DossierHead): Recipient | null {
   if (!head.reference) return null;
   const email = typeof head.submitter?.email === "string" ? head.submitter.email.trim() : "";
   if (!email.includes("@")) return null;
@@ -637,7 +649,7 @@ function recipientOf(head: DossierHead): Recipient | null {
   return { email, name };
 }
 
-function statusUrl(reference: string): string {
+export function statusUrl(reference: string): string {
   return `${env.INTAKE_URL}/melding/${encodeURIComponent(reference)}`;
 }
 
@@ -673,7 +685,7 @@ const addressColumns = {
 };
 
 /** The address the status page shows for the dossier's building. */
-async function mainAddress(buildingId: string | null) {
+export async function mainAddress(buildingId: string | null) {
   if (!buildingId) return null;
   const [row] = await db
     .select(addressColumns)
@@ -697,7 +709,7 @@ async function claim(dossierId: number, kind: MailKind, recipient: string, subje
       target: [dossierMail.dossierId, dossierMail.kind],
       // The unique guard is partial since 'question' mails became repeatable;
       // the arbiter must name the index predicate to keep matching it.
-      targetWhere: inArray(dossierMail.kind, ["received", "closed"]),
+      targetWhere: inArray(dossierMail.kind, ONCE_KINDS),
       set: { recipient, subject, status: "pending", error: null, createdAt: new Date() },
       setWhere: eq(dossierMail.status, "failed"),
     })
@@ -705,11 +717,11 @@ async function claim(dossierId: number, kind: MailKind, recipient: string, subje
   return rows[0]?.id ?? null;
 }
 
-async function deliver(head: DossierHead, kind: MailKind, to: Recipient, mail: RenderedMail) {
+export async function deliver(head: DossierHead, kind: MailKind, to: Recipient, mail: RenderedMail): Promise<boolean> {
   const logId = await claim(head.id, kind, to.email, mail.subject);
   if (logId === null) {
     console.info(`intake mail (${kind}) for dossier ${head.id} already sent, skipping`);
-    return;
+    return false;
   }
 
   const result = await sendMail({
@@ -736,14 +748,15 @@ async function deliver(head: DossierHead, kind: MailKind, to: Recipient, mail: R
       kind: "status",
       actorKind: "system",
       actor: "resend",
-      text: kind === "received" ? "Ontvangstbevestiging gemaild" : "Uitkomst gemaild",
+      text: SENT_LINE[kind],
       visibleToMelder: true,
       mailMessageId: result.id ?? null,
     });
   }
+  return result.ok;
 }
 
-async function loadHeads(ids: number[]): Promise<DossierHead[]> {
+export async function loadHeads(ids: number[]): Promise<DossierHead[]> {
   if (ids.length === 0) return [];
   return db
     .select({
@@ -766,6 +779,8 @@ export interface PreparedMail {
   head: DossierHead;
   to: Recipient;
   mail: RenderedMail;
+  /** The afronding's per-address view; the risk follow-up snapshots these buildings. */
+  addresses?: ClosedAddressSummary[];
 }
 
 /**
@@ -913,6 +928,7 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
 
     out.push({
       address: label,
+      buildingId: buildingId ?? null,
       fields: fields.map((f) => compareWithRegistered(f, reg)),
       risk: reg
         ? {
@@ -979,6 +995,9 @@ export async function sendDossierClosedMail(dossierIds: number[]): Promise<void>
       const prepared = await prepareClosedMail(head);
       if (!prepared) continue;
       await deliver(head, "closed", prepared.to, prepared.mail);
+      // #143, moment 3 second half: remember what the melder was told, so the
+      // run after the next model refresh can say whether it changed.
+      await storeRiskSnapshot(head, prepared.addresses ?? []);
     } catch (err) {
       console.error(`intake mail (closed) for dossier ${head.id} failed:`, err);
     }
@@ -1004,7 +1023,7 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
     statusUrl: statusUrl(head.reference!),
     replyTo: questionReplyAddress(head.reference!),
   });
-  return { head, to, mail };
+  return { head, to, mail, addresses };
 }
 
 /** Dossier heads by id, for callers that preview. */
