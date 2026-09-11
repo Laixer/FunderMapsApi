@@ -10,6 +10,7 @@ import { AppError, NotFoundError } from "../lib/errors.ts";
 import { timingSafeEqual } from "node:crypto";
 import { describeOutcome } from "../lib/intake-outcome.ts";
 import { sendDossierReceivedMail } from "../lib/intake-emails.ts";
+import { sendRiskFollowups } from "../lib/intake-risk-followup.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 
 /**
@@ -245,6 +246,18 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
     explanation,
     attachments: Number(row.attachments),
   });
+});
+
+/**
+ * The run after the model refresh (#143 option B): compare every closed
+ * dossier's risk snapshot with the model's current row and mail the melder
+ * once when it changed. Windmill calls this as the last step of the daily
+ * refresh flow; safe to call any time, a snapshot is checked once.
+ */
+intake.post("/risk-followup", async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { dry_run?: boolean; limit?: number };
+  const result = await sendRiskFollowups({ dryRun: body.dry_run === true, limit: body.limit });
+  return c.json(result);
 });
 
 export default intake;
