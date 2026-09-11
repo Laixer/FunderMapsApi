@@ -126,7 +126,9 @@ export const extractionField = dataopsSchema.table("extraction_field", {
    * read, and with a Dutch refusal when the source was not admissible.
    */
   evidence: text(),
+  /** Page (1-based) and character offset of the citation in the pdftotext output, located at ingest. The document-order key; null = not found / no text. */
   evidencePage: integer("evidence_page"),
+  evidenceOffset: integer("evidence_offset"),
   /** pending · auto_accepted · confirmed · corrected · rejected · superseded */
   state: text().notNull(),
   /** Per-address values (phase B): the address as the report wrote it, and the geocoder row it resolved to. Null = document-level. */

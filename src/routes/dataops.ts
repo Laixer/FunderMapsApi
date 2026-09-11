@@ -338,7 +338,17 @@ dataops.get("/dossier/:id", async (c) => {
           .from(extractionField)
           .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
           .where(inArray(extraction.artifactId, artifactIds))
-          .orderBy(asc(extractionField.addressText), asc(extractionField.field))
+          // The report's order, not the schema's: address group, then where
+          // the citation sits in the text (Worker writes it at ingest since
+          // ClientApp #333 point 2; older rows have nulls and sort last, so
+          // they keep their alphabetical order until re-read).
+          .orderBy(
+            asc(extractionField.addressText),
+            sql`${extractionField.evidenceOffset} nulls last`,
+            sql`${extractionField.evidencePage} nulls last`,
+            asc(extractionField.field),
+            asc(extractionField.id),
+          )
       : [],
   ]);
 
