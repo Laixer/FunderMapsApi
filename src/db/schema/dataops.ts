@@ -183,6 +183,29 @@ export const dossierMail = dataopsSchema.table("dossier_mail", {
  * the review screen and the melder's status page render the same rows,
  * filtered by visibleToMelder.
  */
+/**
+ * The addresses a dossier is about, and what the reviewer decided about each
+ * (ClientApp #333 part C). A value's own `address_id` says where it was read;
+ * this row says whether that address belongs to the dossier at all. The
+ * dossier's own pand (`dossier.building_id`) is not a row here.
+ */
+export const dossierAddress = dataopsSchema.table("dossier_address", {
+  id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+  dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
+  /** geocoder.address id. */
+  addressId: text("address_id").notNull(),
+  /** The address as the document wrote it; null when added by hand. */
+  addressText: text("address_text"),
+  /** pipeline (resolved from the document) · reviewer (added by hand) · melder (the submission's own address) */
+  source: text().notNull(),
+  /** pending · confirmed (a sample on commit, even empty) · rejected (not part of this dossier; its values are superseded) */
+  state: text().notNull().default("pending"),
+  decidedBy: uuid("decided_by"),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  note: text(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const dossierEntry = dataopsSchema.table("dossier_entry", {
   id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   dossierId: bigint("dossier_id", { mode: "number" }).notNull(),

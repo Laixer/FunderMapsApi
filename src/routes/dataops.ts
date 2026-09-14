@@ -14,6 +14,7 @@ import { getDownloadUrl } from "../lib/s3.ts";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import { sendDossierClosedMail, sendDossierQuestionMail } from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
+import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -353,7 +354,7 @@ dataops.get("/dossier/:id", async (c) => {
   ]);
 
   // Signed links are minted here; the browser never sees storage credentials.
-  const [withLinks, entries] = await Promise.all([
+  const [withLinks, entries, addresses] = await Promise.all([
     Promise.all(
       artifacts.map(async (a) => ({
         ...a,
@@ -362,9 +363,12 @@ dataops.get("/dossier/:id", async (c) => {
       })),
     ),
     db.select().from(dossierEntry).where(eq(dossierEntry.dossierId, id)).orderBy(asc(dossierEntry.at), asc(dossierEntry.id)),
+    // The addresses this dossier is about: its own pand, what the document
+    // names, and what the reviewer decided (ClientApp #333 part C).
+    loadDossierAddresses(id, head),
   ]);
 
-  return c.json({ dossier: head, artifacts: withLinks, fields, entries });
+  return c.json({ dossier: head, artifacts: withLinks, fields, entries, addresses });
 });
 
 /**
