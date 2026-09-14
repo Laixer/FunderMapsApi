@@ -5,12 +5,13 @@ import { db } from "../db/client.ts";
 import { dossier, artifact, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution, contractor as contractorTable, fileResource, user as userTable } from "../db/schema/application.ts";
-import { address as geocoderAddress } from "../db/schema/geocoder.ts";
+import { address as geocoderAddress, building as geocoderBuilding } from "../db/schema/geocoder.ts";
 import { s3Client } from "../lib/s3.ts";
 import { env } from "../config.ts";
 import { recordEvent } from "../lib/dossier-events.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { sendDossierClosedMail } from "../lib/intake-emails.ts";
+import { resolveDocumentDate } from "../lib/document-date.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { matchContractor } from "../lib/contractor-match.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
@@ -239,9 +240,17 @@ commit.post("/dossier/:id/commit", async (c) => {
     ?? (judgedType && INQUIRY_TYPES.has(judgedType) ? judgedType : undefined)
     ?? TYPE_FROM_CATEGORY[document.declaredCategory ?? ""]
     ?? (document.lane === "text" ? "foundation_research" : "archive_research");
-  const documentDate = body.documentDate
-    ?? (judgedDate && /^\d{4}-\d{2}-\d{2}$/.test(judgedDate) ? judgedDate : undefined)
-    ?? head.receivedAt.toISOString().slice(0, 10);
+  // The day the melding arrived is never the document's date (#338, Don
+  // 2026-09-14): an archive drawing without a readable date gets the pand's
+  // construction year as an estimate; anything else needs the reviewer.
+  const builtYear = head.buildingId
+    ? (await db.select({ builtYear: geocoderBuilding.built_year }).from(geocoderBuilding).where(eq(geocoderBuilding.id, head.buildingId)).limit(1))[0]?.builtYear ?? null
+    : null;
+  const dateChoice = resolveDocumentDate({ explicit: body.documentDate, judged: judgedDate, type, builtYear });
+  if (!dateChoice) {
+    throw new ValidationError(["documentDate: geen rapportdatum in het document gevonden; vul de datum in"]);
+  }
+  const documentDate = dateChoice.date;
   const documentName = document.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `dossier-${id}`;
 
   // The bureau. Explicit at commit (the Studio's Uitvoerder control, an id)
@@ -279,7 +288,7 @@ commit.post("/dossier/:id/commit", async (c) => {
     MetadataDirective: "COPY",
   }));
 
-  const inquiryNote = [body.note?.trim(), head.subject ? `Dossier: ${head.subject}` : null, head.reference ? `Meldcode ${head.reference}` : null, contractorUnmatched ? `Uitvoerder (niet in de lijst): ${contractorUnmatched}` : null, unresolved.length ? `Niet aan een adres gekoppeld:\n${unresolved.join("\n")}` : null]
+  const inquiryNote = [body.note?.trim(), head.subject ? `Dossier: ${head.subject}` : null, head.reference ? `Meldcode ${head.reference}` : null, contractorUnmatched ? `Uitvoerder (niet in de lijst): ${contractorUnmatched}` : null, dateChoice.source === "built_year" ? `Rapportdatum geschat op het bouwjaar (${documentDate.slice(0, 4)}); geen datum in het document gevonden` : null, unresolved.length ? `Niet aan een adres gekoppeld:\n${unresolved.join("\n")}` : null]
     .filter(Boolean)
     .join("\n");
 
