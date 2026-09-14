@@ -348,6 +348,21 @@ commit.post("/dossier/:id/commit", async (c) => {
       });
       samples++;
     }
+    // A dossier committed without a single value still has an address: the
+    // melder's pand. Without a sample the rapportage would float free of any
+    // address (Don, inquiry 158720, 2026-09-14). One empty sample, pending,
+    // ties it to the pand for someone to complete by hand.
+    if (samples === 0 && mainAddress?.building) {
+      await tx.insert(inquirySample).values({
+        builtYear: null,
+        inquiry: inq!.id,
+        address: mainAddress.id,
+        building: mainAddress.building,
+        note: "Geen waarden overgenomen uit het document; adres van de melding",
+        metadata: { dataops: { dossier_id: id, extraction_field_ids: [] } },
+      });
+      samples++;
+    }
 
     await recordEvent({ inquiry: inq!.id }, "imported", { actor: u.id }, tx);
     await tx

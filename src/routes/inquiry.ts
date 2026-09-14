@@ -398,8 +398,10 @@ inquiries.get("/:id{[0-9]+}", async (c) => {
   // The dossier this rapportage came out of, when the review lane made it.
   // Additive: a link that used to appear for a moment in a toast and then
   // went with the next dossier (Don's #321 §6).
+  // Loket-imported dossiers (#340) have no meldcode; the melding number sits
+  // in the subject and the loket id in external_ref, so send those too.
   const [d] = await db
-    .select({ id: dossier.id, reference: dossier.reference })
+    .select({ id: dossier.id, reference: dossier.reference, externalRef: dossier.externalRef, subject: dossier.subject })
     .from(dossier)
     .where(eq(dossier.inquiryId, id))
     .orderBy(asc(dossier.id))
