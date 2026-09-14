@@ -125,6 +125,9 @@ const queueSelector = () =>
       externalRef: dossier.externalRef,
       reference: dossier.reference,
       buildingId: dossier.buildingId,
+      // The pand's construction year, the date fallback for an archive drawing
+      // without a readable date (#338). The Studio shows it as the estimate.
+      buildingBuiltYear: sql<string | null>`(select b.built_year::text from geocoder.building b where b.id = ${dossier.buildingId})`,
       receivedAt: dossier.receivedAt,
       inquiryId: dossier.inquiryId,
       auditInquiryId: dossier.auditInquiryId,
