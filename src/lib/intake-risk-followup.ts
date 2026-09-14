@@ -180,6 +180,8 @@ export interface FollowupResult {
   changed: number;
   mailed: number;
   noRecipient: number;
+  /** Dossiers whose check threw; logged, skipped, retried next run. */
+  failed: number;
   dryRun: boolean;
 }
 
@@ -189,7 +191,7 @@ export interface FollowupResult {
  */
 export async function sendRiskFollowups(opts: { dryRun?: boolean; limit?: number } = {}): Promise<FollowupResult> {
   const dryRun = opts.dryRun ?? false;
-  const result: FollowupResult = { lastRefresh: null, checked: 0, changed: 0, mailed: 0, noRecipient: 0, dryRun };
+  const result: FollowupResult = { lastRefresh: null, checked: 0, changed: 0, mailed: 0, noRecipient: 0, failed: 0, dryRun };
 
   const refresh = await db.execute<{ finished_at: string }>(sql`
     select max(finished_at)::text as finished_at from data.refresh_log
@@ -222,6 +224,22 @@ export async function sendRiskFollowups(opts: { dryRun?: boolean; limit?: number
 
     if (dryRun) continue;
 
+    // One dossier must not take the run down with it: the first live run
+    // (2026-09-14 12:30) died as a whole on a missing column grant while
+    // marking one snapshot checked. Log, count, move on; the snapshot stays
+    // unchecked and is retried after the next refresh.
+    try {
+      await followUpOne(head, snapshot, changes, result);
+    } catch (err) {
+      result.failed++;
+      console.error(`risk follow-up for dossier ${head.id} failed:`, err);
+    }
+  }
+  return result;
+}
+
+async function followUpOne(head: DossierHead, snapshot: RiskSnapshot, changes: RiskChange[], result: FollowupResult): Promise<void> {
+  {
     if (changes.length) {
       const to = recipientOf(head);
       if (!to || !head.reference) {
@@ -252,5 +270,4 @@ export async function sendRiskFollowups(opts: { dryRun?: boolean; limit?: number
     }
     await writeSnapshot(head.id, { ...snapshot, checked_at: new Date().toISOString(), changed: changes.length > 0 });
   }
-  return result;
 }
