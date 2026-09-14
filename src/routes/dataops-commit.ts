@@ -14,6 +14,7 @@ import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import { resolveDocumentDate } from "../lib/document-date.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { matchContractor } from "../lib/contractor-match.ts";
+import { addressDecisions } from "../lib/dossier-addresses.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -161,6 +162,12 @@ commit.post("/dossier/:id/commit", async (c) => {
   const latest = new Map<number, (typeof judged)[number]>();
   for (const j of judged) latest.set(j.fieldId, j);
 
+  // What the reviewer decided about the addresses themselves (ClientApp #333
+  // part C): a rejected address is not part of this dossier, so nothing under
+  // it becomes a sample even when a value was confirmed before the address
+  // was refused; a confirmed address gets a sample even with no values.
+  const decisions = await addressDecisions(id);
+
   // One sample per address. Document-level values go on the dossier's own
   // building (its first address); per-address values on the address they
   // resolved to. Unresolved address rows are kept in the note, never guessed.
@@ -172,15 +179,20 @@ commit.post("/dossier/:id/commit", async (c) => {
   };
   const unresolved: string[] = [];
   const documentValues = new Map<string, { value: string; fieldId: number }>();
+  let skippedRejected = 0;
   for (const j of latest.values()) {
     const value = (j.outcome === "corrected" ? j.finalValue : j.value) ?? "";
     if (!value) continue;
     if (DOCUMENT_FIELDS.has(j.field)) { documentValues.set(j.field, { value: value.trim(), fieldId: j.fieldId }); continue; }
+    if (j.addressId && decisions.get(j.addressId) === "rejected") { skippedRejected++; continue; }
     if (j.addressText && !j.addressId) { unresolved.push(`${j.addressText}: ${j.field} = ${value}`); continue; }
     const g = group(j.addressId ?? "", j.addressText ?? "Het rapport");
     applyField(g.values, g.notes, j.field, value);
     g.ids.push(j.fieldId);
     g.raw.push(`${j.field} = ${value}`);
+  }
+  for (const [addressId, state] of decisions) {
+    if (state === "confirmed" && !groups.has(addressId)) group(addressId, addressId);
   }
 
   // Resolve the document-level group to the dossier's building.
@@ -296,8 +308,12 @@ commit.post("/dossier/:id/commit", async (c) => {
   // all) still makes an inquiry: the document is archived and the person
   // fills the samples in by hand. That record is not done, it is pending --
   // and the API only accepts sample writes on todo/pending/rejected.
-  const willHaveSamples = [...groups.keys()].some((key) => (key ? byAddress.get(key) : mainAddress)?.building);
-  const auditStatus = willHaveSamples ? "done" : "pending";
+  const landing = [...groups.entries()].filter(([key]) => (key ? byAddress.get(key) : mainAddress)?.building);
+  const willHaveSamples = landing.length > 0;
+  // An address the reviewer added without values (part C) lands as an empty
+  // sample: the record is not done until someone fills it in.
+  const emptySamples = landing.filter(([, g]) => Object.keys(g.values).length === 0).length;
+  const auditStatus = willHaveSamples && emptySamples === 0 ? "done" : "pending";
 
   const created = await db.transaction(async (tx) => {
     await tx.insert(fileResource).values({
@@ -375,7 +391,7 @@ commit.post("/dossier/:id/commit", async (c) => {
       where e.id = f.extraction_id and a.dossier_id = ${id}
         and f.state in ('pending', 'auto_accepted', 'rejected')
         and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
-    return { inquiryId: inq!.id, samples, auditStatus, type, documentDate, contractorId, contractorUnmatched };
+    return { inquiryId: inq!.id, samples, emptySamples, skippedRejected, auditStatus, type, documentDate, contractorId, contractorUnmatched };
   });
 
   // Moment 3 of tracker #1020. A dossier closed as 'accepted' first and
@@ -425,6 +441,7 @@ async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: 
     .orderBy(asc(verdict.decidedAt));
   const latest = new Map<number, (typeof judged)[number]>();
   for (const j of judged) latest.set(j.fieldId, j);
+  const decisions = await addressDecisions(head.id);
 
   const samples = await db
     .select({ id: inquirySample.id, address: inquirySample.address, building: inquirySample.building, note: inquirySample.note })
@@ -445,6 +462,7 @@ async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: 
     const value = (j.outcome === "corrected" ? j.finalValue : j.value) ?? "";
     if (!value) continue;
     if (DOCUMENT_FIELDS.has(j.field)) { documentValues.set(j.field, value.trim()); continue; }
+    if (j.addressId && decisions.get(j.addressId) === "rejected") continue;
     const target = j.addressId ? byAddress.get(j.addressId) : j.addressText ? undefined : mainSample;
     if (!target) { unresolved.push(`${j.addressText ?? "?"}: ${j.field} = ${value}`); continue; }
     const u = forSample(target.id);

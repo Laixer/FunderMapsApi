@@ -31,6 +31,7 @@ import webhookRoutes from "./routes/webhooks.ts";
 import dataopsRoutes from "./routes/dataops.ts";
 import dataopsCommitRoutes from "./routes/dataops-commit.ts";
 import dataopsUploadRoutes from "./routes/dataops-upload.ts";
+import dataopsAddressRoutes from "./routes/dataops-address.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -134,6 +135,7 @@ app.use("/api/dataops/*", authMiddleware, staffMiddleware);
 app.route("/api/dataops", dataopsRoutes);
 app.route("/api/dataops", dataopsCommitRoutes);
 app.route("/api/dataops", dataopsUploadRoutes);
+app.route("/api/dataops", dataopsAddressRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);
