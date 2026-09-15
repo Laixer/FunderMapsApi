@@ -61,6 +61,21 @@ const openFields = sql<number>`(
     and f.state in ('pending', 'auto_accepted', 'rejected')
 )`;
 
+/**
+ * Everything the reader proposed that is still on the table, judged or not.
+ * "Niets gevonden" is this being zero -- not "nothing left open": a fully
+ * judged dossier that nobody closed was landing under Niets gevonden (Don,
+ * 2026-09-15, dossiers 2786 and 3003).
+ */
+const foundFields = sql<number>`(
+  select count(*)::int
+  from ${extractionField} f
+  join ${extraction} e on e.id = f.extraction_id
+  join ${artifact} a on a.id = e.artifact_id
+  where a.dossier_id = "dataops"."dossier"."id"
+    and f.state <> 'superseded'
+)`;
+
 const fileCount = sql<number>`(
   select count(*)::int from ${artifact} a where a.dossier_id = "dataops"."dossier"."id"
 )`;
@@ -202,7 +217,7 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
     if (bad.length) throw new ValidationError([`unknown state: ${bad.join(", ")}`]);
     const parts: SQL[] = [];
     if (states.includes("unread")) parts.push(sql`not ${isRead}`);
-    if (states.includes("empty")) parts.push(sql`(${isRead} and ${openFields} = 0)`);
+    if (states.includes("empty")) parts.push(sql`(${isRead} and ${foundFields} = 0)`);
     if (states.includes("proposals")) parts.push(sql`${openFields} > 0`);
     where.push(or(...parts)!);
   }
