@@ -165,7 +165,20 @@ const queueSelector = () =>
  */
 const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
 const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
-const STATES = new Set(["unread", "empty", "proposals"]);
+const STATES = new Set(["unread", "empty", "proposals", "replied"]);
+
+/**
+ * The melder had the last word: a 'reply' entry newer than anything we sent
+ * them (question, afronding, status). Open or closed -- a reply after the
+ * afronding is exactly the case nobody saw (FM2026-000107).
+ */
+const melderRepliedLast = sql<boolean>`exists (
+  select 1 from ${dossierEntry} r
+  where r.dossier_id = "dataops"."dossier"."id" and r.kind = 'reply'
+    and r.at > coalesce((
+      select max(o.at) from ${dossierEntry} o
+      where o.dossier_id = "dataops"."dossier"."id"
+        and o.kind in ('question', 'status') and o.actor_kind in ('reviewer', 'system')), '-infinity'::timestamptz))`;
 const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
   "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
@@ -180,6 +193,9 @@ const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim())
  */
 function queueScope(c: Context<AppEnv>): SQL {
   const outcomes = csv(c.req.query("outcome"));
+  // "Reactie ontvangen" spans open and closed dossiers: the reply that needs
+  // an answer most is the one on a dossier we already closed.
+  if (!outcomes.length && csv(c.req.query("state")).includes("replied")) return sql`true`;
   if (!outcomes.length) return onDesk()!;
   const bad = outcomes.filter((x) => !CLOSED_OUTCOMES.has(x));
   if (bad.length) throw new ValidationError([`unknown outcome: ${bad.join(", ")}`]);
@@ -204,6 +220,7 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
     if (states.includes("unread")) parts.push(sql`not ${isRead}`);
     if (states.includes("empty")) parts.push(sql`(${isRead} and ${openFields} = 0)`);
     if (states.includes("proposals")) parts.push(sql`${openFields} > 0`);
+    if (states.includes("replied")) parts.push(melderRepliedLast);
     where.push(or(...parts)!);
   }
 
@@ -623,7 +640,9 @@ dataops.post("/dossier/:id/question", async (c) => {
 
   const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
   if (!head) throw new NotFoundError("dossier not found");
-  if (head.outcome) throw new ValidationError(["dossier is closed"]);
+  // A closed dossier can still be answered. The melder writes back after the
+  // afronding ("via welke weg dan wel?", FM2026-000107, 2026-09-15) and the
+  // reviewer must be able to reply from the same screen; the outcome stays.
 
   const sent = await sendDossierQuestionMail(head, text);
   if (!sent.ok) {
