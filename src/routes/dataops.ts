@@ -183,9 +183,13 @@ const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]
 const STATES = new Set(["unread", "empty", "proposals", "replied"]);
 
 /**
- * The melder had the last word: a 'reply' entry newer than anything we sent
- * them (question, afronding, status). Open or closed -- a reply after the
- * afronding is exactly the case nobody saw (FM2026-000107).
+ * The melder had the last word: a 'reply' entry newer than anything we did
+ * on the dossier since -- a question or afronding sent, a status, or a
+ * reviewer's notitie. The notitie counts on purpose (Don, 2026-09-16): a
+ * reply answered from someone's own mailbox leaves no mail on the dossier,
+ * and "per mail beantwoord" as a notitie is how that gets recorded. Open or
+ * closed -- a reply after the afronding is exactly the case nobody saw
+ * (FM2026-000107).
  */
 const melderRepliedLast = sql<boolean>`exists (
   select 1 from ${dossierEntry} r
@@ -193,7 +197,7 @@ const melderRepliedLast = sql<boolean>`exists (
     and r.at > coalesce((
       select max(o.at) from ${dossierEntry} o
       where o.dossier_id = "dataops"."dossier"."id"
-        and o.kind in ('question', 'status') and o.actor_kind in ('reviewer', 'system')), '-infinity'::timestamptz))`;
+        and o.kind in ('question', 'status', 'remark') and o.actor_kind in ('reviewer', 'system')), '-infinity'::timestamptz))`;
 const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
   "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
