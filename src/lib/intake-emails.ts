@@ -743,12 +743,16 @@ export async function deliver(head: DossierHead, kind: MailKind, to: Recipient, 
     .where(eq(dossierMail.id, logId));
 
   if (result.ok) {
+    // The mail itself goes on the log (ClientApp #350): the melder's replies
+    // were readable in the verloop, ours were a one-line "gemaild". Subject
+    // and plain text, the same words the melder got.
     await addEntry({
       dossierId: head.id,
       kind: "status",
       actorKind: "system",
       actor: "resend",
       text: SENT_LINE[kind],
+      body: { mail: { kind, to: to.email, subject: mail.subject, text: mail.text } },
       visibleToMelder: true,
       mailMessageId: result.id ?? null,
     });
