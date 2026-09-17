@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { CopyObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "../db/client.ts";
 import { dossier, artifact, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
@@ -198,19 +198,23 @@ commit.post("/dossier/:id/commit", async (c) => {
   // Resolve the document-level group to the dossier's building.
   let mainAddress: { id: string; building: string } | null = null;
   if (head.buildingId) {
+    // The sample stores the nummeraanduiding (Worker #158 step 2).
     const [a] = await db
-      .select({ id: geocoderAddress.id, building: geocoderAddress.buildingId })
+      .select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId })
       .from(geocoderAddress)
       .where(eq(geocoderAddress.buildingId, head.buildingId))
       .orderBy(asc(geocoderAddress.buildingNumber))
       .limit(1);
     if (a?.building) mainAddress = { id: a.id, building: a.building };
   }
+  // Group keys are whatever the fields store: nummeraanduidingen, or gfm- ids
+  // on rows written before migration 20260918_002. Look up by either, key the
+  // map by both, and always land the sample on the nummeraanduiding.
   const addressIds = [...groups.keys()].filter(Boolean);
   const resolvedRows = addressIds.length
-    ? await db.select({ id: geocoderAddress.id, building: geocoderAddress.buildingId }).from(geocoderAddress).where(inArray(geocoderAddress.id, addressIds))
+    ? await db.select({ id: geocoderAddress.externalId, legacyId: geocoderAddress.id, building: geocoderAddress.buildingId }).from(geocoderAddress).where(or(inArray(geocoderAddress.externalId, addressIds), inArray(geocoderAddress.id, addressIds)))
     : [];
-  const byAddress = new Map(resolvedRows.map((r) => [r.id, r]));
+  const byAddress = new Map(resolvedRows.flatMap((r) => [[r.id, r], [r.legacyId, r]] as const));
 
   // The document-level group and an address group can be the same pand: a
   // report about Molenwal 15 puts its bouwjaar in the header and its

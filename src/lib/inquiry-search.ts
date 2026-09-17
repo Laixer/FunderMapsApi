@@ -12,7 +12,7 @@ import { fromIdentifier, GeocoderDatasource } from "./geocoder-id.ts";
 //   plain int                     inquiry.id
 //   NL.IMBAG.PAND.*               inquiry_sample.building_id (exact)
 //   NL.IMBAG.NUMMERAANDUIDING.*   geocoder.address.external_id → inquiry_sample.address
-//   gfm-*                         inquiry_sample.address (exact; echoed ids only, Worker #158)
+//   gfm-*                         inquiry_sample.address (exact, or via address.id → external_id; echoed ids only)
 //   bare BAG number (≥ 10 digits) both of the above with the prefix added
 //   anything else                 inquiry.document_name ILIKE
 //
@@ -70,11 +70,21 @@ export function buildInquirySearchPredicate(q: string): SQL {
     case GeocoderDatasource.NlBagAddress:
       return byNummeraanduiding(cleaned);
     case GeocoderDatasource.FunderMaps:
+      // Echoed gfm- id. Samples store the nummeraanduiding since Worker #158
+      // step 2; rows not yet rewritten still hold the gfm- id, so both match.
       return exists(
         qb
           .select({ x: sql`1` })
           .from(inquirySample)
-          .where(and(eq(inquirySample.inquiry, inquiry.id), eq(inquirySample.address, q))),
+          .where(
+            and(
+              eq(inquirySample.inquiry, inquiry.id),
+              or(
+                eq(inquirySample.address, q),
+                inArray(inquirySample.address, qb.select({ e: geocoderAddress.externalId }).from(geocoderAddress).where(eq(geocoderAddress.id, q))),
+              ),
+            ),
+          ),
       );
     default:
       break;
