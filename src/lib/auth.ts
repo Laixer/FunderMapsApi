@@ -196,7 +196,11 @@ export const auth = betterAuth({
         userVerification: "preferred",
       },
     }),
-    jwt(),
+    // The plugin's default is to sign a JWT and set a `set-auth-jwt` header on
+    // every /get-session response — a jwks read plus an EdDSA signature per
+    // API request (33,567 jwks reads in the 2026-08-23..09-17 prod window),
+    // for a header no client reads. Signing stays available on /token.
+    jwt({ disableSettingJwtHeader: true }),
     // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
     // via schema overrides onto the EXISTING application.organization +
     // organization_user tables — BA reads/writes the same rows the API
