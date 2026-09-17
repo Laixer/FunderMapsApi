@@ -168,7 +168,10 @@ const queueSelector = () =>
  *
  *   channel   upload,email,bulk_drop,api,invoer_app
  *   state     unread (not read yet) · empty (read, nothing proposed) ·
- *             proposals (something to judge)
+ *             proposals (something to judge) · replied (melder had the
+ *             last word) · question (no document at all: the melder asked
+ *             something, and answering is the whole job -- Don 2026-09-17,
+ *             7 of 16 closures that week)
  *   age       overdue -- received more than a week ago; the 24-48 h promise
  *             to a melder is long broken by then
  *   building  resolved · unresolved -- whether the submission is filed under
@@ -183,7 +186,7 @@ const queueSelector = () =>
  */
 const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
 const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
-const STATES = new Set(["unread", "empty", "proposals", "replied"]);
+const STATES = new Set(["unread", "empty", "proposals", "replied", "question"]);
 
 /**
  * The melder had the last word: a 'reply' entry newer than anything we did
@@ -243,6 +246,7 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
     if (states.includes("empty")) parts.push(sql`(${isRead} and ${foundFields} = 0)`);
     if (states.includes("proposals")) parts.push(sql`${openFields} > 0`);
     if (states.includes("replied")) parts.push(melderRepliedLast);
+    if (states.includes("question")) parts.push(sql`${fileCount} = 0`);
     where.push(or(...parts)!);
   }
 
