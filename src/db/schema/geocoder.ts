@@ -73,6 +73,9 @@ export const neighborhood = geocoderSchema.table("neighborhood", {
 // zone_function is a geocoder.zone_function[] enum array;
 // declared as text().array() per the codebase convention for enums.
 export const building = geocoderSchema.table("building", {
+  // Internal gfm- surrogate. Nothing outside geocoder references it; every
+  // building_id column in the database holds `external_id` (the BAG pand id).
+  // Join on external_id. The column goes with Worker #158.
   id: text().primaryKey(),
   external_id: text().notNull(),
   built_year: date(),
@@ -84,6 +87,10 @@ export const building = geocoderSchema.table("building", {
 });
 
 export const address = geocoderSchema.table("address", {
+  // Internal gfm- surrogate, still stored by report.inquiry_sample.address,
+  // dataops.extraction_field.address_id and dataops.dossier_address.address_id.
+  // Hand out and accept `external_id` (BAG nummeraanduiding); look a gfm- id
+  // up here only when a caller echoes one. Rekey planned in Worker #158.
   id: text().primaryKey(),
   externalId: text("external_id").notNull(),
   buildingId: text("building_id").references(() => building.id),

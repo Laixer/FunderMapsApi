@@ -8,6 +8,7 @@ import { attribution } from "../db/schema/application.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
+import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
 import { activeOrgId, dataScope, loadInquiryScoped, requireWritable } from "./inquiry.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -200,16 +201,32 @@ const sampleBodySchema = z.object({
 type SampleInput = z.infer<typeof sampleBodySchema>;
 
 // Resolve the input address identifier to the canonical (id, building_id)
-// tuple from geocoder.address. Mirrors C# GeocoderTranslation.GetAddressIdAsync.
-// Accepts gfm-* (FunderMaps internal id), BAG NUMMERAANDUIDING (external_id),
-// or BAG PAND (building_id — picks one address; see address↔building N:1 note).
+// tuple from geocoder.address. Each kind of id is looked up in its own
+// column: a BAG nummeraanduiding in `external_id`, a BAG pand in
+// `building_id` (the lowest-id address of the pand; see the address↔building
+// N:1 note), the internal gfm- id in `id`. Never compare one kind with
+// another column: that is how the bouwjaar lookup went dead (API #179).
+// The gfm- branch stays only for callers that echo an id the API handed
+// out; the Studio sends BAG ids since 2026-09-17 and the surrogate key goes
+// with Worker #158.
 async function resolveAddress(input: string): Promise<{ id: string; building: string }> {
+  const raw = input.trim();
+  const cleaned = raw.replaceAll(" ", "").toUpperCase();
+  const ds = fromIdentifier(raw);
+  const where =
+    ds === GeocoderDatasource.FunderMaps
+      ? sql`a.id = ${raw}`
+      : ds === GeocoderDatasource.NlBagAddress
+        ? sql`a.external_id = ${cleaned}`
+        : ds === GeocoderDatasource.NlBagBuilding
+          ? sql`a.building_id = ${cleaned}`
+          : null;
+  if (!where) throw new ValidationError([`Not an address or pand id: ${input}`]);
   const rows = await db.execute(sql`
     SELECT a.id, a.building_id
     FROM geocoder.address a
-    WHERE a.id = ${input}
-       OR a.external_id = ${input.replaceAll(" ", "").toUpperCase()}
-       OR a.building_id = ${input.replaceAll(" ", "").toUpperCase()}
+    WHERE ${where}
+    ORDER BY a.id
     LIMIT 1
   `);
   if (rows.length === 0) {

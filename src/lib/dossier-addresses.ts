@@ -29,7 +29,10 @@ export type AddressState = "pending" | "confirmed" | "rejected";
 
 /** A geocoder.address as the review lane needs it. */
 export interface AddressInfo {
+  /** Internal gfm- key; still what `extraction_field` and `dossier_address` store. Goes with Worker #158. */
   id: string;
+  /** BAG nummeraanduiding: the id to hand out and to accept. */
+  externalId: string;
   buildingId: string | null;
   label: string;
 }
@@ -59,6 +62,8 @@ export interface DossierAddressView {
   /** What the Studio groups values by: the address id, or the text when unresolved. */
   key: string;
   addressId: string | null;
+  /** BAG nummeraanduiding of `addressId`; the id a client should send back. */
+  addressExternalId: string | null;
   buildingId: string | null;
   /** "Molenwal 15, 3421 CK Oudewater"; null when unresolved. */
   label: string | null;
@@ -100,6 +105,7 @@ export function mergeAddresses(input: {
     const v: DossierAddressView = {
       key,
       addressId: base.addressId,
+      addressExternalId: a?.externalId ?? null,
       buildingId: a?.buildingId ?? null,
       label: a?.label ?? null,
       addressText: base.addressText ?? null,
@@ -176,6 +182,7 @@ export async function addressInfo(ids: string[]): Promise<Map<string, AddressInf
   const rows = await db
     .select({
       id: geocoderAddress.id,
+      externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
       buildingNumber: geocoderAddress.buildingNumber,
@@ -184,12 +191,13 @@ export async function addressInfo(ids: string[]): Promise<Map<string, AddressInf
     })
     .from(geocoderAddress)
     .where(inArray(geocoderAddress.id, unique));
-  return new Map(rows.map((r) => [r.id, { id: r.id, buildingId: r.buildingId, label: formatAddress(r) }]));
+  return new Map(rows.map((r) => [r.id, { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) }]));
 }
 
 /**
- * One address by id -- the internal `gfm-` id or a BAG nummeraanduiding. The
- * Studio's AddressPicker hands over the former; a script may pass the latter.
+ * One address by id -- a BAG nummeraanduiding (what the Studio sends since
+ * 2026-09-17) or the internal `gfm-` id (echoed from rows the API handed
+ * out; goes with Worker #158). Each kind is looked up in its own column.
  * A pand id is refused: a dossier address is a house, not a building.
  */
 export async function findAddress(input: string): Promise<AddressInfo> {
@@ -206,6 +214,7 @@ export async function findAddress(input: string): Promise<AddressInfo> {
   const [r] = await db
     .select({
       id: geocoderAddress.id,
+      externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
       buildingNumber: geocoderAddress.buildingNumber,
@@ -216,7 +225,7 @@ export async function findAddress(input: string): Promise<AddressInfo> {
     .where(where)
     .limit(1);
   if (!r) throw new NotFoundError(`address not found: ${raw}`);
-  return { id: r.id, buildingId: r.buildingId, label: formatAddress(r) };
+  return { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) };
 }
 
 /** The first address of the dossier's own pand, or null when it has none. */
@@ -225,6 +234,7 @@ export async function ownAddress(buildingId: string | null): Promise<AddressInfo
   const [r] = await db
     .select({
       id: geocoderAddress.id,
+      externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
       buildingNumber: geocoderAddress.buildingNumber,
@@ -235,7 +245,7 @@ export async function ownAddress(buildingId: string | null): Promise<AddressInfo
     .where(eq(geocoderAddress.buildingId, buildingId))
     .orderBy(asc(geocoderAddress.buildingNumber))
     .limit(1);
-  return r ? { id: r.id, buildingId: r.buildingId, label: formatAddress(r) } : null;
+  return r ? { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) } : null;
 }
 
 /** The (address_id, address_text) pairs on a dossier's values, with counts. */
