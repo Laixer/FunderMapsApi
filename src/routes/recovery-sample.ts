@@ -8,6 +8,7 @@ import { attribution } from "../db/schema/application.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum, intsToEnums } from "../lib/inquiry-enums.ts";
+import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
 import { toLegacyRecoverySample } from "../lib/recovery-serializer.ts";
 import { activeOrgId, dataScope, loadRecoveryScoped, requireWritable } from "./recovery.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -104,14 +105,26 @@ const sampleBodySchema = z.object({
 
 type SampleInput = z.infer<typeof sampleBodySchema>;
 
+// A recovery sample keys on the pand. The input may be the pand itself, a
+// nummeraanduiding on it, or (echoed only) the internal gfm- address id; each
+// is looked up in its own column, never across columns (API #179, Worker #158).
 async function resolveBuildingId(input: string): Promise<string> {
-  const cleaned = input.replaceAll(" ", "").toUpperCase();
+  const raw = input.trim();
+  const cleaned = raw.replaceAll(" ", "").toUpperCase();
+  const ds = fromIdentifier(raw);
+  const where =
+    ds === GeocoderDatasource.FunderMaps
+      ? sql`a.id = ${raw}`
+      : ds === GeocoderDatasource.NlBagAddress
+        ? sql`a.external_id = ${cleaned}`
+        : ds === GeocoderDatasource.NlBagBuilding
+          ? sql`a.building_id = ${cleaned}`
+          : null;
+  if (!where) throw new ValidationError([`Not an address or pand id: ${input}`]);
   const rows = await db.execute(sql`
     SELECT a.building_id
     FROM geocoder.address a
-    WHERE a.id = ${input}
-       OR a.external_id = ${cleaned}
-       OR a.building_id = ${cleaned}
+    WHERE ${where}
     LIMIT 1
   `);
   if (rows.length === 0) {
