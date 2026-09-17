@@ -255,8 +255,11 @@ commit.post("/dossier/:id/commit", async (c) => {
   // The day the melding arrived is never the document's date (#338, Don
   // 2026-09-14): an archive drawing without a readable date gets the pand's
   // construction year as an estimate; anything else needs the reviewer.
+  // `dossier.building_id` is the BAG pand id, i.e. `building.external_id`;
+  // matching it against the internal `building.id` found nothing for any of
+  // the 3,516 dossiers with a pand, so the estimate never fired (2026-09-17).
   const builtYear = head.buildingId
-    ? (await db.select({ builtYear: geocoderBuilding.built_year }).from(geocoderBuilding).where(eq(geocoderBuilding.id, head.buildingId)).limit(1))[0]?.builtYear ?? null
+    ? (await db.select({ builtYear: geocoderBuilding.built_year }).from(geocoderBuilding).where(eq(geocoderBuilding.external_id, head.buildingId)).limit(1))[0]?.builtYear ?? null
     : null;
   const dateChoice = resolveDocumentDate({ explicit: body.documentDate, judged: judgedDate, type, builtYear });
   if (!dateChoice) {
