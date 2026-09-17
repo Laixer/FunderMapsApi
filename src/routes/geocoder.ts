@@ -17,6 +17,14 @@ const geocoder = new Hono();
 // Returns flat snake_case; consumer (WebFront) reconstructs any nested view it
 // needs. address picked with LIMIT 1 — N:1 ambiguity is acknowledged
 // (see project_address_building_n_to_1.md).
+//
+// The address and the residence are picked with LATERAL subqueries, one row
+// each. Joining both tables on the pand alone multiplied them out (a block of
+// 214 addresses and 198 residences made 42,372 rows to sort for LIMIT 1) and
+// the residence that survived the sort belonged to some other address of the
+// block. The residence is now the chosen address's own, falling back to any
+// residence of the pand when the address has none. residence.address_id
+// holds the BAG nummeraanduiding id, i.e. address.external_id.
 geocoder.get("/building-info/:id", async (c) => {
   const input = c.req.param("id");
   const buildingId = await resolveToBuildingId(input);
@@ -47,8 +55,20 @@ geocoder.get("/building-info/:id", async (c) => {
       s.external_id AS state_external_id,
       s.name AS state_name
     FROM geocoder.building b
-    LEFT JOIN geocoder.address a ON a.building_id = b.external_id
-    LEFT JOIN geocoder.residence r ON r.building_id = b.external_id
+    LEFT JOIN LATERAL (
+      SELECT id, external_id, street, building_number, postal_code, city
+      FROM geocoder.address
+      WHERE building_id = b.external_id
+      ORDER BY id
+      LIMIT 1
+    ) a ON true
+    LEFT JOIN LATERAL (
+      SELECT geom
+      FROM geocoder.residence
+      WHERE building_id = b.external_id
+      ORDER BY (address_id = a.external_id) DESC, id
+      LIMIT 1
+    ) r ON true
     LEFT JOIN geocoder.neighborhood n ON n.id = b.neighborhood_id
     LEFT JOIN geocoder.district d ON d.id = n.district_id
     LEFT JOIN geocoder.municipality m ON m.id = d.municipality_id
@@ -56,7 +76,6 @@ geocoder.get("/building-info/:id", async (c) => {
     WHERE b.external_id = ${buildingId}
       AND b.active = true
       AND b.geom IS NOT NULL
-    ORDER BY a.id
     LIMIT 1
   `);
 
