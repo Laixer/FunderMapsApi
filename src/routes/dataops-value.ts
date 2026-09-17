@@ -45,16 +45,25 @@ export const SAMPLE_FIELDS = new Set([
 
 const REVIEWER_MODEL = "reviewer";
 
+/**
+ * Where a helper runs its statements: the transaction it is called from, or
+ * the pool. Called from inside `db.transaction`, it must take the `tx`: on
+ * the global `db` the extraction is created on a second pooled connection and
+ * commits on its own, so a failed field insert left an orphan extraction and
+ * every add pinned two connections of the pool.
+ */
+type Executor = Pick<typeof db, "insert" | "select">;
+
 /** The dossier's reviewer extraction, created on first use. */
-async function reviewerExtraction(dossierId: number): Promise<number> {
-  const [existing] = await db
+async function reviewerExtraction(dossierId: number, on: Executor = db): Promise<number> {
+  const [existing] = await on
     .select({ id: extraction.id })
     .from(extraction)
     .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
     .where(sql`${artifact.dossierId} = ${dossierId} and ${extraction.model} = ${REVIEWER_MODEL}`)
     .limit(1);
   if (existing) return existing.id;
-  const [doc] = await db
+  const [doc] = await on
     .select({ id: artifact.id })
     .from(artifact)
     .where(eq(artifact.dossierId, dossierId))
@@ -62,7 +71,7 @@ async function reviewerExtraction(dossierId: number): Promise<number> {
     .limit(1);
   if (!doc) throw new ValidationError(["dossier has no document to attach a value to"]);
   const now = new Date();
-  const [row] = await db
+  const [row] = await on
     .insert(extraction)
     .values({ artifactId: doc.id, model: REVIEWER_MODEL, promptVersion: "manual", lane: "none", startedAt: now, finishedAt: now })
     .returning({ id: extraction.id });
@@ -90,7 +99,7 @@ routes.post("/dossier/:id/value", async (c) => {
   const evidence = `Door ${who} toegevoegd; niet door het model gevonden.` + (note ? ` ${note}` : "");
 
   const fieldId = await db.transaction(async (tx) => {
-    const extractionId = await reviewerExtraction(id);
+    const extractionId = await reviewerExtraction(id, tx);
     const [f] = await tx
       .insert(extractionField)
       .values({

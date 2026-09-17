@@ -37,6 +37,14 @@ import type { AppEnv } from "../types/context.ts";
  */
 const routes = new Hono<AppEnv>();
 
+/**
+ * Where a helper runs its statements: the pool, or the transaction it is
+ * called from. Every helper that a `db.transaction` block calls must take
+ * the `tx`; on the global `db` its statements run on a second pooled
+ * connection and commit on their own, whatever the block decides.
+ */
+type Executor = Pick<typeof db, "insert" | "select">;
+
 function dossierId(raw: string): number {
   const id = Number(raw);
   if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
@@ -57,9 +65,10 @@ async function upsertAddress(
   a: AddressInfo,
   patch: { state: "pending" | "confirmed" | "rejected"; note?: string | null; addressText?: string | null; source: "pipeline" | "reviewer" },
   userId: string,
+  on: Executor = db,
 ) {
   const decided = patch.state === "pending" ? { decidedBy: null, decidedAt: null } : { decidedBy: userId, decidedAt: new Date() };
-  await db
+  await on
     .insert(dossierAddress)
     .values({
       dossierId: id,
@@ -83,8 +92,8 @@ async function upsertAddress(
 }
 
 /** Whether the pipeline put values under this address on this dossier. */
-async function pipelineKnows(id: number, addressId: string): Promise<boolean> {
-  const [r] = await db
+async function pipelineKnows(id: number, addressId: string, on: Executor = db): Promise<boolean> {
+  const [r] = await on
     .select({ n: sql<number>`count(*)::int` })
     .from(extractionField)
     .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
@@ -140,7 +149,7 @@ routes.post("/dossier/:id/address/verdict", async (c) => {
           and f.state in ('pending', 'auto_accepted', 'rejected')
           and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)
         returning f.id`);
-      if (a) await upsertAddress(id, a, { state: "rejected", note, addressText: text, source: (await pipelineKnows(id, a.id)) ? "pipeline" : "reviewer" }, u.id);
+      if (a) await upsertAddress(id, a, { state: "rejected", note, addressText: text, source: (await pipelineKnows(id, a.id, tx)) ? "pipeline" : "reviewer" }, u.id, tx);
       return rows.map((r) => Number(r.id));
     });
     await addEntry({
@@ -172,7 +181,7 @@ routes.post("/dossier/:id/address/verdict", async (c) => {
           .returning({ id: extractionField.id });
         restored = r.length;
       }
-      if (a) await upsertAddress(id, a, { state: body.outcome, note, addressText: text, source: (await pipelineKnows(id, a.id)) ? "pipeline" : "reviewer" }, u.id);
+      if (a) await upsertAddress(id, a, { state: body.outcome, note, addressText: text, source: (await pipelineKnows(id, a.id, tx)) ? "pipeline" : "reviewer" }, u.id, tx);
     });
     await addEntry({
       dossierId: id, kind: "finding", actorKind: "reviewer", actor: u.id,
