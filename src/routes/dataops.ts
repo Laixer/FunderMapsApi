@@ -11,7 +11,7 @@ import {
   verdict,
 } from "../db/schema/dataops.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
-import { AppError, NotFoundError, ValidationError } from "../lib/errors.ts";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import { sendDossierClosedMail, sendDossierQuestionMail } from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
@@ -498,6 +498,72 @@ dataops.post("/verdict", async (c) => {
     text:
       `${verb}: ${field.field} = ${body.finalValue ?? field.value ?? "—"}` +
       (body.note?.trim() ? ` — ${body.note.trim()}` : ""),
+    verdictId,
+    visibleToMelder: false,
+  });
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Undo a verdict while the dossier is still open (ClientApp #355; Don,
+ * 2026-09-17, after accepting the wrong foundation type twice in a day: "let
+ * the reviewer do this himself, as long as the dossier is open").
+ *
+ * Append-only: the field goes back to 'pending' and a verdict row with
+ * outcome 'pending' records who reopened it and when, so the log shows the
+ * mistake and the correction. Refused once the dossier is closed or
+ * committed: the verdict has then left the dossier (409).
+ */
+dataops.post("/field/:id/reopen", async (c) => {
+  const u = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["field id is required"]);
+
+  const [field] = await db
+    .select({
+      id: extractionField.id,
+      field: extractionField.field,
+      value: extractionField.value,
+      state: extractionField.state,
+      dossierId: artifact.dossierId,
+      outcome: dossier.outcome,
+      inquiryId: dossier.inquiryId,
+    })
+    .from(extractionField)
+    .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
+    .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
+    .innerJoin(dossier, eq(dossier.id, artifact.dossierId))
+    .where(eq(extractionField.id, id))
+    .limit(1);
+  if (!field) throw new NotFoundError("field not found");
+  if (field.outcome || field.inquiryId) {
+    throw new ConflictError("the dossier is closed or committed; the verdict cannot be reopened");
+  }
+  if (!["confirmed", "corrected", "rejected"].includes(field.state)) {
+    throw new ConflictError(`the field is ${field.state}, there is no verdict to reopen`);
+  }
+
+  const verdictId = await db.transaction(async (tx) => {
+    const [v] = await tx
+      .insert(verdict)
+      .values({
+        extractionFieldId: id,
+        decidedBy: u.id,
+        outcome: "pending",
+        note: `heropend (was ${field.state})`,
+      } as typeof verdict.$inferInsert)
+      .returning({ id: verdict.id });
+    await tx.update(extractionField).set({ state: "pending" }).where(eq(extractionField.id, id));
+    return v!.id;
+  });
+
+  await addEntry({
+    dossierId: field.dossierId,
+    kind: "verdict",
+    actorKind: "reviewer",
+    actor: u.id,
+    text: `Beoordeling heropend: ${field.field} = ${field.value ?? "—"}`,
     verdictId,
     visibleToMelder: false,
   });
