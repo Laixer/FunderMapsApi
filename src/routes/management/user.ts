@@ -350,12 +350,16 @@ users.delete("/:user_id", async (c) => {
   // Cascade: remove org memberships, API keys (legacy + BA), sessions, then user.
   // The BA apikey FK is ON DELETE CASCADE so this DELETE is technically redundant,
   // but matches the explicit-pattern the legacy authKey block needs (its FK is NO ACTION).
-  await db.delete(organizationUser).where(eq(organizationUser.userId, userId));
-  await db.delete(authKey).where(eq(authKey.userId, userId));
-  await db.delete(apikey).where(eq(apikey.referenceId, userId));
-  await db.delete(session).where(eq(session.userId, userId));
-  await db.delete(account).where(eq(account.userId, userId));
-  await db.delete(user).where(eq(user.id, userId));
+  // One transaction: a failure half-way used to leave a user without
+  // memberships or keys but still able to log in.
+  await db.transaction(async (tx) => {
+    await tx.delete(organizationUser).where(eq(organizationUser.userId, userId));
+    await tx.delete(authKey).where(eq(authKey.userId, userId));
+    await tx.delete(apikey).where(eq(apikey.referenceId, userId));
+    await tx.delete(session).where(eq(session.userId, userId));
+    await tx.delete(account).where(eq(account.userId, userId));
+    await tx.delete(user).where(eq(user.id, userId));
+  });
 
   return c.body(null, 204);
 });

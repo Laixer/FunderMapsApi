@@ -134,23 +134,26 @@ orgs.delete("/:org_id", async (c) => {
     .limit(1);
   if (existing.length === 0) throw new NotFoundError("Organization not found");
 
-  // Cascade: remove all associations, then org
-  await db
-    .delete(organizationUser)
-    .where(eq(organizationUser.organizationId, orgId));
-  await db
-    .delete(organizationMapset)
-    .where(eq(organizationMapset.organizationId, orgId));
-  await db
-    .delete(organizationGeolockDistrict)
-    .where(eq(organizationGeolockDistrict.organizationId, orgId));
-  await db
-    .delete(organizationGeolockMunicipality)
-    .where(eq(organizationGeolockMunicipality.organizationId, orgId));
-  await db
-    .delete(organizationGeolockNeighborhood)
-    .where(eq(organizationGeolockNeighborhood.organizationId, orgId));
-  await db.delete(organization).where(eq(organization.id, orgId));
+  // Cascade: remove all associations, then org. One transaction, so a
+  // failure half-way leaves the organisation intact instead of stripped.
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(organizationUser)
+      .where(eq(organizationUser.organizationId, orgId));
+    await tx
+      .delete(organizationMapset)
+      .where(eq(organizationMapset.organizationId, orgId));
+    await tx
+      .delete(organizationGeolockDistrict)
+      .where(eq(organizationGeolockDistrict.organizationId, orgId));
+    await tx
+      .delete(organizationGeolockMunicipality)
+      .where(eq(organizationGeolockMunicipality.organizationId, orgId));
+    await tx
+      .delete(organizationGeolockNeighborhood)
+      .where(eq(organizationGeolockNeighborhood.organizationId, orgId));
+    await tx.delete(organization).where(eq(organization.id, orgId));
+  });
 
   return c.body(null, 204);
 });

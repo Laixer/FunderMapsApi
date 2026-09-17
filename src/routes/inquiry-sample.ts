@@ -10,6 +10,7 @@ import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
+import { filledFieldsExpression } from "../lib/sample-fields.ts";
 import { activeOrgId, dataScope, loadInquiryScoped, requireWritable } from "./inquiry.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -47,12 +48,21 @@ async function loadSampleScoped(
 // Reads
 // ─────────────────────────────────────────────────────────────────────────
 
+// Page size is capped: the row is 75 columns wide and one inquiry carries up
+// to 49,753 samples (prod, 2026-09-17), so an uncapped `limit` was a way to
+// ask for a 15 MB response, and `limit=abc` was a 500 from `LIMIT NaN`.
+const MAX_PAGE = 1000;
+function pageParams(c: Context<AppEnv>): { limit: number; offset: number } {
+  const limit = Math.min(Math.max(parseInt(c.req.query("limit") ?? "100", 10) || 100, 1), MAX_PAGE);
+  const offset = Math.max(parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
+  return { limit, offset };
+}
+
 samples.get("/", async (c) => {
   const inqId = inquiryId(c);
   await loadInquiryScoped(inqId, dataScope(c)); // 404 if outside caller's scope
 
-  const limit = parseInt(c.req.query("limit") ?? "100");
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = pageParams(c);
 
   const rows = await db
     .select()
@@ -63,6 +73,52 @@ samples.get("/", async (c) => {
     .offset(offset);
 
   return c.json(rows.map(toLegacyInquirySample));
+});
+
+/**
+ * What the explorer's inspector shows for a dossier without loading its
+ * samples: how many addresses, how many form fields are filled across them,
+ * and where they are. The Studio used to page through every sample (75
+ * columns, 500 a page) and then resolve every address one geocoder call at
+ * a time just to draw pins and count: 49,753 samples on the largest dossier.
+ *
+ * Pins are capped; a map cannot show more than a few thousand anyway, and
+ * `pinsTruncated` says when it happened.
+ */
+const MAX_PINS = 2000;
+samples.get("/summary", async (c) => {
+  const inqId = inquiryId(c);
+  await loadInquiryScoped(inqId, dataScope(c));
+
+  const [[agg], pins] = await Promise.all([
+    db
+      .select({ count: count(), filled: sql<number>`coalesce(sum(${filledFieldsExpression()}), 0)::int` })
+      .from(inquirySample)
+      .where(eq(inquirySample.inquiry, inqId)),
+    // Pick the samples first, then look up their buildings: joining all
+    // 49,753 samples of the largest dossier before the LIMIT cost 530 ms on
+    // prod, the 2,001 that survive it cost a fraction of that.
+    db.execute<{ id: number; address: string; latitude: number | null; longitude: number | null }>(sql`
+      select s.id, s.address,
+             public.ST_Y(public.ST_Centroid(b.geom)) as latitude,
+             public.ST_X(public.ST_Centroid(b.geom)) as longitude
+        from (select id, address from ${inquirySample}
+               where inquiry_id = ${inqId} order by id limit ${MAX_PINS + 1}) s
+        join geocoder.address a on a.id = s.address
+        left join geocoder.building b on b.external_id = a.building_id and b.active and b.geom is not null
+       order by s.id`),
+  ]);
+  const total = Number(agg?.count ?? 0);
+  const list = [...pins];
+  const truncated = list.length > MAX_PINS;
+  return c.json({
+    count: total,
+    filled: Number(agg?.filled ?? 0),
+    pins: (truncated ? list.slice(0, MAX_PINS) : list)
+      .filter((p) => p.latitude != null && p.longitude != null)
+      .map((p) => ({ id: Number(p.id), address: p.address, latitude: Number(p.latitude), longitude: Number(p.longitude) })),
+    pinsTruncated: truncated,
+  });
 });
 
 samples.get("/stats", async (c) => {
@@ -332,10 +388,15 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
       .values(toDbValues(data, inqId, resolved))
       .returning();
     // Mirrors C# auto-transition: any sample creation moves inquiry to pending.
-    await tx
-      .update(inquiry)
-      .set({ auditStatus: "pending" })
-      .where(eq(inquiry.id, inqId));
+    // Only when it is not there yet: bulk entry is one write per sample, and
+    // each was rewriting the inquiry row for nothing (3,867 no-op updates in
+    // the 2026-08-23..09-17 prod window).
+    if (parent.auditStatus !== "pending") {
+      await tx
+        .update(inquiry)
+        .set({ auditStatus: "pending" })
+        .where(eq(inquiry.id, inqId));
+    }
     return s!;
   });
 
@@ -361,10 +422,12 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
       .update(inquirySample)
       .set({ ...toDbValues(data, inqId, resolved), updateDate: new Date() })
       .where(eq(inquirySample.id, sid));
-    await tx
-      .update(inquiry)
-      .set({ auditStatus: "pending" })
-      .where(eq(inquiry.id, inqId));
+    if (parent.auditStatus !== "pending") {
+      await tx
+        .update(inquiry)
+        .set({ auditStatus: "pending" })
+        .where(eq(inquiry.id, inqId));
+    }
   });
 
   return c.body(null, 204);
