@@ -167,7 +167,7 @@ routes.post("/dossier/:id/address/verdict", async (c) => {
       .from(dossierEntry)
       .where(and(
         eq(dossierEntry.dossierId, id), eq(dossierEntry.kind, "finding"),
-        a ? sql`${dossierEntry.body} ->> 'address_id' = ${a.id}` : sql`${dossierEntry.body} ->> 'address_text' = ${text}`,
+        a ? sql`${dossierEntry.body} ->> 'address_id' in (${a.id}, ${a.legacyId})` : sql`${dossierEntry.body} ->> 'address_text' = ${text}`,
         sql`${dossierEntry.body} ->> 'outcome' = 'rejected'`,
       ))
       .orderBy(desc(dossierEntry.id))

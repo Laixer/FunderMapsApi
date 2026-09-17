@@ -35,9 +35,10 @@ describe("inquiry search predicate", () => {
     expect(params).toEqual(["NL.IMBAG.NUMMERAANDUIDING.0632200010095517"]);
   });
 
-  test("a gfm- address id (echoed) matches the sample's address exactly", () => {
+  test("a gfm- address id (echoed) matches the sample's address in either spelling, never by text scan", () => {
     const { sql } = render("gfm-8fe68992a9d54deca778df1234567890");
     expect(sql).toMatch(/"report"\."inquiry_sample"\."address" = \$1/);
+    expect(sql).toMatch(/"geocoder"\."address"\."id" = \$2/);
     expect(sql).not.toMatch(/ilike/i);
   });
 

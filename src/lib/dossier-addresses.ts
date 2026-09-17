@@ -29,10 +29,20 @@ export type AddressState = "pending" | "confirmed" | "rejected";
 
 /** A geocoder.address as the review lane needs it. */
 export interface AddressInfo {
-  /** Internal gfm- key; still what `extraction_field` and `dossier_address` store. Goes with Worker #158. */
+  /**
+   * The key stored on `extraction_field`, `dossier_address` and
+   * `inquiry_sample`: the BAG nummeraanduiding (`address.external_id`) since
+   * the gfm retirement, step 2 (Worker #158). Same value as `externalId`.
+   */
   id: string;
   /** BAG nummeraanduiding: the id to hand out and to accept. */
   externalId: string;
+  /**
+   * The internal gfm- key the same row carries. Rows written before
+   * migration 20260918_002 still hold it; reads accept both until then and
+   * this field goes with step 4.
+   */
+  legacyId: string;
   buildingId: string | null;
   label: string;
 }
@@ -176,6 +186,16 @@ function asSource(s: string): AddressSource {
 }
 
 /** geocoder.address rows for a set of ids, keyed by id. */
+/** Rows looked up by the key a caller holds: a nummeraanduiding, or a gfm- id from a row not yet rewritten. */
+function byEitherKey(ids: string[]) {
+  return or(inArray(geocoderAddress.externalId, ids), inArray(geocoderAddress.id, ids));
+}
+
+function toInfo(r: { id: string; externalId: string; buildingId: string | null; street: string | null; buildingNumber: string | null; postalCode: string | null; city: string | null }): AddressInfo {
+  return { id: r.externalId, externalId: r.externalId, legacyId: r.id, buildingId: r.buildingId, label: formatAddress(r) };
+}
+
+/** Keyed by both spellings, so a caller can look up with whatever key its row holds. */
 export async function addressInfo(ids: string[]): Promise<Map<string, AddressInfo>> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return new Map();
@@ -190,8 +210,14 @@ export async function addressInfo(ids: string[]): Promise<Map<string, AddressInf
       city: geocoderAddress.city,
     })
     .from(geocoderAddress)
-    .where(inArray(geocoderAddress.id, unique));
-  return new Map(rows.map((r) => [r.id, { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) }]));
+    .where(byEitherKey(unique));
+  const out = new Map<string, AddressInfo>();
+  for (const r of rows) {
+    const info = toInfo(r);
+    out.set(info.externalId, info);
+    out.set(info.legacyId, info);
+  }
+  return out;
 }
 
 /**
@@ -225,7 +251,7 @@ export async function findAddress(input: string): Promise<AddressInfo> {
     .where(where)
     .limit(1);
   if (!r) throw new NotFoundError(`address not found: ${raw}`);
-  return { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) };
+  return toInfo(r);
 }
 
 /** The first address of the dossier's own pand, or null when it has none. */
@@ -245,7 +271,7 @@ export async function ownAddress(buildingId: string | null): Promise<AddressInfo
     .where(eq(geocoderAddress.buildingId, buildingId))
     .orderBy(asc(geocoderAddress.buildingNumber))
     .limit(1);
-  return r ? { id: r.id, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) } : null;
+  return r ? toInfo(r) : null;
 }
 
 /** The (address_id, address_text) pairs on a dossier's values, with counts. */
@@ -293,7 +319,10 @@ export async function loadDossierAddresses(
   ]);
   const ids = [...rows.map((r) => r.addressId), ...groups.map((g) => g.addressId).filter((x): x is string => !!x)];
   const info = await addressInfo(ids);
-  if (own) info.set(own.id, own);
+  if (own) {
+    info.set(own.id, own);
+    info.set(own.legacyId, own);
+  }
   return mergeAddresses({ own, rows, groups, info });
 }
 

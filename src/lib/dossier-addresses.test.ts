@@ -8,10 +8,10 @@ const { formatAddress, mergeAddresses } = await import("./dossier-addresses.ts")
 type AddressInfo = import("./dossier-addresses.ts").AddressInfo;
 
 const info = new Map<string, AddressInfo>([
-  ["gfm-own", { id: "gfm-own", externalId: "NL.IMBAG.NUMMERAANDUIDING.OWN", buildingId: "NL.IMBAG.PAND.1", label: "Molenwal 15, 3421 CK Oudewater" }],
-  ["gfm-17", { id: "gfm-17", externalId: "NL.IMBAG.NUMMERAANDUIDING.17", buildingId: "NL.IMBAG.PAND.2", label: "Molenwal 17, 3421 CK Oudewater" }],
-  ["gfm-19", { id: "gfm-19", externalId: "NL.IMBAG.NUMMERAANDUIDING.19", buildingId: "NL.IMBAG.PAND.3", label: "Molenwal 19, 3421 CK Oudewater" }],
-  ["gfm-59a", { id: "gfm-59a", externalId: "NL.IMBAG.NUMMERAANDUIDING.59A", buildingId: "NL.IMBAG.PAND.4", label: "Molenwal 59A, 3421 CK Oudewater" }],
+  ["gfm-own", { id: "gfm-own", externalId: "NL.IMBAG.NUMMERAANDUIDING.OWN", legacyId: "gfm-own", buildingId: "NL.IMBAG.PAND.1", label: "Molenwal 15, 3421 CK Oudewater" }],
+  ["gfm-17", { id: "gfm-17", externalId: "NL.IMBAG.NUMMERAANDUIDING.17", legacyId: "gfm-17", buildingId: "NL.IMBAG.PAND.2", label: "Molenwal 17, 3421 CK Oudewater" }],
+  ["gfm-19", { id: "gfm-19", externalId: "NL.IMBAG.NUMMERAANDUIDING.19", legacyId: "gfm-19", buildingId: "NL.IMBAG.PAND.3", label: "Molenwal 19, 3421 CK Oudewater" }],
+  ["gfm-59a", { id: "gfm-59a", externalId: "NL.IMBAG.NUMMERAANDUIDING.59A", legacyId: "gfm-59a", buildingId: "NL.IMBAG.PAND.4", label: "Molenwal 59A, 3421 CK Oudewater" }],
 ]);
 const own = info.get("gfm-own")!;
 

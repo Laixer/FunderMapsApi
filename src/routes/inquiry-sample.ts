@@ -104,7 +104,7 @@ samples.get("/summary", async (c) => {
              public.ST_X(public.ST_Centroid(b.geom)) as longitude
         from (select id, address from ${inquirySample}
                where inquiry_id = ${inqId} order by id limit ${MAX_PINS + 1}) s
-        join geocoder.address a on a.id = s.address
+        join geocoder.address a on a.external_id = s.address or a.id = s.address
         left join geocoder.building b on b.external_id = a.building_id and b.active and b.geom is not null
        order by s.id`),
   ]);
@@ -256,15 +256,14 @@ const sampleBodySchema = z.object({
 
 type SampleInput = z.infer<typeof sampleBodySchema>;
 
-// Resolve the input address identifier to the canonical (id, building_id)
-// tuple from geocoder.address. Each kind of id is looked up in its own
-// column: a BAG nummeraanduiding in `external_id`, a BAG pand in
-// `building_id` (the lowest-id address of the pand; see the address↔building
-// N:1 note), the internal gfm- id in `id`. Never compare one kind with
-// another column: that is how the bouwjaar lookup went dead (API #179).
-// The gfm- branch stays only for callers that echo an id the API handed
-// out; the Studio sends BAG ids since 2026-09-17 and the surrogate key goes
-// with Worker #158.
+// Resolve the input address identifier to the (address, building) pair the
+// sample stores. The stored address key is the BAG nummeraanduiding
+// (`external_id`) since the gfm retirement, step 2 (Worker #158). Each kind
+// of input is looked up in its own column: a nummeraanduiding in
+// `external_id`, a BAG pand in `building_id` (the lowest-id address of the
+// pand; see the address↔building N:1 note), an echoed gfm- id in `id`.
+// Never compare one kind with another column: that is how the bouwjaar
+// lookup went dead (API #179).
 async function resolveAddress(input: string): Promise<{ id: string; building: string }> {
   const raw = input.trim();
   const cleaned = raw.replaceAll(" ", "").toUpperCase();
@@ -279,7 +278,7 @@ async function resolveAddress(input: string): Promise<{ id: string; building: st
           : null;
   if (!where) throw new ValidationError([`Not an address or pand id: ${input}`]);
   const rows = await db.execute(sql`
-    SELECT a.id, a.building_id
+    SELECT a.external_id, a.building_id
     FROM geocoder.address a
     WHERE ${where}
     ORDER BY a.id
@@ -288,8 +287,8 @@ async function resolveAddress(input: string): Promise<{ id: string; building: st
   if (rows.length === 0) {
     throw new ValidationError([`Address not found: ${input}`]);
   }
-  const row = rows[0] as { id: string; building_id: string };
-  return { id: row.id, building: row.building_id };
+  const row = rows[0] as { external_id: string; building_id: string };
+  return { id: row.external_id, building: row.building_id };
 }
 
 // Convert validated input + resolved address → DB-shaped values
