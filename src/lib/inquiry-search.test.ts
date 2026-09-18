@@ -27,19 +27,18 @@ describe("inquiry search predicate", () => {
     expect(params).toEqual(["NL.IMBAG.PAND.0632100000033693"]);
   });
 
-  test("a nummeraanduiding resolves through geocoder.address.external_id, then the sample's address", () => {
+  test("a nummeraanduiding is the sample's address key: exact match, no trip through geocoder.address", () => {
     const { sql, params } = render("nl.imbag.nummeraanduiding.0632200010095517");
-    expect(sql).toMatch(/"geocoder"\."address"\."external_id" = \$1/);
-    expect(sql).toMatch(/"report"\."inquiry_sample"\."address" in \(select/);
+    expect(sql).toMatch(/"report"\."inquiry_sample"\."address" = \$1/);
+    expect(sql).not.toMatch(/geocoder/);
     expect(sql).not.toMatch(/ilike/i);
     expect(params).toEqual(["NL.IMBAG.NUMMERAANDUIDING.0632200010095517"]);
   });
 
-  test("a gfm- address id (echoed) matches the sample's address in either spelling, never by text scan", () => {
+  test("a gfm- address id is no key any more (Worker #158): it is text like any other", () => {
     const { sql } = render("gfm-8fe68992a9d54deca778df1234567890");
-    expect(sql).toMatch(/"report"\."inquiry_sample"\."address" = \$1/);
-    expect(sql).toMatch(/"geocoder"\."address"\."id" = \$2/);
-    expect(sql).not.toMatch(/ilike/i);
+    expect(sql).toMatch(/"document_name" ilike/i);
+    expect(sql).not.toMatch(/geocoder/);
   });
 
   test("a bare BAG number is tried as pand and as nummeraanduiding, both exact", () => {

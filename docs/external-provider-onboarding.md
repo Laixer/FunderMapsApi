@@ -130,8 +130,7 @@ curl -s -X POST "$API/api/inquiry/$INQ_ID/sample" \
 ```
 
 `address` accepts any of:
-- FunderMaps internal id (`gfm-…`)
-- BAG `NUMMERAANDUIDING` external id
+- BAG `NUMMERAANDUIDING` id (e.g. `NL.IMBAG.NUMMERAANDUIDING.0344…`) — this is also what `address` holds in every response
 - BAG `PAND` (picks one address per the address↔building N:1 mapping)
 
 The server resolves it to a canonical `(address_id, building_id)` pair before insert. Adding the first sample auto-transitions the inquiry from `todo` → `pending`.

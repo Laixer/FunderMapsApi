@@ -31,18 +31,12 @@ export type AddressState = "pending" | "confirmed" | "rejected";
 export interface AddressInfo {
   /**
    * The key stored on `extraction_field`, `dossier_address` and
-   * `inquiry_sample`: the BAG nummeraanduiding (`address.external_id`) since
-   * the gfm retirement, step 2 (Worker #158). Same value as `externalId`.
+   * `inquiry_sample`: the BAG nummeraanduiding (`address.external_id`), the
+   * only address id there is (Worker #158). Same value as `externalId`.
    */
   id: string;
-  /** BAG nummeraanduiding: the id to hand out and to accept. */
+  /** BAG nummeraanduiding. Kept beside `id` for the clients that read it. */
   externalId: string;
-  /**
-   * The internal gfm- key the same row carries. Rows written before
-   * migration 20260918_002 still hold it; reads accept both until then and
-   * this field goes with step 4.
-   */
-  legacyId: string;
   buildingId: string | null;
   label: string;
 }
@@ -185,23 +179,16 @@ function asSource(s: string): AddressSource {
   return s === "reviewer" || s === "melder" ? s : "pipeline";
 }
 
-/** geocoder.address rows for a set of ids, keyed by id. */
-/** Rows looked up by the key a caller holds: a nummeraanduiding, or a gfm- id from a row not yet rewritten. */
-function byEitherKey(ids: string[]) {
-  return or(inArray(geocoderAddress.externalId, ids), inArray(geocoderAddress.id, ids));
+function toInfo(r: { externalId: string; buildingId: string | null; street: string | null; buildingNumber: string | null; postalCode: string | null; city: string | null }): AddressInfo {
+  return { id: r.externalId, externalId: r.externalId, buildingId: r.buildingId, label: formatAddress(r) };
 }
 
-function toInfo(r: { id: string; externalId: string; buildingId: string | null; street: string | null; buildingNumber: string | null; postalCode: string | null; city: string | null }): AddressInfo {
-  return { id: r.externalId, externalId: r.externalId, legacyId: r.id, buildingId: r.buildingId, label: formatAddress(r) };
-}
-
-/** Keyed by both spellings, so a caller can look up with whatever key its row holds. */
+/** geocoder.address rows for a set of nummeraanduidingen, keyed by that id. */
 export async function addressInfo(ids: string[]): Promise<Map<string, AddressInfo>> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return new Map();
   const rows = await db
     .select({
-      id: geocoderAddress.id,
       externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
@@ -210,36 +197,28 @@ export async function addressInfo(ids: string[]): Promise<Map<string, AddressInf
       city: geocoderAddress.city,
     })
     .from(geocoderAddress)
-    .where(byEitherKey(unique));
+    .where(inArray(geocoderAddress.externalId, unique));
   const out = new Map<string, AddressInfo>();
   for (const r of rows) {
     const info = toInfo(r);
     out.set(info.externalId, info);
-    out.set(info.legacyId, info);
   }
   return out;
 }
 
 /**
- * One address by id -- a BAG nummeraanduiding (what the Studio sends since
- * 2026-09-17) or the internal `gfm-` id (echoed from rows the API handed
- * out; goes with Worker #158). Each kind is looked up in its own column.
- * A pand id is refused: a dossier address is a house, not a building.
+ * One address by its BAG nummeraanduiding. A pand id is refused: a dossier
+ * address is a house, not a building. So is a gfm- id: that key no longer
+ * exists (Worker #158).
  */
 export async function findAddress(input: string): Promise<AddressInfo> {
   const raw = (input ?? "").trim();
   if (!raw) throw new ValidationError(["addressId is required"]);
   const ds = fromIdentifier(raw);
-  const where =
-    ds === GeocoderDatasource.FunderMaps
-      ? eq(geocoderAddress.id, raw)
-      : ds === GeocoderDatasource.NlBagAddress
-        ? eq(geocoderAddress.externalId, raw.replaceAll(" ", "").toUpperCase())
-        : null;
+  const where = ds === GeocoderDatasource.NlBagAddress ? eq(geocoderAddress.externalId, raw.replaceAll(" ", "").toUpperCase()) : null;
   if (!where) throw new ValidationError([`not an address id: ${raw}`]);
   const [r] = await db
     .select({
-      id: geocoderAddress.id,
       externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
@@ -259,7 +238,6 @@ export async function ownAddress(buildingId: string | null): Promise<AddressInfo
   if (!buildingId) return null;
   const [r] = await db
     .select({
-      id: geocoderAddress.id,
       externalId: geocoderAddress.externalId,
       buildingId: geocoderAddress.buildingId,
       street: geocoderAddress.street,
@@ -321,7 +299,6 @@ export async function loadDossierAddresses(
   const info = await addressInfo(ids);
   if (own) {
     info.set(own.id, own);
-    info.set(own.legacyId, own);
   }
   return mergeAddresses({ own, rows, groups, info });
 }

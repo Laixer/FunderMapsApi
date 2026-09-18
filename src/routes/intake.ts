@@ -210,7 +210,7 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
     LEFT JOIN geocoder.address ga ON ga.building_id = d.building_id
     WHERE d.reference = ${reference}
       AND lower(d.submitter ->> 'email') = ${email.trim().toLowerCase()}
-    ORDER BY ga.id
+    ORDER BY ga.external_id
     LIMIT 1
   `);
 
