@@ -1,7 +1,6 @@
-import { and, eq, exists, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, ilike, or, sql, type SQL } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/pg-core";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
-import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { fromIdentifier, GeocoderDatasource } from "./geocoder-id.ts";
 
 // Search across id (numeric exact), document_name, and the sample's address
@@ -11,8 +10,7 @@ import { fromIdentifier, GeocoderDatasource } from "./geocoder-id.ts";
 //
 //   plain int                     inquiry.id
 //   NL.IMBAG.PAND.*               inquiry_sample.building_id (exact)
-//   NL.IMBAG.NUMMERAANDUIDING.*   geocoder.address.external_id → inquiry_sample.address
-//   gfm-*                         inquiry_sample.address (exact, or via address.id → external_id; echoed ids only)
+//   NL.IMBAG.NUMMERAANDUIDING.*   inquiry_sample.address (exact; the column stores the nummeraanduiding)
 //   bare BAG number (≥ 10 digits) both of the above with the prefix added
 //   anything else                 inquiry.document_name ILIKE
 //
@@ -56,10 +54,7 @@ export function buildInquirySearchPredicate(q: string): SQL {
         .where(
           and(
             eq(inquirySample.inquiry, inquiry.id),
-            inArray(
-              inquirySample.address,
-              qb.select({ id: geocoderAddress.id }).from(geocoderAddress).where(eq(geocoderAddress.externalId, externalId)),
-            ),
+            eq(inquirySample.address, externalId),
           ),
         ),
     );
@@ -69,23 +64,6 @@ export function buildInquirySearchPredicate(q: string): SQL {
       return byPand(cleaned);
     case GeocoderDatasource.NlBagAddress:
       return byNummeraanduiding(cleaned);
-    case GeocoderDatasource.FunderMaps:
-      // Echoed gfm- id. Samples store the nummeraanduiding since Worker #158
-      // step 2; rows not yet rewritten still hold the gfm- id, so both match.
-      return exists(
-        qb
-          .select({ x: sql`1` })
-          .from(inquirySample)
-          .where(
-            and(
-              eq(inquirySample.inquiry, inquiry.id),
-              or(
-                eq(inquirySample.address, q),
-                inArray(inquirySample.address, qb.select({ e: geocoderAddress.externalId }).from(geocoderAddress).where(eq(geocoderAddress.id, q))),
-              ),
-            ),
-          ),
-      );
     default:
       break;
   }

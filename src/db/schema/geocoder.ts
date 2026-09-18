@@ -87,12 +87,11 @@ export const building = geocoderSchema.table("building", {
 });
 
 export const address = geocoderSchema.table("address", {
-  // Internal gfm- surrogate, still stored by report.inquiry_sample.address,
-  // dataops.extraction_field.address_id and dataops.dossier_address.address_id.
-  // Hand out and accept `external_id` (BAG nummeraanduiding); look a gfm- id
-  // up here only when a caller echoes one. Rekey planned in Worker #158.
-  id: text().primaryKey(),
-  externalId: text("external_id").notNull(),
+  // The BAG nummeraanduiding is the key: what report.inquiry_sample.address,
+  // dataops.extraction_field.address_id and dataops.dossier_address.address_id
+  // store, and the only address id handed out or accepted. The gfm- `id`
+  // column is gone (Worker #158, migration 20260918_007).
+  externalId: text("external_id").primaryKey(),
   buildingId: text("building_id").references(() => building.id),
   buildingNumber: text("building_number").notNull(),
   postalCode: text("postal_code"),
@@ -104,7 +103,7 @@ export const residence = geocoderSchema.table("residence", {
   id: text().primaryKey(),
   address_id: text()
     .notNull()
-    .references(() => address.id),
+    .references(() => address.externalId),
   building_id: text()
     .notNull()
     .references(() => building.id),

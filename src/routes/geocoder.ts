@@ -36,7 +36,9 @@ geocoder.get("/building-info/:id", async (c) => {
       public.ST_X(r.geom) AS residence_lon,
       public.ST_Y(public.ST_Centroid(b.geom)) AS building_lat,
       public.ST_X(public.ST_Centroid(b.geom)) AS building_lon,
-      a.id AS address_id,
+      -- Same value twice: the gfm- address id is gone (Worker #158) and
+      -- WebFront/Report read address_id.
+      a.external_id AS address_id,
       a.external_id AS address_external_id,
       a.street,
       a.building_number,
@@ -56,10 +58,10 @@ geocoder.get("/building-info/:id", async (c) => {
       s.name AS state_name
     FROM geocoder.building b
     LEFT JOIN LATERAL (
-      SELECT id, external_id, street, building_number, postal_code, city
+      SELECT external_id, street, building_number, postal_code, city
       FROM geocoder.address
       WHERE building_id = b.external_id
-      ORDER BY id
+      ORDER BY external_id
       LIMIT 1
     ) a ON true
     LEFT JOIN LATERAL (
@@ -86,18 +88,17 @@ geocoder.get("/building-info/:id", async (c) => {
 });
 
 // Single address by identifier — mirrors C# /api/geocoder/address/{id}.
-// Accepts FunderMaps gfm-* IDs (geocoder.address.id, the PK), BAG address IDs
-// (NL.IMBAG.NUMMERAANDUIDING.*, geocoder.address.external_id), or BAG building
-// IDs (NL.IMBAG.PAND.*, returns one address tied to that building).
+// Accepts BAG address IDs (NL.IMBAG.NUMMERAANDUIDING.*, the key of
+// geocoder.address) or BAG building IDs (NL.IMBAG.PAND.*, returns one address
+// tied to that building). A gfm-* address id no longer exists (Worker #158)
+// and gets the 400 below. `id` in the response is the nummeraanduiding, the
+// same value as `external_id`; clients key their caches on it.
 geocoder.get("/address/:id", async (c) => {
   const input = c.req.param("id");
   const ds = fromIdentifier(input);
 
   let where: ReturnType<typeof sql>;
   switch (ds) {
-    case GeocoderDatasource.FunderMaps:
-      where = sql`a.id = ${input}`;
-      break;
     case GeocoderDatasource.NlBagAddress:
       where = sql`a.external_id = ${input.replaceAll(" ", "").toUpperCase()}`;
       break;
@@ -121,7 +122,7 @@ geocoder.get("/address/:id", async (c) => {
   // before 1100 as unknown.
   const rows = await db.execute(sql`
     SELECT
-      a.id, a.external_id, a.building_number, a.postal_code, a.street, a.city, a.building_id,
+      a.external_id AS id, a.external_id, a.building_number, a.postal_code, a.street, a.city, a.building_id,
       b.built_year,
       public.ST_Y(public.ST_Centroid(b.geom)) AS latitude,
       public.ST_X(public.ST_Centroid(b.geom)) AS longitude

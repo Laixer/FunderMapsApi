@@ -104,7 +104,7 @@ samples.get("/summary", async (c) => {
              public.ST_X(public.ST_Centroid(b.geom)) as longitude
         from (select id, address from ${inquirySample}
                where inquiry_id = ${inqId} order by id limit ${MAX_PINS + 1}) s
-        join geocoder.address a on a.external_id = s.address or a.id = s.address
+        join geocoder.address a on a.external_id = s.address
         left join geocoder.building b on b.external_id = a.building_id and b.active and b.geom is not null
        order by s.id`),
   ]);
@@ -258,30 +258,27 @@ type SampleInput = z.infer<typeof sampleBodySchema>;
 
 // Resolve the input address identifier to the (address, building) pair the
 // sample stores. The stored address key is the BAG nummeraanduiding
-// (`external_id`) since the gfm retirement, step 2 (Worker #158). Each kind
-// of input is looked up in its own column: a nummeraanduiding in
-// `external_id`, a BAG pand in `building_id` (the lowest-id address of the
-// pand; see the address↔building N:1 note), an echoed gfm- id in `id`.
-// Never compare one kind with another column: that is how the bouwjaar
-// lookup went dead (API #179).
+// (`external_id`); the gfm- address id no longer exists (Worker #158). Each
+// kind of input is looked up in its own column: a nummeraanduiding in
+// `external_id`, a BAG pand in `building_id` (the lowest nummeraanduiding of
+// the pand; see the address↔building N:1 note). Never compare one kind with
+// another column: that is how the bouwjaar lookup went dead (API #179).
 async function resolveAddress(input: string): Promise<{ id: string; building: string }> {
   const raw = input.trim();
   const cleaned = raw.replaceAll(" ", "").toUpperCase();
   const ds = fromIdentifier(raw);
   const where =
-    ds === GeocoderDatasource.FunderMaps
-      ? sql`a.id = ${raw}`
-      : ds === GeocoderDatasource.NlBagAddress
-        ? sql`a.external_id = ${cleaned}`
-        : ds === GeocoderDatasource.NlBagBuilding
-          ? sql`a.building_id = ${cleaned}`
-          : null;
+    ds === GeocoderDatasource.NlBagAddress
+      ? sql`a.external_id = ${cleaned}`
+      : ds === GeocoderDatasource.NlBagBuilding
+        ? sql`a.building_id = ${cleaned}`
+        : null;
   if (!where) throw new ValidationError([`Not an address or pand id: ${input}`]);
   const rows = await db.execute(sql`
     SELECT a.external_id, a.building_id
     FROM geocoder.address a
     WHERE ${where}
-    ORDER BY a.id
+    ORDER BY a.external_id
     LIMIT 1
   `);
   if (rows.length === 0) {

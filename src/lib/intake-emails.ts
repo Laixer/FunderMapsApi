@@ -13,7 +13,7 @@
 // finds the row and does nothing. A send that failed leaves status 'failed'
 // and is claimed again by the next call, so a Resend hiccup is not final.
 
-import { and, asc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { env } from "../config.ts";
 import { db } from "../db/client.ts";
 import {
@@ -675,12 +675,9 @@ export function displayFilename(name: string | null): string {
   return (name ?? "").replace(/^[0-9a-f]{16}-/, "") || "bestand";
 }
 
-// `id` is the key the dossier's rows store: the BAG nummeraanduiding since
-// Worker #158 step 2. `legacyId` is the gfm- id rows written before the
-// rewrite still carry; lookups accept both until migration 20260918_002 ran.
+// `id` is the key the dossier's rows store: the BAG nummeraanduiding (Worker #158).
 const addressColumns = {
   id: geocoderAddress.externalId,
-  legacyId: geocoderAddress.id,
   buildingId: geocoderAddress.buildingId,
   street: geocoderAddress.street,
   buildingNumber: geocoderAddress.buildingNumber,
@@ -695,7 +692,7 @@ export async function mainAddress(buildingId: string | null) {
     .select(addressColumns)
     .from(geocoderAddress)
     .where(eq(geocoderAddress.buildingId, buildingId))
-    .orderBy(asc(geocoderAddress.id))
+    .orderBy(asc(geocoderAddress.externalId))
     .limit(1);
   return row ?? null;
 }
@@ -889,11 +886,11 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
   const addressIds = [...groups.keys()].filter(Boolean);
   const [rows, main] = await Promise.all([
     addressIds.length
-      ? db.select(addressColumns).from(geocoderAddress).where(or(inArray(geocoderAddress.externalId, addressIds), inArray(geocoderAddress.id, addressIds)))
+      ? db.select(addressColumns).from(geocoderAddress).where(inArray(geocoderAddress.externalId, addressIds))
       : Promise.resolve([]),
     mainAddress(head.buildingId),
   ]);
-  const byAddress = new Map(rows.flatMap((r) => [[r.id, r], [r.legacyId, r]] as const));
+  const byAddress = new Map(rows.map((r) => [r.id, r] as const));
 
   // The header's values and a per-address table can describe the same pand;
   // the commit merges those into one sample (dataops-commit), so the mail

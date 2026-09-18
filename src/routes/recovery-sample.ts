@@ -87,7 +87,7 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 // Writes
 // ─────────────────────────────────────────────────────────────────────────
 
-// `address` is the input identifier (gfm-* / BAG NUMMERAANDUIDING / BAG PAND).
+// `address` is the input identifier (BAG NUMMERAANDUIDING / BAG PAND).
 // It's resolved to a building_id (BAG PAND) server-side. recovery_sample only
 // stores building_id (no per-address row), unlike inquiry_sample.
 const sampleBodySchema = z.object({
@@ -105,21 +105,19 @@ const sampleBodySchema = z.object({
 
 type SampleInput = z.infer<typeof sampleBodySchema>;
 
-// A recovery sample keys on the pand. The input may be the pand itself, a
-// nummeraanduiding on it, or (echoed only) the internal gfm- address id; each
-// is looked up in its own column, never across columns (API #179, Worker #158).
+// A recovery sample keys on the pand. The input may be the pand itself or a
+// nummeraanduiding on it; each is looked up in its own column, never across
+// columns (API #179). The gfm- address id no longer exists (Worker #158).
 async function resolveBuildingId(input: string): Promise<string> {
   const raw = input.trim();
   const cleaned = raw.replaceAll(" ", "").toUpperCase();
   const ds = fromIdentifier(raw);
   const where =
-    ds === GeocoderDatasource.FunderMaps
-      ? sql`a.id = ${raw}`
-      : ds === GeocoderDatasource.NlBagAddress
-        ? sql`a.external_id = ${cleaned}`
-        : ds === GeocoderDatasource.NlBagBuilding
-          ? sql`a.building_id = ${cleaned}`
-          : null;
+    ds === GeocoderDatasource.NlBagAddress
+      ? sql`a.external_id = ${cleaned}`
+      : ds === GeocoderDatasource.NlBagBuilding
+        ? sql`a.building_id = ${cleaned}`
+        : null;
   if (!where) throw new ValidationError([`Not an address or pand id: ${input}`]);
   const rows = await db.execute(sql`
     SELECT a.building_id
