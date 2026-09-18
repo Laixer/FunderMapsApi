@@ -240,11 +240,11 @@ Sample writes require the parent inquiry to be in a **writable** state
 
 **`address` accepts** (resolved server-side; whitespace-insensitive, BAG ids
 upper-cased):
-- FunderMaps internal id (`gfm-…`)
-- BAG `NUMMERAANDUIDING` external id (e.g. `NL.IMBAG.NUMMERAANDUIDING.0344…`)
+- BAG `NUMMERAANDUIDING` id (e.g. `NL.IMBAG.NUMMERAANDUIDING.0344…`) — this is also what `address` holds in every response
 - BAG `PAND` id — resolves to one address per the address↔building N:1 mapping
 
-An unresolvable `address` → **400**.
+An unresolvable `address` → **400**. That includes the internal `gfm-…` address ids that responses carried until
+2026-09-18: they no longer exist. Send the BAG id.
 
 **Minimal create body** (only `address` is required; everything else optional):
 
