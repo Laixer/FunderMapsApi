@@ -9,11 +9,21 @@ import { defaultStatements } from "better-auth/plugins/organization/access";
 // `assign-owner` is the #973 central-account action: setting or moving a
 // record's data-owner organization. `app: ["access"]` is the per-org
 // app.fundermaps.com on/off switch #1006 asks for.
+// `contractor: ["create"]` is #194: the review lane reads the uitvoerder off
+// a report cover and 465 of 489 spellings match nothing in
+// application.contractor, so a reviewer needs to add one without waiting for
+// an administrator. The list is global reference data shared by every
+// organisation, not org-scoped records, so the route that uses this also
+// sits behind staffMiddleware -- the role decides the *level*, platform
+// membership decides *who*. Deliberately absent from customRoleStatement
+// below: an org admin must not be able to mint the right to grow a table
+// every other organisation reads.
 export const statement = {
   ...defaultStatements,
   inquiry: ["read", "write", "review", "delete", "assign-owner"],
   recovery: ["read", "write", "review", "delete", "assign-owner"],
   incident: ["read", "write"],
+  contractor: ["create"],
   app: ["access"],
 } as const;
 
@@ -25,6 +35,7 @@ export const ac = createAccessControl(statement);
 //   reader   → view only            (C# ReaderPolicy)
 //   writer   → create/edit          (C# WriterAdministratorPolicy)
 //   verifier → writer + approve     (C# VerifierAdministratorPolicy)
+//              + add a contractor (#194)
 //   superuser→ org admin: everything, incl. destructive + member management
 export const reader = ac.newRole({
   app: ["access"],
@@ -45,6 +56,7 @@ export const verifier = ac.newRole({
   inquiry: ["read", "write", "review"],
   recovery: ["read", "write", "review"],
   incident: ["read", "write"],
+  contractor: ["create"],
 });
 
 export const superuser = ac.newRole({
@@ -52,6 +64,7 @@ export const superuser = ac.newRole({
   inquiry: ["read", "write", "review", "delete", "assign-owner"],
   recovery: ["read", "write", "review", "delete", "assign-owner"],
   incident: ["read", "write"],
+  contractor: ["create"],
   organization: ["update", "delete"],
   member: ["create", "update", "delete"],
   invitation: ["create", "cancel"],
@@ -83,11 +96,17 @@ export const customRoleStatement = {
   app: statement.app,
 } as const;
 
-export type OrgResource = "inquiry" | "recovery" | "incident" | "app";
+export type OrgResource =
+  | "inquiry"
+  | "recovery"
+  | "incident"
+  | "contractor"
+  | "app";
 export type OrgAction =
   | "read"
   | "write"
   | "review"
   | "delete"
   | "assign-owner"
+  | "create"
   | "access";
