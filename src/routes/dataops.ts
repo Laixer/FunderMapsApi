@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, asc, count, desc, eq, exists, ilike, inArray, isNull, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, getTableColumns, ilike, inArray, isNull, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import {
   dossier,
@@ -347,7 +347,19 @@ dataops.get("/dossier/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
 
-  const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
+  const [head] = await db
+    .select({
+      ...getTableColumns(dossier),
+      // The pand's construction year, the date fallback for an archive drawing
+      // without a readable date (#338). The queue list has carried this since
+      // 2026-09-17; the detail did not, so on the dossier screen the estimate
+      // was always null and "Overnemen als rapportage" stayed disabled for an
+      // archive dossier whose document has no date (#195, Don 2026-09-20).
+      buildingBuiltYear: sql<string | null>`(select b.built_year::text from geocoder.building b where b.external_id = ${dossier.buildingId})`,
+    })
+    .from(dossier)
+    .where(eq(dossier.id, id))
+    .limit(1);
   if (!head) throw new NotFoundError("dossier not found");
 
   const artifacts = await db
