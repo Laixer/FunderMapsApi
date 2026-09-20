@@ -46,3 +46,27 @@ export function matchContractor(printed: string, rows: ContractorRow[]): Contrac
     .sort((a, b) => b.n.length - a.n.length);
   return partial[0]?.row ?? null;
 }
+
+/**
+ * The row a proposed new contractor would duplicate, or null if the name is
+ * genuinely new (#194).
+ *
+ * This is `matchContractor` under another name, and that is the point: the
+ * invariant is that we never create a row the matcher would already have
+ * resolved. A name only reaches the create endpoint because the matcher
+ * returned null for it, so anything this function finds means the caller is
+ * working from a stale list and should be handed the existing row instead.
+ *
+ * It matters because `application.contractor` has no delete (attribution and
+ * recovery_sample reference it ON DELETE RESTRICT), so a duplicate is
+ * permanent and visible to every organisation. On the values the pipeline has
+ * read so far, 489 distinct spellings collapse to 442 normalised forms --
+ * "Duyts Bouwconstructies", "Duyts Bouwconstructies BV" and "Duyts
+ * bouwconstructies" are one firm in three coats.
+ */
+export function findDuplicateContractor(
+  name: string,
+  rows: ContractorRow[],
+): ContractorRow | null {
+  return matchContractor(name, rows);
+}

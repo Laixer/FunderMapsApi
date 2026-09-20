@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { matchContractor, normaliseContractorName } from "./contractor-match.ts";
+import {
+  findDuplicateContractor,
+  matchContractor,
+  normaliseContractorName,
+} from "./contractor-match.ts";
 
 const rows = [
   { id: 10, name: "FunderMaps B.V." },
@@ -41,5 +45,22 @@ describe("matchContractor", () => {
   test("unknown bureau", () => {
     expect(matchContractor("Duyts bouwconstructies", rows)).toBeNull();
     expect(matchContractor("", rows)).toBeNull();
+  });
+});
+
+describe("findDuplicateContractor", () => {
+  test("a spelling of a row we already have is not new", () => {
+    // The 47 pairs measured on the extracted values: same firm, different coat.
+    expect(findDuplicateContractor("Fugro NL Land B.V.", rows)?.id).toBe(1252);
+    expect(findDuplicateContractor("FUGRO", rows)?.id).toBe(1252);
+    expect(findDuplicateContractor("Techniek & Methode B.V.", rows)?.id).toBe(1280);
+  });
+  test("a firm we do not have is new", () => {
+    expect(findDuplicateContractor("Hightower Group B.V.", rows)).toBeNull();
+    expect(findDuplicateContractor("Funderingsloket Haarlem", rows)).toBeNull();
+    expect(findDuplicateContractor("brainbay", rows)).toBeNull();
+  });
+  test("a blank name is never a duplicate, so the route must reject it first", () => {
+    expect(findDuplicateContractor("   ", rows)).toBeNull();
   });
 });

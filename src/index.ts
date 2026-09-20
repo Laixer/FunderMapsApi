@@ -33,6 +33,7 @@ import dataopsCommitRoutes from "./routes/dataops-commit.ts";
 import dataopsUploadRoutes from "./routes/dataops-upload.ts";
 import dataopsAddressRoutes from "./routes/dataops-address.ts";
 import dataopsValueRoutes from "./routes/dataops-value.ts";
+import dataopsContractorRoutes from "./routes/dataops-contractor.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -138,6 +139,7 @@ app.route("/api/dataops", dataopsCommitRoutes);
 app.route("/api/dataops", dataopsUploadRoutes);
 app.route("/api/dataops", dataopsAddressRoutes);
 app.route("/api/dataops", dataopsValueRoutes);
+app.route("/api/dataops", dataopsContractorRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);
