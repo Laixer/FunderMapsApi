@@ -441,18 +441,44 @@ dataops.get("/dossier/:id", async (c) => {
  * training set -- today's labels come from a cover sheet an invoerder writes
  * before uploading, and once the pipeline reads documents instead, nobody
  * writes those any more.
+ *
+ * `fieldIds: number[]` judges several fields in one call, for the case
+ * Worker#186 is about: a report whose cover says "Olympiaweg 20-92" describes
+ * 40 panden, the ingest expands that into one proposal per pand, and asking a
+ * reviewer to click the same verdict 40 times would be a worse tool than the
+ * one that could not expand the range at all. It stays **one verdict row per
+ * field** -- the table is the training set, and forty buildings that were
+ * judged are forty labels, not one. What is shared is the click, not the
+ * evidence.
+ *
+ * `fieldId` (singular) still works and means a list of one.
  */
+
+/** A group verdict covers a range in one report; the widest seen is 127 addresses on 40 panden. */
+const MAX_VERDICT_FIELDS = 500;
+
 dataops.post("/verdict", async (c) => {
   const u = c.get("user");
   const body = await c.req.json<{
-    fieldId: number;
+    fieldId?: number;
+    fieldIds?: number[];
     outcome: "confirmed" | "corrected" | "rejected";
     finalValue?: string | null;
     note?: string | null;
     reviewSeconds?: number | null;
   }>();
 
-  if (!Number.isFinite(body.fieldId)) throw new ValidationError(["fieldId is required"]);
+  const requested = body.fieldIds ?? (body.fieldId != null ? [body.fieldId] : []);
+  if (!Array.isArray(requested) || requested.length === 0) {
+    throw new ValidationError(["fieldId or a non-empty fieldIds array is required"]);
+  }
+  if (!requested.every((id) => Number.isInteger(id) && id > 0)) {
+    throw new ValidationError(["every field id must be a positive integer"]);
+  }
+  if (requested.length > MAX_VERDICT_FIELDS) {
+    throw new ValidationError([`at most ${MAX_VERDICT_FIELDS} fields in one verdict`]);
+  }
+  const fieldIds = [...new Set(requested)];
   if (!["confirmed", "corrected", "rejected"].includes(body.outcome)) {
     throw new ValidationError(["outcome must be confirmed, corrected or rejected"]);
   }
@@ -460,7 +486,7 @@ dataops.post("/verdict", async (c) => {
     throw new ValidationError(["a corrected verdict needs the value the reviewer put instead"]);
   }
 
-  const [field] = await db
+  const fields = await db
     .select({
       id: extractionField.id,
       field: extractionField.field,
@@ -470,29 +496,45 @@ dataops.post("/verdict", async (c) => {
     .from(extractionField)
     .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
     .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
-    .where(eq(extractionField.id, body.fieldId))
-    .limit(1);
-  if (!field) throw new NotFoundError("field not found");
+    .where(inArray(extractionField.id, fieldIds));
+  if (fields.length === 0) throw new NotFoundError("field not found");
+  if (fields.length !== fieldIds.length) {
+    const missing = fieldIds.filter((id) => !fields.some((f) => f.id === id));
+    throw new NotFoundError(`field not found: ${missing.join(", ")}`);
+  }
+  // One dossier per call. Without this a caller could judge another dossier's
+  // fields by slipping an id into the array, and the timeline entry below --
+  // which is written once -- would land on whichever dossier happened to be
+  // first.
+  const dossierId = fields[0]!.dossierId;
+  if (fields.some((f) => f.dossierId !== dossierId)) {
+    throw new ValidationError(["all fields must belong to the same dossier"]);
+  }
 
-  const verdictId = await db.transaction(async (tx) => {
-    const [v] = await tx
+  const verdictIds = await db.transaction(async (tx) => {
+    const rows = await tx
       .insert(verdict)
-      .values({
-        extractionFieldId: body.fieldId,
-        decidedBy: u.id,
-        outcome: body.outcome,
-        finalValue: body.finalValue ?? null,
-        note: body.note ?? null,
-        reviewSeconds: body.reviewSeconds ?? null,
-      } as typeof verdict.$inferInsert)
+      .values(
+        fields.map((f, i) => ({
+          extractionFieldId: f.id,
+          decidedBy: u.id,
+          outcome: body.outcome,
+          finalValue: body.finalValue ?? null,
+          note: body.note ?? null,
+          // The reviewer spent that time once, on the group. Repeating it on
+          // every row would multiply the only honest measure we have of how
+          // long reviewing actually takes.
+          reviewSeconds: i === 0 ? (body.reviewSeconds ?? null) : null,
+        })) as (typeof verdict.$inferInsert)[],
+      )
       .returning({ id: verdict.id });
 
     await tx
       .update(extractionField)
       .set({ state: body.outcome })
-      .where(eq(extractionField.id, body.fieldId));
+      .where(inArray(extractionField.id, fieldIds));
 
-    return v!.id;
+    return rows.map((r) => r.id);
   });
 
   // Same wording the 2026-09-04 backfill used, so old and new lines read alike.
@@ -502,19 +544,23 @@ dataops.post("/verdict", async (c) => {
       : body.outcome === "corrected"
         ? "Waarde aangepast"
         : "Waarde afgekeurd";
+  const head = fields[0]!;
+  // One line for the group. Forty lines saying the same thing would bury the
+  // rest of the dossier's history, which is what the timeline is for.
   await addEntry({
-    dossierId: field.dossierId,
+    dossierId,
     kind: "verdict",
     actorKind: "reviewer",
     actor: u.id,
     text:
-      `${verb}: ${field.field} = ${body.finalValue ?? field.value ?? "—"}` +
+      `${verb}: ${head.field} = ${body.finalValue ?? head.value ?? "—"}` +
+      (fields.length > 1 ? ` — op ${fields.length} adressen tegelijk` : "") +
       (body.note?.trim() ? ` — ${body.note.trim()}` : ""),
-    verdictId,
+    verdictId: verdictIds[0]!,
     visibleToMelder: false,
   });
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, count: verdictIds.length });
 });
 
 /**
