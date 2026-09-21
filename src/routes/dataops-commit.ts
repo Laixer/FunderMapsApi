@@ -15,6 +15,7 @@ import { resolveDocumentDate } from "../lib/document-date.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { matchContractor } from "../lib/contractor-match.ts";
 import { addressDecisions } from "../lib/dossier-addresses.ts";
+import { nummeraanduidingOf } from "../lib/geocoder-id.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -196,9 +197,22 @@ commit.post("/dossier/:id/commit", async (c) => {
   }
 
   // Resolve the document-level group to the dossier's building.
+  // The address the melder submitted wins (#200). Resolving the document group
+  // to the building's first address writes the report onto a neighbour whenever
+  // a pand has several front doors: FM2026-000184 was a report about Nieuwstraat
+  // 115 and its foundation type was committed to Nieuwstraat 109, because
+  // building_number sorts as text and "109" precedes "115". The melder noticed.
   let mainAddress: { id: string; building: string } | null = null;
-  if (head.buildingId) {
+  if (head.bagId) {
     // The sample stores the nummeraanduiding (Worker #158 step 2).
+    const [a] = await db
+      .select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId })
+      .from(geocoderAddress)
+      .where(eq(geocoderAddress.externalId, nummeraanduidingOf(head.bagId)))
+      .limit(1);
+    if (a?.building) mainAddress = { id: a.id, building: a.building };
+  }
+  if (!mainAddress && head.buildingId) {
     const [a] = await db
       .select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId })
       .from(geocoderAddress)
@@ -453,7 +467,16 @@ async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: 
     .from(inquirySample)
     .where(eq(inquirySample.inquiry, inquiryId));
   const byAddress = new Map(samples.map((s) => [s.address, s]));
-  const mainSample = samples.length === 1 ? samples[0]! : (samples.find((s) => s.building === head.buildingId) ?? null);
+  // Same preference as the commit path (#200): a pand can carry several samples
+  // -- Nieuwstraat 109 and 115 are one building -- so match the melder's own
+  // address first and only then fall back to whichever sits on the building.
+  const submitted = head.bagId ? nummeraanduidingOf(head.bagId) : null;
+  const mainSample =
+    samples.length === 1
+      ? samples[0]!
+      : ((submitted ? samples.find((s) => s.address === submitted) : null) ??
+        samples.find((s) => s.building === head.buildingId) ??
+        null);
 
   // Per target sample: the columns to set and the note lines to append.
   const updates = new Map<number, { values: SampleValues; notes: string[]; ids: number[] }>();

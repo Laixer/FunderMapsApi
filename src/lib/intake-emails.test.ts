@@ -18,8 +18,9 @@ const {
   formatFieldValue,
   localDay,
   RESPONSE_BUSINESS_DAYS,
-  nummeraanduidingOf,
 } = await import("./intake-emails.ts");
+
+const { nummeraanduidingOf } = await import("./geocoder-id.ts");
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 

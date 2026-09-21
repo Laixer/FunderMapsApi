@@ -27,6 +27,7 @@ import {
 import { model_risk_static } from "../db/schema/data.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
+import { nummeraanduidingOf } from "./geocoder-id.ts";
 import { describeOutcome } from "./intake-outcome.ts";
 import { addEntry } from "./dossier-entries.ts";
 import { storeRiskSnapshot } from "./intake-risk-followup.ts";
@@ -684,16 +685,6 @@ const addressColumns = {
   postalCode: geocoderAddress.postalCode,
   city: geocoderAddress.city,
 };
-
-/**
- * `dataops.dossier.bag_id` is the nummeraanduiding the melder submitted, in
- * either of two shapes: 3,237 rows carry the full `NL.IMBAG.NUMMERAANDUIDING.`
- * prefix, 99 only the digits. Both normalise onto `geocoder.address.external_id`
- * — with this, every one of the 3,336 dossiers that has a bag_id resolves.
- */
-export function nummeraanduidingOf(bagId: string): string {
-  return bagId.startsWith("NL.IMBAG.") ? bagId : `NL.IMBAG.NUMMERAANDUIDING.${bagId}`;
-}
 
 /**
  * The address to name in a mail or on the status page.
