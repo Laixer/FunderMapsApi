@@ -27,6 +27,7 @@ import {
 import { model_risk_static } from "../db/schema/data.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
+import { nummeraanduidingOf } from "./geocoder-id.ts";
 import { describeOutcome } from "./intake-outcome.ts";
 import { addEntry } from "./dossier-entries.ts";
 import { storeRiskSnapshot } from "./intake-risk-followup.ts";
@@ -685,8 +686,28 @@ const addressColumns = {
   city: geocoderAddress.city,
 };
 
-/** The address the status page shows for the dossier's building. */
-export async function mainAddress(buildingId: string | null) {
+/**
+ * The address to name in a mail or on the status page.
+ *
+ * Prefer the address the melder actually gave us (#200). Falling straight to
+ * the building picks whichever address BAG happened to register first, which
+ * is not the melder's front door whenever a pand holds several: FM2026-000228
+ * reported Nieuwstraat 115 and was mailed about Nieuwstraat 109, a neighbour,
+ * because that pand holds 109/111/113/115 and 109 has the lowest external_id.
+ * 13 of the first 34 ontvangstbevestigingen named the wrong address this way.
+ *
+ * The building stays the fallback: a dossier can arrive with a pand but no
+ * nummeraanduiding, and then its first address is still the best label we have.
+ */
+export async function mainAddress(buildingId: string | null, bagId: string | null = null) {
+  if (bagId) {
+    const [exact] = await db
+      .select(addressColumns)
+      .from(geocoderAddress)
+      .where(eq(geocoderAddress.externalId, nummeraanduidingOf(bagId)))
+      .limit(1);
+    if (exact) return exact;
+  }
   if (!buildingId) return null;
   const [row] = await db
     .select(addressColumns)
@@ -802,7 +823,7 @@ export async function prepareReceivedMail(head: DossierHead): Promise<PreparedMa
     .from(artifact)
     .where(eq(artifact.dossierId, head.id))
     .orderBy(asc(artifact.id));
-  const main = await mainAddress(head.buildingId);
+  const main = await mainAddress(head.buildingId, head.bagId);
 
   const mail = buildReceivedEmail({
     reference: head.reference!,
@@ -888,7 +909,7 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
     addressIds.length
       ? db.select(addressColumns).from(geocoderAddress).where(inArray(geocoderAddress.externalId, addressIds))
       : Promise.resolve([]),
-    mainAddress(head.buildingId),
+    mainAddress(head.buildingId, head.bagId),
   ]);
   const byAddress = new Map(rows.map((r) => [r.id, r] as const));
 

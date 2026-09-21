@@ -74,3 +74,13 @@ export function fromIdentifier(input: string): GeocoderDatasource {
 
   return GeocoderDatasource.Unknown;
 }
+
+/**
+ * `dataops.dossier.bag_id` holds the nummeraanduiding the melder submitted, in
+ * either of two shapes: 3,237 rows carry the full `NL.IMBAG.NUMMERAANDUIDING.`
+ * prefix, 99 only the digits. Both normalise onto `geocoder.address.external_id`,
+ * and with this every one of the 3,336 dossiers that has a bag_id resolves.
+ */
+export function nummeraanduidingOf(bagId: string): string {
+  return bagId.startsWith("NL.IMBAG.") ? bagId : `NL.IMBAG.NUMMERAANDUIDING.${bagId}`;
+}

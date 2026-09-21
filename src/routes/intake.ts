@@ -207,10 +207,26 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
         nullif(concat_ws(' ', ga.postal_code, ga.city), '')
       ) AS address
     FROM dataops.dossier d
-    LEFT JOIN geocoder.address ga ON ga.building_id = d.building_id
+    -- The address the melder submitted wins over the building's first-registered
+    -- one (#200): a pand with several front doors would otherwise show a
+    -- neighbour here, and this page is linked from the mail that names it.
+    CROSS JOIN LATERAL (
+      SELECT CASE
+               WHEN d.bag_id IS NULL THEN NULL
+               WHEN d.bag_id LIKE 'NL.IMBAG.%' THEN d.bag_id
+               ELSE 'NL.IMBAG.NUMMERAANDUIDING.' || d.bag_id
+             END AS nummeraanduiding
+    ) n
+    LEFT JOIN LATERAL (
+      SELECT a.street, a.building_number, a.postal_code, a.city
+        FROM geocoder.address a
+       WHERE a.external_id = n.nummeraanduiding
+          OR a.building_id = d.building_id
+       ORDER BY (a.external_id = n.nummeraanduiding) DESC NULLS LAST, a.external_id
+       LIMIT 1
+    ) ga ON TRUE
     WHERE d.reference = ${reference}
       AND lower(d.submitter ->> 'email') = ${email.trim().toLowerCase()}
-    ORDER BY ga.external_id
     LIMIT 1
   `);
 
