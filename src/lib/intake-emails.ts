@@ -1078,6 +1078,9 @@ export interface QuestionMailResult {
   id?: string;
   error?: string;
   recipient: string;
+  /** What went out, so the timeline can show the mail and not just the question (#356). */
+  subject?: string;
+  text?: string;
 }
 
 /**
@@ -1128,5 +1131,12 @@ export async function sendDossierQuestionMail(
     )
     .where(eq(dossierMail.id, log!.id));
 
-  return { ok: result.ok, id: result.id, error: result.error, recipient: to.email };
+  return {
+    ok: result.ok,
+    id: result.id,
+    error: result.error,
+    recipient: to.email,
+    subject,
+    text: mail.text,
+  };
 }

@@ -829,6 +829,12 @@ dataops.post("/dossier/:id/question", async (c) => {
     actorKind: "reviewer",
     actor: u.id,
     text,
+    // The entry's `text` is the reviewer's question; `body.mail` is the letter
+    // that actually left the building, in the shape API #176 gave the automated
+    // mails so the review log can render all of them the same way (#356).
+    body: sent.subject
+      ? { mail: { kind: "question", to: sent.recipient, subject: sent.subject, text: sent.text } }
+      : undefined,
     visibleToMelder: true,
     mailMessageId: sent.id ?? null,
   });
