@@ -162,7 +162,7 @@ export async function storeRiskSnapshot(head: DossierHead, addresses: ClosedAddr
       if (a.buildingId && !buildings[a.buildingId]) buildings[a.buildingId] = { address: a.address, risk: a.risk };
     }
     if (head.buildingId && !buildings[head.buildingId]) {
-      const main = await mainAddress(head.buildingId);
+      const main = await mainAddress(head.buildingId, head.bagId);
       const risk = (await currentRisk([head.buildingId])).get(head.buildingId) ?? null;
       buildings[head.buildingId] = { address: main ? addressLine(main) : head.bagId ?? "uw pand", risk };
     }

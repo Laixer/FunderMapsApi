@@ -18,6 +18,7 @@ const {
   formatFieldValue,
   localDay,
   RESPONSE_BUSINESS_DAYS,
+  nummeraanduidingOf,
 } = await import("./intake-emails.ts");
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -337,5 +338,25 @@ describe("describeOutcome hides the commit's internal note", () => {
     expect(describeOutcome("accepted", "Bedankt, tekening overgenomen.", true).explanation).toBe(
       "Bedankt, tekening overgenomen.",
     );
+  });
+});
+
+describe("nummeraanduidingOf", () => {
+  // dossier.bag_id arrives in two shapes: 3,237 rows prefixed, 99 bare (#200).
+  test("bare digits get the BAG prefix", () => {
+    expect(nummeraanduidingOf("0718200000012476")).toBe(
+      "NL.IMBAG.NUMMERAANDUIDING.0718200000012476",
+    );
+  });
+
+  test("an already-prefixed id is left alone", () => {
+    expect(nummeraanduidingOf("NL.IMBAG.NUMMERAANDUIDING.0718200000012476")).toBe(
+      "NL.IMBAG.NUMMERAANDUIDING.0718200000012476",
+    );
+  });
+
+  test("prefixing is not applied twice", () => {
+    const once = nummeraanduidingOf("0003200000134166");
+    expect(nummeraanduidingOf(once)).toBe(once);
   });
 });
