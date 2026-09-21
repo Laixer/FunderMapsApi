@@ -93,7 +93,29 @@ const isRead = sql<boolean>`exists (
  * `buildInquirySearchPredicate`: a bare integer is an id lookup and nothing
  * else, so the planner stays on the primary key.
  */
+/** The meldcode we print in every mail to a melder, e.g. `FM2026-000111`. */
+const MELDCODE = /^FM\d{4}-\d{6}$/i;
+
+/**
+ * A search that names exactly one dossier: a meldcode, or a dossier id.
+ *
+ * These are not filters. The reviewer has the code in front of them -- from a
+ * mail, a phone call, a forwarded question -- and is asking for that dossier,
+ * so the view's outcome scope and filters do not apply. Don, 2026-09-17 (#361):
+ * "Someone is mailing me outside the system with a question about
+ * FM2026-000111. I can't reach that dossier with this number via the search
+ * field." It was dossier 5144, rejected two days earlier, and therefore
+ * invisible unless you first knew to switch to the Afgewezen view -- which
+ * means you had to know the answer to find the question.
+ */
+export function isPinpointQuery(q: string | undefined): boolean {
+  if (!q) return false;
+  return MELDCODE.test(q) || (/^\d+$/.test(q) && Number.isSafeInteger(Number(q)));
+}
+
 function buildQueueSearchPredicate(q: string): SQL {
+  // References are minted uppercase by dataops.generate_reference().
+  if (MELDCODE.test(q)) return eq(dossier.reference, q.toUpperCase());
   if (/^\d+$/.test(q) && Number.isSafeInteger(Number(q))) {
     return eq(dossier.id, Number(q));
   }
@@ -311,7 +333,8 @@ dataops.get("/queue", async (c) => {
     throw new ValidationError(["limit must be >= 1 and offset >= 0"]);
   }
 
-  const where: SQL[] = [queueScope(c), ...queueFilters(c)];
+  // A meldcode or an id addresses one dossier, so it reaches past the view.
+  const where: SQL[] = isPinpointQuery(q) ? [] : [queueScope(c), ...queueFilters(c)];
   if (q) where.push(buildQueueSearchPredicate(q));
 
   const rows = await queueSelector()
@@ -330,7 +353,7 @@ dataops.get("/queue/stats", async (c) => {
   // Takes the same filters as the queue, so a count always answers the
   // question the page it accompanies asks. Bare = the whole line.
   const q = c.req.query("q")?.trim();
-  const where: SQL[] = [queueScope(c), ...queueFilters(c)];
+  const where: SQL[] = isPinpointQuery(q) ? [] : [queueScope(c), ...queueFilters(c)];
   if (q) where.push(buildQueueSearchPredicate(q));
   const [row] = await db
     .select({ count: count() })
