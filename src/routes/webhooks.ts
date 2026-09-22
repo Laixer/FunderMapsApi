@@ -114,6 +114,7 @@ webhooks.post("/resend", async (c) => {
   }
 
   const from = addressesOf(data.from)[0] ?? "unknown";
+  const subject = typeof data.subject === "string" ? data.subject.slice(0, 500) : null;
   const attachments = Array.isArray(data.attachments) ? data.attachments.length : 0;
   const text = emailId ? await fetchReceivedText(emailId) : null;
 
@@ -125,7 +126,17 @@ webhooks.post("/resend", async (c) => {
     text:
       (text ?? "(inhoud kon niet worden opgehaald)").slice(0, 8000) +
       (attachments ? `\n\n[${attachments} bijlage(n) — nog niet opgeslagen]` : ""),
-    body: { email_id: emailId, attachments },
+    // `body.mail` is what the review log renders as a mail card (#356). The
+    // Studio already splits the quoted history off and folds it away
+    // (services/mailQuote.ts), so this stores the mail whole: stripping it
+    // here would throw away the thread the reviewer can currently unfold, and
+    // that is not recoverable. Subject is the one thing the card cannot
+    // reconstruct from the entry, which is why it is stored.
+    body: {
+      email_id: emailId,
+      attachments,
+      ...(text ? { mail: { kind: "reply", from, subject, text: text.slice(0, 8000) } } : {}),
+    },
     visibleToMelder: true,
     // Dedupes webhook replays via the unique index on mail_message_id.
     mailMessageId: emailId,
