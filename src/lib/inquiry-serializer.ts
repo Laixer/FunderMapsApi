@@ -9,6 +9,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import type { inquiry, inquirySample } from "../db/schema/report.ts";
 import { enumToInt } from "./inquiry-enums.ts";
+import { parseEnumArray } from "./pg-enum-array.ts";
 
 type InquiryRow = InferSelectModel<typeof inquiry>;
 type InquirySampleRow = InferSelectModel<typeof inquirySample>;
@@ -97,6 +98,11 @@ export function toLegacyInquirySample(row: InquirySampleRow): Record<string, unk
     damageCharacteristics: enumToInt(
       "foundation_damage_characteristics",
       row.damageCharacteristics,
+    ),
+    // API #128: the full lists, main one first (the scalars above are that first item).
+    damageCauses: parseEnumArray(row.damageCauseList).map((v) => enumToInt("foundation_damage_cause", v)),
+    damageCharacteristicsList: parseEnumArray(row.damageCharacteristicsList).map((v) =>
+      enumToInt("foundation_damage_characteristics", v),
     ),
     constructionPile: enumToInt("construction_pile", row.constructionPile),
     woodType: enumToInt("wood_type", row.woodType),

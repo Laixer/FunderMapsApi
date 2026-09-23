@@ -8,6 +8,7 @@ import { attribution } from "../db/schema/application.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
+import { enumArray } from "../lib/pg-enum-array.ts";
 import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
 import { toLegacyInquirySample } from "../lib/inquiry-serializer.ts";
 import { filledFieldsExpression } from "../lib/sample-fields.ts";
@@ -204,6 +205,10 @@ const sampleBodySchema = z.object({
   recoveryAdvised: z.boolean().nullish(),
   damageCause: z.number().int().nullish(),
   damageCharacteristics: z.number().int().nullish(),
+  /** API #128: every cause, main one first. Omit to leave the list as it is. */
+  damageCauses: z.array(z.number().int()).nullish(),
+  /** API #128: every characteristic, main one first. Omit to leave the list as it is. */
+  damageCharacteristicsList: z.array(z.number().int()).nullish(),
   constructionPile: z.number().int().nullish(),
   woodType: z.number().int().nullish(),
   woodEncroachment: z.number().int().nullish(),
@@ -290,6 +295,16 @@ async function resolveAddress(input: string): Promise<{ id: string; building: st
 
 // Convert validated input + resolved address → DB-shaped values
 // (snake_case enum strings).
+/** Ints from the wire to enum labels, in order, without duplicates or unknowns. */
+function listToEnums(kind: "foundation_damage_cause" | "foundation_damage_characteristics", values: number[] | null | undefined): string[] {
+  const out: string[] = [];
+  for (const v of values ?? []) {
+    const label = intToEnum(kind, v);
+    if (label && !out.includes(label)) out.push(label);
+  }
+  return out;
+}
+
 function toDbValues(
   input: SampleInput,
   inqId: number,
@@ -315,6 +330,20 @@ function toDbValues(
       "foundation_damage_characteristics",
       input.damageCharacteristics,
     ),
+    // Only when the client sent a list: a single-value client (today's
+    // Studio) leaves the list to the trigger, which replaces the old main
+    // value instead of piling up corrections.
+    ...(input.damageCauses !== undefined
+      ? { damageCauseList: enumArray(listToEnums("foundation_damage_cause", input.damageCauses), "report.foundation_damage_cause") }
+      : {}),
+    ...(input.damageCharacteristicsList !== undefined
+      ? {
+          damageCharacteristicsList: enumArray(
+            listToEnums("foundation_damage_characteristics", input.damageCharacteristicsList),
+            "report.foundation_damage_characteristics",
+          ),
+        }
+      : {}),
     constructionPile: intToEnum("construction_pile", input.constructionPile),
     woodType: intToEnum("wood_type", input.woodType),
     woodEncroachment: intToEnum("wood_encroachment", input.woodEncroachment),
