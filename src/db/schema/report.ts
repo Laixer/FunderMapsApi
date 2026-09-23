@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgSchema,
   text,
@@ -118,6 +119,12 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   recoveryAdvised: boolean("recovery_advised"),
   damageCause: text("damage_cause"),
   damageCharacteristics: text("damage_characteristics"),
+  // API #128: every cause / characteristic the report names, the main one
+  // first; damage_cause / damage_characteristics stay the main one (a trigger
+  // keeps them in step). Enum arrays: read with parseEnumArray, write with
+  // enumArray (lib/pg-enum-array.ts).
+  damageCauseList: text("damage_cause_list").array().notNull().default(sql`'{}'`),
+  damageCharacteristicsList: text("damage_characteristics_list").array().notNull().default(sql`'{}'`),
   constructionPile: text("construction_pile"),
   woodType: text("wood_type"),
   woodEncroachment: text("wood_encroachment"),
