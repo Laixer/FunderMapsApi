@@ -32,6 +32,8 @@ export const dossier = dataopsSchema.table("dossier", {
   duplicateOf: bigint("duplicate_of", { mode: "number" }),
   /** Set once a reviewer has committed this dossier into the report schema. */
   inquiryId: integer("inquiry_id"),
+  /** The herstel recorded from this dossier (Studio #341); independent of inquiryId. */
+  recoveryId: integer("recovery_id"),
   receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
