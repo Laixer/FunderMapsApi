@@ -883,7 +883,7 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
     .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
     .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
     .innerJoin(verdict, eq(verdict.extractionFieldId, extractionField.id))
-    .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"])))
+    .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"]), inArray(extractionField.state, ["confirmed", "corrected"])))
     .orderBy(asc(verdict.decidedAt));
 
   // Latest verdict per field wins; values not tied to a resolvable address

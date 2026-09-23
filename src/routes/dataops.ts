@@ -591,10 +591,15 @@ dataops.post("/verdict", async (c) => {
  * 2026-09-17, after accepting the wrong foundation type twice in a day: "let
  * the reviewer do this himself, as long as the dossier is open").
  *
- * Append-only: the field goes back to 'pending' and a verdict row with
- * outcome 'pending' records who reopened it and when, so the log shows the
- * mistake and the correction. Refused once the dossier is closed or
- * committed: the verdict has then left the dossier (409).
+ * The field goes back to 'pending'; the earlier verdict row stays (the
+ * verdict table is append-only training data) and the dossier's timeline
+ * records who reopened what and what it was, so the log shows the mistake and
+ * the correction. No verdict row marks the reopen: dataops.verdict refuses
+ * outcome 'pending' (CHECK verdict_outcome_check), which made every reopen a
+ * 500 from 2026-09-17 to 2026-09-23. What counts at commit is the field's
+ * current state plus its latest confirming verdict (dataops-commit.ts).
+ * Refused once the dossier is closed or committed: the verdict has then left
+ * the dossier (409).
  */
 dataops.post("/field/:id/reopen", async (c) => {
   const u = c.get("user");
@@ -625,27 +630,14 @@ dataops.post("/field/:id/reopen", async (c) => {
     throw new ConflictError(`the field is ${field.state}, there is no verdict to reopen`);
   }
 
-  const verdictId = await db.transaction(async (tx) => {
-    const [v] = await tx
-      .insert(verdict)
-      .values({
-        extractionFieldId: id,
-        decidedBy: u.id,
-        outcome: "pending",
-        note: `heropend (was ${field.state})`,
-      } as typeof verdict.$inferInsert)
-      .returning({ id: verdict.id });
-    await tx.update(extractionField).set({ state: "pending" }).where(eq(extractionField.id, id));
-    return v!.id;
-  });
+  await db.update(extractionField).set({ state: "pending" }).where(eq(extractionField.id, id));
 
   await addEntry({
     dossierId: field.dossierId,
     kind: "verdict",
     actorKind: "reviewer",
     actor: u.id,
-    text: `Beoordeling heropend: ${field.field} = ${field.value ?? "—"}`,
-    verdictId,
+    text: `Beoordeling heropend: ${field.field} = ${field.value ?? "—"} (was ${field.state})`,
     visibleToMelder: false,
   });
 
