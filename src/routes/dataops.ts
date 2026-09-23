@@ -591,10 +591,15 @@ dataops.post("/verdict", async (c) => {
  * 2026-09-17, after accepting the wrong foundation type twice in a day: "let
  * the reviewer do this himself, as long as the dossier is open").
  *
- * Append-only: the field goes back to 'pending' and a verdict row with
- * outcome 'pending' records who reopened it and when, so the log shows the
+ * Append-only: the field goes back to 'pending' and a dossier entry records
+ * who reopened it, when, and what the verdict was, so the log shows the
  * mistake and the correction. Refused once the dossier is closed or
  * committed: the verdict has then left the dossier (409).
+ *
+ * Not a verdict row: dataops.verdict forbids outcome 'pending'
+ * (verdict_outcome_check, since the schema began), so the earlier version
+ * failed with a 500 on every call (API #210). The previous verdict stays as
+ * it was; the field's state is what says it is open again.
  */
 dataops.post("/field/:id/reopen", async (c) => {
   const u = c.get("user");
@@ -625,28 +630,20 @@ dataops.post("/field/:id/reopen", async (c) => {
     throw new ConflictError(`the field is ${field.state}, there is no verdict to reopen`);
   }
 
-  const verdictId = await db.transaction(async (tx) => {
-    const [v] = await tx
-      .insert(verdict)
-      .values({
-        extractionFieldId: id,
-        decidedBy: u.id,
-        outcome: "pending",
-        note: `heropend (was ${field.state})`,
-      } as typeof verdict.$inferInsert)
-      .returning({ id: verdict.id });
+  await db.transaction(async (tx) => {
     await tx.update(extractionField).set({ state: "pending" }).where(eq(extractionField.id, id));
-    return v!.id;
-  });
-
-  await addEntry({
-    dossierId: field.dossierId,
-    kind: "verdict",
-    actorKind: "reviewer",
-    actor: u.id,
-    text: `Beoordeling heropend: ${field.field} = ${field.value ?? "—"}`,
-    verdictId,
-    visibleToMelder: false,
+    await addEntry(
+      {
+        dossierId: field.dossierId,
+        kind: "verdict",
+        actorKind: "reviewer",
+        actor: u.id,
+        text: `Beoordeling heropend: ${field.field} = ${field.value ?? "—"}`,
+        body: { reopened: true, fieldId: id, was: field.state },
+        visibleToMelder: false,
+      },
+      tx,
+    );
   });
 
   return c.json({ ok: true });
