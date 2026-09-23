@@ -72,6 +72,13 @@ const envSchema = z.object({
   REPORT_RENDER_URL: z
     .string()
     .default("https://whale-app-nm9uv.ondigitalocean.app"),
+  // Per-render tokens for the report front-end (lib/report-token.ts). With
+  // both set, /api/pdf/:id hands Gotenberg a 5-minute, one-pand, read-only
+  // token instead of relying on a key baked into the report bundle. The
+  // service user is the account the PDF reads as. Either unset: renders run
+  // as before and `fmrt.` tokens are refused.
+  REPORT_TOKEN_SECRET: z.string().min(32).optional(),
+  REPORT_SERVICE_USER_ID: z.string().optional(),
 
   // Public intake (the terugmeldformulier). The shared secret the intake app
   // presents; absent, the whole intake lane answers 503 rather than accepting
