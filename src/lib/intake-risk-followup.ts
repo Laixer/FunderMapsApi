@@ -59,6 +59,9 @@ const RISK_FIELDS: { key: keyof RegisteredRisk; label: string }[] = [
   { key: "unclassified", label: "vastgesteld risico" },
 ];
 
+/** Risks that only exist for a foundation on wooden piles. */
+const PILE_ONLY_LABELS = new Set(["droogstand", "bacteriële aantasting"]);
+
 export interface RiskChange {
   buildingId: string;
   address: string;
@@ -106,6 +109,20 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
       { p: c.address },
       { ul: c.fields.map((f) => `${f.label}: ${riskLabel(f.before)} → ${riskLabel(f.after)}`) },
     );
+  }
+  // Droogstand and bacteriële aantasting only exist for wooden piles. When
+  // either drops to "niet bepaald" the melder reads it as the risk vanishing
+  // without a reason (Don, 2026-09-23, FM2026-000282), so say why.
+  const pileRiskGone = input.changes.some((c) =>
+    c.fields.some((f) => PILE_ONLY_LABELS.has(f.label) && f.before !== null && f.after === null),
+  );
+  if (pileRiskGone) {
+    blocks.push({
+      p:
+        "Droogstand en bacteriële aantasting gelden alleen voor een fundering op houten palen. " +
+        "Staat uw pand volgens de gegevens niet (meer) op houten palen, dan vervallen deze risico's; " +
+        "daarom staat er nu \"niet bepaald\".",
+    });
   }
   blocks.push(
     {

@@ -72,3 +72,32 @@ describe("buildRiskChangedEmail", () => {
     expect(mail.text).toContain("het volgende adres");
   });
 });
+
+describe("buildRiskChangedEmail: pile-only risks falling away", () => {
+  const base = {
+    reference: "FM2026-000282",
+    recipientName: "H. de Graaf",
+    statusUrl: "https://melden.fundermaps.com/melding/FM2026-000282",
+    replyTo: "melding+FM2026-000282@funderdata.nl",
+  };
+
+  test("explains why when droogstand or bacteriële aantasting becomes niet bepaald", () => {
+    const mail = buildRiskChangedEmail({
+      ...base,
+      changes: [{ buildingId: "b7", address: "Spieghelstraat 7, 3521 XL Utrecht", fields: [
+        { label: "droogstand", before: "c", after: null },
+        { label: "ontwateringsdiepte", before: null, after: "b" },
+        { label: "bacteriële aantasting", before: "d", after: null },
+      ] }],
+    });
+    expect(mail.text).toContain("alleen voor een fundering op houten palen");
+  });
+
+  test("says nothing extra when no pile-only risk falls away", () => {
+    const mail = buildRiskChangedEmail({
+      ...base,
+      changes: [{ buildingId: "b2", address: "Molenwal 15", fields: [{ label: "droogstand", before: "c", after: "e" }] }],
+    });
+    expect(mail.text).not.toContain("houten palen");
+  });
+});
