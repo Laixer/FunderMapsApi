@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { auth } from "../lib/auth.ts";
 import { env } from "../config.ts";
 import { db } from "../db/client.ts";
@@ -11,6 +11,8 @@ import {
   organizationUser,
 } from "../db/schema/application.ts";
 import { sha256Base64Url, sha256Hex } from "../lib/api-key.ts";
+import { matchReportRoute, verifyReportToken } from "../lib/report-token.ts";
+import { resolveToBuildingId } from "../services/geocoder.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
@@ -45,7 +47,51 @@ async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
   return { ...rows[0]!, organizations: orgs };
 }
 
+// A report render token (lib/report-token.ts) opens only the GET routes the
+// report front-end calls, only for the pand it was minted for, and acts as the
+// report service account. Everything else is a 401, never a fall-through to
+// the other auth paths.
+async function reportTokenAllows(method: string, path: string, buildingId: string) {
+  const route = matchReportRoute(method, path);
+  if (!route) return false;
+  if (route.kind === "building") return route.buildingId === buildingId;
+
+  const pand = await resolveToBuildingId(buildingId).catch(() => null);
+  if (!pand) return false;
+  const rows =
+    route.kind === "inquiry"
+      ? await db.execute(sql`
+          SELECT 1 FROM report.inquiry_sample
+           WHERE inquiry_id = ${route.id} AND building_id = ${pand} LIMIT 1`)
+      : await db.execute(sql`
+          SELECT 1 FROM report.recovery_sample
+           WHERE recovery_id = ${route.id} AND building_id = ${pand} LIMIT 1`);
+  return rows.length > 0;
+}
+
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
+  const reportToken = c.req
+    .header("Authorization")
+    ?.match(/^Bearer\s+(fmrt\..+)$/i)?.[1];
+
+  if (reportToken) {
+    const secret = env.REPORT_TOKEN_SECRET;
+    const serviceUserId = env.REPORT_SERVICE_USER_ID;
+    const payload = secret ? verifyReportToken(reportToken, secret) : null;
+    if (!payload || !serviceUserId) {
+      return c.json({ message: "Unauthorized" }, 401);
+    }
+    if (!(await reportTokenAllows(c.req.method, c.req.path, payload.b))) {
+      return c.json({ message: "Unauthorized" }, 401);
+    }
+    const authUser = await loadUserWithOrgs(serviceUserId);
+    if (!authUser) {
+      return c.json({ message: "Unauthorized" }, 401);
+    }
+    c.set("user", authUser);
+    return next();
+  }
+
   // API key auth — Bearer only, matching FunderMapsWebservice.
   //   Authorization: Bearer fmsk.xxx
   // The match is conditioned on the `fmsk.` prefix so session tokens

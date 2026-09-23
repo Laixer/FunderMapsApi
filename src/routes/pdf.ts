@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { env } from "../config.ts";
 import { AppError } from "../lib/errors.ts";
+import { mintReportToken } from "../lib/report-token.ts";
 import type { AppEnv } from "../types/context.ts";
 
 const pdf = new Hono<AppEnv>();
@@ -17,8 +18,17 @@ pdf.post("/:id", async (c) => {
     throw new AppError(503, "PDF service not configured");
   }
 
+  // The report reads its data with a render token minted here: 5 minutes,
+  // this pand only, GET only (lib/report-token.ts). It travels in the URL
+  // fragment, which the browser never sends to a server, so it stays out of
+  // every access log. Without the secret the page falls back to its own key.
+  let url = `${env.REPORT_RENDER_URL}/${encodeURIComponent(id)}`;
+  if (env.REPORT_TOKEN_SECRET && env.REPORT_SERVICE_USER_ID) {
+    url += `#t=${mintReportToken(id, c.get("user").id, env.REPORT_TOKEN_SECRET)}`;
+  }
+
   const form = new FormData();
-  form.append("url", `${env.REPORT_RENDER_URL}/${id}`);
+  form.append("url", url);
   form.append("paperWidth", "8.27");
   form.append("paperHeight", "11.69");
   form.append("marginTop", "10mm");
