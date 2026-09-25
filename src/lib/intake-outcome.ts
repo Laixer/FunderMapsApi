@@ -22,6 +22,9 @@ export function isAutoCommitNote(note: string | null): boolean {
  * sent it, and telling them otherwise would discourage exactly the behaviour we
  * want.
  */
+/** The last line for a melding closed without a rapportage: nothing else follows. */
+export const CLOSED_FOR_GOOD = "Er volgt hierover geen verder bericht van ons.";
+
 export function describeOutcome(
   outcome: string | null,
   rawNote: string | null,
@@ -30,6 +33,19 @@ export function describeOutcome(
   const note = rawNote && !isAutoCommitNote(rawNote) ? rawNote : null;
   switch (outcome) {
     case "accepted":
+      // Closed without a rapportage (Sluiten zonder rapportage): nothing went
+      // into the database, and no follow-up mail comes after the model run
+      // (sendDossierClosedMail keeps no risk snapshot for it). Say both, so
+      // the melder knows this is the end (Don, 2026-09-25, FM2026-000325).
+      if (!hasInquiry) {
+        return {
+          state: "afgehandeld en gesloten",
+          explanation:
+            (note ?? "Wij hebben uw melding bekeken. Er is niets gewijzigd in de Funderingsdatabase.") +
+            (note ? "\n\n" : " ") +
+            CLOSED_FOR_GOOD,
+        };
+      }
       return {
         state: "verwerkt",
         explanation:
