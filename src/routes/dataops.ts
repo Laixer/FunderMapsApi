@@ -379,6 +379,24 @@ dataops.get("/dossier/:id", async (c) => {
       // was always null and "Overnemen als rapportage" stayed disabled for an
       // archive dossier whose document has no date (#195, Don 2026-09-20).
       buildingBuiltYear: sql<string | null>`(select b.built_year::text from geocoder.building b where b.external_id = ${dossier.buildingId})`,
+      // What the model says about the pand right now, next to what the melder
+      // claims ("Risico volgens melder", "Funderingstype volgens melder"):
+      // Don, 2026-09-25, dossier 5594. Null without a pand or a model row.
+      buildingModel: sql<{
+        foundationType: string | null;
+        foundationTypeReliability: string | null;
+        drystandRisk: string | null;
+        dewateringDepthRisk: string | null;
+        bioInfectionRisk: string | null;
+        unclassifiedRisk: string | null;
+      } | null>`(select json_build_object(
+          'foundationType', m.foundation_type,
+          'foundationTypeReliability', m.foundation_type_reliability,
+          'drystandRisk', m.drystand_risk,
+          'dewateringDepthRisk', m.dewatering_depth_risk,
+          'bioInfectionRisk', m.bio_infection_risk,
+          'unclassifiedRisk', m.unclassified_risk)
+        from data.model_risk_static m where m.building_id = ${dossier.buildingId})`,
     })
     .from(dossier)
     .where(eq(dossier.id, id))
