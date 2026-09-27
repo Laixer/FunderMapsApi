@@ -342,6 +342,27 @@ describe("describeOutcome hides the commit's internal note", () => {
   });
 });
 
+describe("describeOutcome: closed without a rapportage", () => {
+  test("says nothing changed and nothing follows", async () => {
+    const { describeOutcome, CLOSED_FOR_GOOD } = await import("./intake-outcome.ts");
+    const d = describeOutcome("accepted", null, false);
+    expect(d.state).toBe("afgehandeld en gesloten");
+    expect(d.explanation).toContain("Er is niets gewijzigd in de Funderingsdatabase.");
+    expect(d.explanation.endsWith(CLOSED_FOR_GOOD)).toBe(true);
+  });
+
+  test("keeps the reviewer's reason and adds the closing line", async () => {
+    const { describeOutcome, CLOSED_FOR_GOOD } = await import("./intake-outcome.ts");
+    const d = describeOutcome("accepted", "Uw pand staat al goed geregistreerd.", false);
+    expect(d.explanation).toBe(`Uw pand staat al goed geregistreerd.\n\n${CLOSED_FOR_GOOD}`);
+  });
+
+  test("a committed melding is still 'verwerkt'", async () => {
+    const { describeOutcome } = await import("./intake-outcome.ts");
+    expect(describeOutcome("accepted", null, true).state).toBe("verwerkt");
+  });
+});
+
 describe("nummeraanduidingOf", () => {
   // dossier.bag_id arrives in two shapes: 3,237 rows prefixed, 99 bare (#200).
   test("bare digits get the BAG prefix", () => {

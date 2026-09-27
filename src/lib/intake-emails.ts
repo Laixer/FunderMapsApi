@@ -1022,8 +1022,11 @@ export async function sendDossierClosedMail(dossierIds: number[]): Promise<void>
       if (!prepared) continue;
       await deliver(head, "closed", prepared.to, prepared.mail);
       // #143, moment 3 second half: remember what the melder was told, so the
-      // run after the next model refresh can say whether it changed.
-      await storeRiskSnapshot(head, prepared.addresses ?? []);
+      // run after the next model refresh can say whether it changed. Not for a
+      // melding closed without a rapportage: its mail promises nothing follows.
+      if (!(head.outcome === "accepted" && head.inquiryId === null)) {
+        await storeRiskSnapshot(head, prepared.addresses ?? []);
+      }
     } catch (err) {
       console.error(`intake mail (closed) for dossier ${head.id} failed:`, err);
     }
