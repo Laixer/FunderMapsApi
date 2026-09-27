@@ -158,8 +158,12 @@ commit.post("/dossier/:id/commit", async (c) => {
     .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
     .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
     .innerJoin(verdict, eq(verdict.extractionFieldId, extractionField.id))
-    .where(and(eq(artifact.dossierId, id), inArray(verdict.outcome, ["confirmed", "corrected"])))
+    .where(and(eq(artifact.dossierId, id), inArray(verdict.outcome, ["confirmed", "corrected"]), inArray(extractionField.state, ["confirmed", "corrected"])))
     .orderBy(asc(verdict.decidedAt));
+  // Only a field that is confirmed or corrected NOW counts (the state filter
+  // above): one that was confirmed, reopened and then rejected or left open
+  // still has its old confirming verdict, and taking that would commit a
+  // value the reviewer withdrew (#355 reopen, fixed 2026-09-23).
   const latest = new Map<number, (typeof judged)[number]>();
   for (const j of judged) latest.set(j.fieldId, j);
 
@@ -456,7 +460,7 @@ async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: 
     .innerJoin(extraction, eq(extraction.id, extractionField.extractionId))
     .innerJoin(artifact, eq(artifact.id, extraction.artifactId))
     .innerJoin(verdict, eq(verdict.extractionFieldId, extractionField.id))
-    .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"])))
+    .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"]), inArray(extractionField.state, ["confirmed", "corrected"])))
     .orderBy(asc(verdict.decidedAt));
   const latest = new Map<number, (typeof judged)[number]>();
   for (const j of judged) latest.set(j.fieldId, j);
