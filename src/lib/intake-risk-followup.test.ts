@@ -4,7 +4,7 @@ process.env.DATABASE_URL ??= "postgres://localhost:5432/test";
 process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
-const { compareRisk, buildRiskChangedEmail } = await import("./intake-risk-followup.ts");
+const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail } = await import("./intake-risk-followup.ts");
 
 const snapshot = {
   at: "2026-09-11T10:00:00.000Z",
@@ -70,5 +70,64 @@ describe("buildRiskChangedEmail", () => {
 
   test("singular/plural intro follows the number of addresses", () => {
     expect(mail.text).toContain("het volgende adres");
+  });
+});
+
+const basis = (over: Record<string, unknown> = {}) => ({
+  foundationType: "wood", foundationTypeReliability: "established", inquiryType: "archive_research",
+  documentName: "Funderingskaart Haarlem", documentDate: "2025-11-03",
+  drystandRisk: "b", drystand: 0.42, dewateringDepthRisk: "d", dewateringDepth: 1.27, bioInfectionRisk: "c",
+  ...over,
+});
+
+describe("explainBasis (API #204)", () => {
+  test("names the document the model uses, the type and the deciding measurement", () => {
+    const lines = explainBasis(basis() as never);
+    expect(lines[0]).toContain('"Funderingskaart Haarlem" (2025)');
+    expect(lines[1]).toMatch(/^Funderingstype: .+\.$/);
+    expect(lines[2]).toContain("ontwateringsdiepte (1,27 m)");
+    expect(lines[2]).toContain("D");
+  });
+  test("no report on the pand: says where the type came from instead", () => {
+    expect(explainBasis(basis({ inquiryType: null, documentName: null, foundationTypeReliability: "cluster" }) as never)[0]).toContain("panden in de buurt");
+    expect(explainBasis(basis({ inquiryType: null, documentName: null, foundationTypeReliability: "indicative" }) as never)[0]).toContain("geschat");
+  });
+  test("a tie names both parts, no measurement guessed", () => {
+    const last = explainBasis(basis({ drystandRisk: "d" }) as never).at(-1)!;
+    expect(last).toContain("de droogstand en de ontwateringsdiepte");
+  });
+  test("three tied: a proper Dutch list", () => {
+    expect(explainBasis(basis({ drystandRisk: "d", bioInfectionRisk: "d" }) as never).at(-1)).toContain("de droogstand, de ontwateringsdiepte en de bacteriële aantasting");
+  });
+  test("everything A: no 'hoogste risico A (geen risico)'", () => {
+    expect(explainBasis(basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "a" }) as never).at(-1)).toBe("Geen van de onderdelen geeft een verhoogd risico.");
+  });
+  test("bacteriële aantasting has no measurement to quote", () => {
+    const last = explainBasis(basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "e" }) as never).at(-1)!;
+    expect(last).toBe(`Het hoogste risico komt uit de bacteriële aantasting: ${last.split(": ")[1]}`);
+    expect(last).not.toContain(" m)");
+  });
+  test("no model row: says so, invents nothing", () => {
+    expect(explainBasis(null)).toEqual(["Voor dit pand is op dit moment geen risicoberekening beschikbaar."]);
+  });
+});
+
+describe("buildRiskConfirmedEmail (API #204)", () => {
+  const mail = buildRiskConfirmedEmail({
+    reference: "FM2026-000240", recipientName: "Jan",
+    buildings: [{ address: "Spaarne 67C, 2011 CH Haarlem", risk: { drystand: "b", dewateringDepth: "d", bioInfection: "c", unclassified: null }, basis: basis() as never }],
+    statusUrl: "https://melden.fundermaps.com/melding/FM2026-000240", replyTo: "x@y",
+  });
+  test("says plainly that nothing changed, with the basis", () => {
+    expect(mail.subject).toContain("ongewijzigd");
+    expect(mail.text).toContain("Het geregistreerde risico is ongewijzigd");
+    expect(mail.text).toContain("Funderingskaart Haarlem");
+    expect(mail.text).toContain("ontwateringsdiepte (1,27 m)");
+  });
+  test("leaves out 'dagelijks herberekend' (Don: it invites 'wanneer dan wel?')", () => {
+    expect(mail.text).not.toContain("dagelijks");
+  });
+  test("invites a newer document or a herstel by reply", () => {
+    expect(mail.text).toContain("hersteld");
   });
 });
