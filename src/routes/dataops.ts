@@ -630,7 +630,16 @@ dataops.post("/field/:id/reopen", async (c) => {
     throw new ConflictError(`the field is ${field.state}, there is no verdict to reopen`);
   }
 
-  await db.update(extractionField).set({ state: "pending" }).where(eq(extractionField.id, id));
+  // Only if nobody judged the field in the meantime: otherwise this would
+  // silently wipe that newer verdict.
+  const reset = await db
+    .update(extractionField)
+    .set({ state: "pending" })
+    .where(and(eq(extractionField.id, id), eq(extractionField.state, field.state)))
+    .returning({ id: extractionField.id });
+  if (reset.length === 0) {
+    throw new ConflictError("the field was judged again in the meantime; reload and try again");
+  }
 
   await addEntry({
     dossierId: field.dossierId,
