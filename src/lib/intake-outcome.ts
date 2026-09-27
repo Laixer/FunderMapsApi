@@ -9,6 +9,9 @@ export function isAutoCommitNote(note: string | null): boolean {
   return note !== null && AUTO_COMMIT_NOTE.test(note.trim());
 }
 
+/** The last line for a melding closed without a rapportage: nothing else follows. */
+export const CLOSED_FOR_GOOD = "Er volgt hierover geen verder bericht van ons.";
+
 /**
  * What the melder is told about a dossier, and what we actually record.
  *
@@ -22,9 +25,6 @@ export function isAutoCommitNote(note: string | null): boolean {
  * sent it, and telling them otherwise would discourage exactly the behaviour we
  * want.
  */
-/** The last line for a melding closed without a rapportage: nothing else follows. */
-export const CLOSED_FOR_GOOD = "Er volgt hierover geen verder bericht van ons.";
-
 export function describeOutcome(
   outcome: string | null,
   rawNote: string | null,
