@@ -147,8 +147,9 @@ export const inquirySample = reportSchema.table("inquiry_sample", {
   thresholdUpdownSkewed: boolean("threshold_updown_skewed"),
   thresholdFrontLevel: numeric52("threshold_front_level"),
   thresholdBackLevel: numeric52("threshold_back_level"),
-  skewedParallel: numeric52("skewed_parallel"),
-  skewedPerpendicular: numeric52("skewed_perpendicular"),
+  // numeric(7,2) since Worker 20260927_001 (lintvoeg 1:1000 and flatter, Worker #223)
+  skewedParallel: numeric("skewed_parallel", { precision: 7, scale: 2, mode: "number" }),
+  skewedPerpendicular: numeric("skewed_perpendicular", { precision: 7, scale: 2, mode: "number" }),
   skewedParallelFacade: text("skewed_parallel_facade"),
   settlementSpeed: real("settlement_speed"),
   skewedWindowFrame: boolean("skewed_window_frame"),
