@@ -7,6 +7,7 @@ import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution } from "../db/schema/application.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
+import { numericOverflows } from "../lib/numeric-limits.ts";
 import { intToEnum } from "../lib/inquiry-enums.ts";
 import { enumArray } from "../lib/pg-enum-array.ts";
 import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
@@ -407,10 +408,14 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   const data = c.req.valid("json");
   const resolved = await resolveAddress(data.address);
 
+  const values = toDbValues(data, inqId, resolved);
+  const tooBig = numericOverflows(inquirySample, values);
+  if (tooBig.length) throw new ValidationError(tooBig);
+
   const created = await db.transaction(async (tx) => {
     const [s] = await tx
       .insert(inquirySample)
-      .values(toDbValues(data, inqId, resolved))
+      .values(values)
       .returning();
     // Mirrors C# auto-transition: any sample creation moves inquiry to pending.
     // Only when it is not there yet: bulk entry is one write per sample, and
@@ -442,10 +447,14 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   const data = c.req.valid("json");
   const resolved = await resolveAddress(data.address);
 
+  const values = toDbValues(data, inqId, resolved);
+  const tooBig = numericOverflows(inquirySample, values);
+  if (tooBig.length) throw new ValidationError(tooBig);
+
   await db.transaction(async (tx) => {
     await tx
       .update(inquirySample)
-      .set({ ...toDbValues(data, inqId, resolved), updateDate: new Date() })
+      .set({ ...values, updateDate: new Date() })
       .where(eq(inquirySample.id, sid));
     if (parent.auditStatus !== "pending") {
       await tx

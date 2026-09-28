@@ -17,6 +17,7 @@ import { matchContractor } from "../lib/contractor-match.ts";
 import { addressDecisions } from "../lib/dossier-addresses.ts";
 import { nummeraanduidingOf } from "../lib/geocoder-id.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
+import { numericOverflows } from "../lib/numeric-limits.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -338,6 +339,11 @@ commit.post("/dossier/:id/commit", async (c) => {
   const emptySamples = landing.filter(([, g]) => Object.keys(g.values).length === 0).length;
   const auditStatus = willHaveSamples && emptySamples === 0 ? "done" : "pending";
 
+  // A value that does not fit its column would roll the commit back with a
+  // bare 500 (Worker #223): name the field and its limit instead.
+  const tooBig = [...groups.values()].flatMap((g) => numericOverflows(inquirySample, g.values));
+  if (tooBig.length) throw new ValidationError(tooBig);
+
   const created = await db.transaction(async (tx) => {
     await tx.insert(fileResource).values({
       key: targetKey,
@@ -520,6 +526,9 @@ async function applyAudit(head: typeof dossier.$inferSelect & { auditInquiryId: 
     else noteLines.push(`Uitvoerder volgens nalezing (niet in de lijst): ${cName}`);
   }
   if (unresolved.length) noteLines.push(`Nalezing, niet aan een adres gekoppeld:\n${unresolved.join("\n")}`);
+
+  const tooBig = [...updates.values()].flatMap((u) => numericOverflows(inquirySample, u.values));
+  if (tooBig.length) throw new ValidationError(tooBig);
 
   let samplesUpdated = 0;
   let fieldsApplied = 0;
