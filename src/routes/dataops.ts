@@ -396,7 +396,10 @@ dataops.get("/dossier/:id", async (c) => {
           'dewateringDepthRisk', m.dewatering_depth_risk,
           'bioInfectionRisk', m.bio_infection_risk,
           'unclassifiedRisk', m.unclassified_risk)
-        from data.model_risk_static m where m.building_id = ${dossier.buildingId})`,
+        from data.model_risk_static m where m.building_id = ${dossier}.building_id)`,
+      // Qualified on purpose: model_risk_static has its own building_id, so a bare
+      // "building_id" here resolved to m.building_id, matched every row and made
+      // every dossier detail a 500 (#215, 2026-09-28).
     })
     .from(dossier)
     .where(eq(dossier.id, id))
