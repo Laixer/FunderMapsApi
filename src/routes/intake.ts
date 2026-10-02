@@ -10,7 +10,8 @@ import { AppError, NotFoundError } from "../lib/errors.ts";
 import { timingSafeEqual } from "node:crypto";
 import { describeOutcome } from "../lib/intake-outcome.ts";
 import { sendDossierReceivedMail } from "../lib/intake-emails.ts";
-import { sendRiskFollowups } from "../lib/intake-risk-followup.ts";
+import { currentBasis, currentRisk, explainBasis, sendRiskFollowups } from "../lib/intake-risk-followup.ts";
+import { riskLabelIn } from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 
 /**
@@ -201,6 +202,7 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
       d.outcome::text AS outcome,
       d.outcome_note,
       d.inquiry_id,
+      d.building_id,
       (SELECT count(*) FROM dataops.artifact a WHERE a.dossier_id = d.id) AS attachments,
       concat_ws(', ',
         nullif(concat_ws(' ', ga.street, ga.building_number), ''),
@@ -237,6 +239,7 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
         outcome: string | null;
         outcome_note: string | null;
         inquiry_id: number | null;
+        building_id: string | null;
         attachments: number;
         address: string | null;
       }
@@ -250,6 +253,22 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
     row.inquiry_id !== null,
   );
 
+  // The risk as registered right now (Don, 2026-10-02: the most common reply
+  // was "waar zie ik het nieuwe risico?"). Same words as the follow-up mail.
+  let risk: string[] = [];
+  if (row.building_id) {
+    const r = (await currentRisk([row.building_id])).get(row.building_id) ?? null;
+    if (r) {
+      const basis = (await currentBasis([row.building_id])).get(row.building_id) ?? null;
+      risk = [
+        `Droogstand: ${riskLabelIn(r, r.drystand)}`,
+        `Ontwateringsdiepte: ${riskLabelIn(r, r.dewateringDepth)}`,
+        `Bacteriële aantasting: ${riskLabelIn(r, r.bioInfection)}`,
+        ...explainBasis(basis),
+      ];
+    }
+  }
+
   return c.json({
     reference: row.reference,
     address: row.address ?? "",
@@ -261,6 +280,7 @@ intake.post("/status", zValidator("json", statusSchema), async (c) => {
     state,
     explanation,
     attachments: Number(row.attachments),
+    risk,
   });
 });
 

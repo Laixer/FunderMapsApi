@@ -5,6 +5,7 @@ process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
 const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail } = await import("./intake-risk-followup.ts");
+const emails = await import("./intake-emails.ts");
 
 const snapshot = {
   at: "2026-09-11T10:00:00.000Z",
@@ -29,7 +30,7 @@ describe("compareRisk", () => {
       ["b2", { drystand: "c", dewateringDepth: "e", bioInfection: "c", unclassified: "d" }],
     ]);
     expect(compareRisk(snapshot, current)).toEqual([
-      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e" }] },
+      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e", afterLabel: "E (aanzienlijk hoog risico)" }] },
     ]);
   });
 
@@ -78,6 +79,41 @@ const basis = (over: Record<string, unknown> = {}) => ({
   documentName: "Funderingskaart Haarlem", documentDate: "2025-11-03",
   drystandRisk: "b", drystand: 0.42, dewateringDepthRisk: "d", dewateringDepth: 1.27, bioInfectionRisk: "c",
   ...over,
+});
+
+describe("niet van toepassing vs niet bepaald (Don, 2026-10-02)", () => {
+  test("an empty pile risk next to a computed one is niet van toepassing", () => {
+    const { riskLabelIn } = emails;
+    const r = { drystand: null, dewateringDepth: "d", bioInfection: null, unclassified: null };
+    expect(riskLabelIn(r, r.drystand)).toBe("niet van toepassing");
+    expect(riskLabelIn(r, r.dewateringDepth)).toBe("D (hoog risico)");
+  });
+
+  test("all three empty is niet bepaald", () => {
+    const { riskLabelIn } = emails;
+    const r = { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: null };
+    expect(riskLabelIn(r, r.drystand)).toBe("niet bepaald");
+    expect(riskLabelIn(null, null)).toBe("niet bepaald");
+  });
+
+  test("the changed mail says niet van toepassing when a pile risk falls away", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Molenwal 15", risk: { drystand: "c", dewateringDepth: null, bioInfection: "d", unclassified: null } } } },
+      new Map([["b1", { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: null }]]),
+    );
+    const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(mail.text).toContain("droogstand: C (verhoogd risico) → niet van toepassing");
+    expect(mail.text).not.toContain("→ niet bepaald");
+  });
+});
+
+describe("explainBasis: risk from a QuickScan (Don, 2026-10-02)", () => {
+  test("says the risk follows the QuickScan and does not name the registered foundation type", () => {
+    const lines = explainBasis(basis({ quickScanRisk: "b" }) as never);
+    expect(lines[0]).toContain("Verkennend Funderingsonderzoek (QuickScan)");
+    expect(lines[0]).toContain("B (laag risico)");
+    expect(lines.join(" ")).not.toContain("Funderingstype:");
+  });
 });
 
 describe("explainBasis (API #204)", () => {
