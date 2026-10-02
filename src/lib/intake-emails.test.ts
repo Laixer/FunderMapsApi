@@ -12,6 +12,7 @@ const {
   addBusinessDays,
   isDutchPublicHoliday,
   buildClosedEmail,
+  buildMelderMessage,
   buildReceivedEmail,
   compareWithRegistered,
   formatDayNl,
@@ -110,6 +111,27 @@ describe("formatFieldValue", () => {
   test("unknown values fall back to the recorded text", () => {
     expect(formatFieldValue("damage_cause", "meteorite")).toBe("meteorite");
     expect(formatFieldValue("substructure", "some_thing")).toBe("some thing");
+  });
+});
+
+describe("buildMelderMessage (API #209)", () => {
+  test("a question reads as a question, as before", () => {
+    const mail = buildMelderMessage("question", "FM2026-000042", "Jan Poland", "Welk jaar is het pand gebouwd?");
+    expect(mail.subject).toBe("Vraag over uw melding FM2026-000042");
+    expect(mail.text).toContain("Beste Jan Poland,");
+    expect(mail.text).toContain("hebben wij een vraag:");
+    expect(mail.text).toContain("Welk jaar is het pand gebouwd?");
+  });
+
+  test("an answer never says we have a question", () => {
+    const mail = buildMelderMessage("answer", "FM2026-000042", "", "Het risico is berekend op het funderingsonderzoek uit 2021.");
+    expect(mail.subject).toBe("Reactie op uw melding FM2026-000042");
+    expect(mail.text).toContain("Beste melder,");
+    expect(mail.text).toContain("Naar aanleiding van uw melding FM2026-000042:");
+    expect(mail.text).toContain("Het risico is berekend op het funderingsonderzoek uit 2021.");
+    expect(mail.text).toContain("U kunt deze e-mail direct beantwoorden");
+    expect(mail.text).not.toContain("vraag:");
+    expect(mail.text).toContain("/melding/FM2026-000042");
   });
 });
 

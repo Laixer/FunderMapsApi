@@ -1087,29 +1087,61 @@ export interface QuestionMailResult {
 }
 
 /**
- * Mail one reviewer question to the melder. NOT fail-soft, unlike the two
- * courtesy mails above: here the mail IS the action, so the caller must learn
- * whether it went out and tell the reviewer when it did not. Repeatable by
- * design -- a dossier can carry any number of questions, each its own
- * dossier_mail row.
+ * What the reviewer sends the melder: a question, or an answer to theirs
+ * (Don, 2026-09-23, API #209: "Het is nu alleen mogelijk een vraag te
+ * stellen"). Only the wording around the reviewer's text differs; both go out
+ * from the same mailbox with the same reply address, so the melder can always
+ * write back.
+ */
+export type MelderMessageKind = "question" | "answer";
+export const MELDER_MESSAGE_KINDS: readonly MelderMessageKind[] = ["question", "answer"];
+
+export function buildMelderMessage(
+  kind: MelderMessageKind,
+  reference: string,
+  name: string | null | undefined,
+  text: string,
+): RenderedMail {
+  const greeting = { p: `Beste ${name || "melder"},` };
+  const status = [{ p: "De actuele stand van uw melding vindt u op:" }, { url: statusUrl(reference) }];
+  if (kind === "answer") {
+    return render(`Reactie op uw melding ${reference}`, [
+      greeting,
+      { p: `Naar aanleiding van uw melding ${reference}:` },
+      { p: text },
+      { p: "Heeft u nog een vraag? U kunt deze e-mail direct beantwoorden; uw reactie wordt aan het dossier toegevoegd." },
+      ...status,
+    ]);
+  }
+  return render(`Vraag over uw melding ${reference}`, [
+    greeting,
+    { p: `Bij de behandeling van uw melding ${reference} hebben wij een vraag:` },
+    { p: text },
+    { p: "U kunt deze e-mail direct beantwoorden; uw antwoord wordt aan het dossier toegevoegd." },
+    ...status,
+  ]);
+}
+
+/**
+ * Mail one reviewer message (a question or an answer) to the melder. NOT
+ * fail-soft, unlike the two courtesy mails above: here the mail IS the action,
+ * so the caller must learn whether it went out and tell the reviewer when it
+ * did not. Repeatable by design -- a dossier can carry any number of them,
+ * each its own dossier_mail row. Both kinds log as dossier_mail kind
+ * 'question' (the table's CHECK allows no other repeatable kind); the
+ * subject tells them apart.
  */
 export async function sendDossierQuestionMail(
   head: DossierHead,
-  question: string,
+  message: string,
+  kind: MelderMessageKind = "question",
 ): Promise<QuestionMailResult> {
   const to = recipientOf(head);
   if (!to) return { ok: false, error: "dossier has no melder email", recipient: "" };
   const reference = head.reference!;
 
-  const subject = `Vraag over uw melding ${reference}`;
-  const mail = render(subject, [
-    { p: `Beste ${to.name || "melder"},` },
-    { p: `Bij de behandeling van uw melding ${reference} hebben wij een vraag:` },
-    { p: question },
-    { p: "U kunt deze e-mail direct beantwoorden; uw antwoord wordt aan het dossier toegevoegd." },
-    { p: "De actuele stand van uw melding vindt u op:" },
-    { url: statusUrl(reference) },
-  ]);
+  const mail = buildMelderMessage(kind, reference, to.name, message);
+  const subject = mail.subject;
 
   const [log] = await db
     .insert(dossierMail)
