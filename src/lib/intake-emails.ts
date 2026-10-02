@@ -367,6 +367,21 @@ export function riskLabel(risk: string | null | undefined): string {
   return RISK_LABEL[risk.toLowerCase()] ?? risk.toUpperCase();
 }
 
+/**
+ * One of the three risks, read against the other two (Don, 2026-10-02: a
+ * melder asked why a pand on a shallow foundation showed droogstand "niet
+ * bepaald"). The model leaves a risk empty only when it does not exist for
+ * the pand's foundation type -- droogstand and bacteriële aantasting need
+ * wooden piles, ontwateringsdiepte a shallow foundation -- so an empty risk
+ * next to a computed one is "niet van toepassing". All three empty means the
+ * model has no foundation to go on: "niet bepaald".
+ */
+export function riskLabelIn(r: RegisteredRisk | null | undefined, risk: string | null | undefined): string {
+  if (risk) return riskLabel(risk);
+  const anySet = !!r && [r.drystand, r.dewateringDepth, r.bioInfection].some((x) => !!x);
+  return anySet ? "niet van toepassing" : "niet bepaald";
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────
@@ -545,9 +560,9 @@ function describeField(f: TakenField): string {
 
 function describeRisk(r: RegisteredRisk): string {
   const parts = [
-    `droogstand ${riskLabel(r.drystand)}`,
-    `ontwateringsdiepte ${riskLabel(r.dewateringDepth)}`,
-    `bacteriële aantasting ${riskLabel(r.bioInfection)}`,
+    `droogstand ${riskLabelIn(r, r.drystand)}`,
+    `ontwateringsdiepte ${riskLabelIn(r, r.dewateringDepth)}`,
+    `bacteriële aantasting ${riskLabelIn(r, r.bioInfection)}`,
   ];
   if (r.unclassified) parts.push(`vastgesteld risico ${riskLabel(r.unclassified)}`);
   return `Funderingsrisico zoals nu bij ons geregistreerd: ${parts.join(", ")}.`;
