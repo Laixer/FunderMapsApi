@@ -12,7 +12,12 @@ import {
 } from "../db/schema/dataops.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "../lib/errors.ts";
-import { sendDossierClosedMail, sendDossierQuestionMail } from "../lib/intake-emails.ts";
+import {
+  MELDER_MESSAGE_KINDS,
+  type MelderMessageKind,
+  sendDossierClosedMail,
+  sendDossierQuestionMail,
+} from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -816,22 +821,30 @@ dataops.post("/dossier/:id/remark", async (c) => {
 });
 
 /**
- * Ask the melder something. The question is mailed (Resend, from
+ * Write to the melder: ask something, or answer them (`kind`, default
+ * 'question'; 'answer' since API #209). The message is mailed (Resend, from
  * melding@funderdata.nl with the dossier reference in the reply address) and
- * recorded on the timeline; the melder's answer comes back through the
- * inbound webhook (routes/webhooks.ts) as a 'reply' entry.
+ * recorded on the timeline; the melder's reply comes back through the inbound
+ * webhook (routes/webhooks.ts) as a 'reply' entry.
  *
- * Unlike the courtesy mails this endpoint fails loudly: a reviewer who asks a
- * question must know whether it actually went out.
+ * Both kinds are a 'question' entry -- "the reviewer wrote to the melder", the
+ * kind the queue states read -- with the kind in `body.mail.kind`.
+ *
+ * Unlike the courtesy mails this endpoint fails loudly: a reviewer who writes
+ * to the melder must know whether it actually went out.
  */
 dataops.post("/dossier/:id/question", async (c) => {
   const u = c.get("user");
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
-  const body = await c.req.json<{ text?: string }>();
+  const body = await c.req.json<{ text?: string; kind?: string }>();
   const text = body.text?.trim() ?? "";
   if (!text) throw new ValidationError(["text is required"]);
   if (text.length > 4000) throw new ValidationError(["text must be at most 4000 characters"]);
+  const kind = (body.kind ?? "question") as MelderMessageKind;
+  if (!MELDER_MESSAGE_KINDS.includes(kind)) {
+    throw new ValidationError([`kind must be one of: ${MELDER_MESSAGE_KINDS.join(", ")}`]);
+  }
 
   const [head] = await db.select().from(dossier).where(eq(dossier.id, id)).limit(1);
   if (!head) throw new NotFoundError("dossier not found");
@@ -839,7 +852,7 @@ dataops.post("/dossier/:id/question", async (c) => {
   // afronding ("via welke weg dan wel?", FM2026-000107, 2026-09-15) and the
   // reviewer must be able to reply from the same screen; the outcome stays.
 
-  const sent = await sendDossierQuestionMail(head, text);
+  const sent = await sendDossierQuestionMail(head, text, kind);
   if (!sent.ok) {
     if (!sent.recipient) throw new ValidationError(["dossier has no melder email"]);
     throw new AppError(502, `mail not sent: ${sent.error ?? "unknown"}`);
@@ -851,11 +864,11 @@ dataops.post("/dossier/:id/question", async (c) => {
     actorKind: "reviewer",
     actor: u.id,
     text,
-    // The entry's `text` is the reviewer's question; `body.mail` is the letter
+    // The entry's `text` is the reviewer's own words; `body.mail` is the letter
     // that actually left the building, in the shape API #176 gave the automated
     // mails so the review log can render all of them the same way (#356).
     body: sent.subject
-      ? { mail: { kind: "question", to: sent.recipient, subject: sent.subject, text: sent.text } }
+      ? { mail: { kind, to: sent.recipient, subject: sent.subject, text: sent.text } }
       : undefined,
     visibleToMelder: true,
     mailMessageId: sent.id ?? null,
