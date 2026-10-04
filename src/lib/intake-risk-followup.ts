@@ -45,6 +45,7 @@ import {
   recipientOf,
   render,
   riskLabel,
+  riskLabelIn,
   statusUrl,
 } from "./intake-emails.ts";
 
@@ -71,7 +72,8 @@ const PILE_ONLY_LABELS = new Set(["droogstand", "bacteriële aantasting"]);
 export interface RiskChange {
   buildingId: string;
   address: string;
-  fields: { label: string; before: string | null; after: string | null }[];
+  /** `afterLabel`: how `after` reads next to the pand's other current risks ("niet van toepassing" vs "niet bepaald"). */
+  fields: { label: string; before: string | null; after: string | null; afterLabel?: string }[];
 }
 
 /** Which registered risks differ from the snapshot. Pure; the unit tests live here. */
@@ -86,7 +88,7 @@ export function compareRisk(
       const before = was.risk?.[key] ?? null;
       const after = now?.[key] ?? null;
       // "unclassified" is only shown when set; going from nothing to nothing is not news.
-      return (before ?? "") === (after ?? "") ? [] : [{ label, before, after }];
+      return (before ?? "") === (after ?? "") ? [] : [{ label, before, after, afterLabel: riskLabelIn(now, after) }];
     });
     if (fields.length) changes.push({ buildingId, address: was.address, fields });
   }
@@ -113,7 +115,7 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
   for (const c of input.changes) {
     blocks.push(
       { p: c.address },
-      { ul: c.fields.map((f) => `${f.label}: ${riskLabel(f.before)} → ${riskLabel(f.after)}`) },
+      { ul: c.fields.map((f) => `${f.label}: ${riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}`) },
     );
   }
   // Droogstand and bacteriële aantasting only exist for wooden piles. When
@@ -127,7 +129,7 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
       p:
         "Droogstand en bacteriële aantasting gelden alleen voor een fundering op houten palen. " +
         "Staat uw pand volgens de gegevens niet (meer) op houten palen, dan vervallen deze risico's; " +
-        "daarom staat er nu \"niet bepaald\".",
+        "daarom staat er nu \"niet van toepassing\".",
     });
   }
   blocks.push(
@@ -159,6 +161,13 @@ export interface RiskBasis {
   /** Metres. */
   dewateringDepth: number | null;
   bioInfectionRisk: string | null;
+  /**
+   * The QuickScan (Verkennend Funderingsonderzoek) class when the model takes
+   * the risk from it. Then the foundation type in our registration does not
+   * decide the risk, and naming it confused melders whose QuickScan says
+   * "op staal" (Don, 2026-10-02: 5 replies in two weeks).
+   */
+  quickScanRisk?: string | null;
 }
 
 const RISK_ORDER = ["a", "b", "c", "d", "e"];
@@ -174,7 +183,12 @@ const metres = (v: number) => `${v.toFixed(2).replace(".", ",")} m`;
 export function explainBasis(b: RiskBasis | null): string[] {
   if (!b) return ["Voor dit pand is op dit moment geen risicoberekening beschikbaar."];
   const lines: string[] = [];
-  if (b.inquiryType) {
+  if (b.quickScanRisk) {
+    lines.push(
+      `Gebaseerd op: het Verkennend Funderingsonderzoek (QuickScan) van dit pand, uitkomst ${riskLabel(b.quickScanRisk)}. ` +
+        "Het funderingsrisico volgt deze uitkomst.",
+    );
+  } else if (b.inquiryType) {
     const year = b.documentDate?.slice(0, 4);
     const what = formatFieldValue("inquiry_type", b.inquiryType);
     lines.push(`Gebaseerd op: ${what}${b.documentName ? ` "${b.documentName}"` : ""}${year ? ` (${year})` : ""}.`);
@@ -183,7 +197,7 @@ export function explainBasis(b: RiskBasis | null): string[] {
   } else {
     lines.push("Voor dit pand zelf is geen funderingsonderzoek bekend; het funderingstype is geschat op basis van onder meer het bouwjaar en de bodem.");
   }
-  if (b.foundationType) lines.push(`Funderingstype: ${formatFieldValue("foundation_type", b.foundationType)}.`);
+  if (b.foundationType && !b.quickScanRisk) lines.push(`Funderingstype: ${formatFieldValue("foundation_type", b.foundationType)}.`);
 
   const parts = [
     { risk: b.drystandRisk, label: "droogstand", measure: b.drystand },
@@ -232,9 +246,9 @@ export function buildRiskConfirmedEmail(input: RiskConfirmedEmailInput): Rendere
   for (const b of input.buildings) {
     const shown = b.risk
       ? [
-          `droogstand: ${riskLabel(b.risk.drystand)}`,
-          `ontwateringsdiepte: ${riskLabel(b.risk.dewateringDepth)}`,
-          `bacteriële aantasting: ${riskLabel(b.risk.bioInfection)}`,
+          `droogstand: ${riskLabelIn(b.risk, b.risk.drystand)}`,
+          `ontwateringsdiepte: ${riskLabelIn(b.risk, b.risk.dewateringDepth)}`,
+          `bacteriële aantasting: ${riskLabelIn(b.risk, b.risk.bioInfection)}`,
           ...(b.risk.unclassified ? [`vastgesteld risico: ${riskLabel(b.risk.unclassified)}`] : []),
         ]
       : [];
@@ -276,6 +290,14 @@ export async function currentBasis(buildingIds: string[]): Promise<Map<string, R
           .map((d) => [d.id, d] as const),
       )
     : new Map<number, { id: number; name: string; date: string }>();
+  // facade_scan_risk is not in the drizzle mirror of data.building_sample.
+  const qsRows = (await db.execute(sql`
+    SELECT building_id, facade_scan_risk::text AS risk
+      FROM data.building_sample
+     WHERE facade_scan_risk IS NOT NULL
+       AND building_id IN (${sql.join(buildingIds.map((id) => sql`${id}`), sql`, `)})
+  `)) as unknown as { building_id: string; risk: string }[];
+  const quickScan = new Map(qsRows.map((q) => [q.building_id, q.risk] as const));
   const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
   const out = new Map<string, RiskBasis>();
   for (const r of rows) {
@@ -292,12 +314,13 @@ export async function currentBasis(buildingIds: string[]): Promise<Map<string, R
       dewateringDepthRisk: r.dewateringDepthRisk ?? null,
       dewateringDepth: num(r.dewateringDepth),
       bioInfectionRisk: r.bioInfectionRisk ?? null,
+      quickScanRisk: quickScan.get(r.buildingId) ?? null,
     });
   }
   return out;
 }
 
-async function currentRisk(buildingIds: string[]): Promise<Map<string, RegisteredRisk>> {
+export async function currentRisk(buildingIds: string[]): Promise<Map<string, RegisteredRisk>> {
   if (buildingIds.length === 0) return new Map();
   const rows = await db
     .select({
