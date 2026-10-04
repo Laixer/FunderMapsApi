@@ -19,6 +19,8 @@ import {
   sendDossierQuestionMail,
 } from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
+import { organizationUser, user as appUser } from "../db/schema/application.ts";
+import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -159,6 +161,12 @@ const readKind = sql<string | null>`(
   limit 1
 )`;
 
+/** The display name of whoever holds the dossier: name, else given + last name, else email. */
+const assignedName = sql<string | null>`(
+  select coalesce(nullif(u.name, ''), nullif(trim(concat_ws(' ', u.given_name, u.last_name)), ''), u.email)
+  from application."user" u where u.id = "dataops"."dossier"."assigned_to"
+)`;
+
 const queueSelector = () =>
   db
     .select({
@@ -185,6 +193,9 @@ const queueSelector = () =>
       outcomeAt: dossier.outcomeAt,
       outcomeNote: dossier.outcomeNote,
       duplicateOf: dossier.duplicateOf,
+      assignedTo: dossier.assignedTo,
+      assignedAt: dossier.assignedAt,
+      assignedName,
     })
     .from(dossier);
 
@@ -204,6 +215,8 @@ const queueSelector = () =>
  *   building  resolved · unresolved -- whether the submission is filed under
  *             a pand
  *   kind      report.inquiry_type codes as the pipeline read them
+ *   assignedTo  me · none · <user uuid> -- who holds the dossier (API #222);
+ *             absent = everyone's
  *   outcome   rejected · duplicate · no_data · accepted -- closed dossiers
  *             instead of the desk. Absent = the desk (open, uncommitted).
  *             A rejected report and a duplicate used to vanish the moment
@@ -230,12 +243,15 @@ const melderRepliedLast = sql<boolean>`exists (
     and r.at > coalesce((
       select max(o.at) from ${dossierEntry} o
       where o.dossier_id = "dataops"."dossier"."id"
-        and o.kind in ('question', 'status', 'remark') and o.actor_kind in ('reviewer', 'system')), '-infinity'::timestamptz))`;
+        and o.kind in ('question', 'status', 'remark') and o.actor_kind in ('reviewer', 'system')
+        -- A hand-over (API #222) is not an answer to the melder.
+        and o.body -> 'assignment' is null), '-infinity'::timestamptz))`;
 const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
   "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
   "foundation_research", "additional_research", "ground_water_level_research", "soil_investigation",
 ]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -285,6 +301,12 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
   if (building === "resolved") where.push(isNotNull(dossier.buildingId));
   else if (building === "unresolved") where.push(isNull(dossier.buildingId));
   else if (building) throw new ValidationError([`unknown building filter: ${building}`]);
+
+  const assignedTo = c.req.query("assignedTo");
+  if (assignedTo === "me") where.push(eq(dossier.assignedTo, c.get("user").id));
+  else if (assignedTo === "none") where.push(isNull(dossier.assignedTo));
+  else if (assignedTo && UUID.test(assignedTo)) where.push(eq(dossier.assignedTo, assignedTo));
+  else if (assignedTo) throw new ValidationError([`assignedTo must be me, none or a user id`]);
 
   const kinds = csv(c.req.query("kind"));
   if (kinds.length) {
@@ -384,6 +406,7 @@ dataops.get("/dossier/:id", async (c) => {
       // was always null and "Overnemen als rapportage" stayed disabled for an
       // archive dossier whose document has no date (#195, Don 2026-09-20).
       buildingBuiltYear: sql<string | null>`(select b.built_year::text from geocoder.building b where b.external_id = ${dossier.buildingId})`,
+      assignedName,
       // What the model says about the pand right now, next to what the melder
       // claims ("Risico volgens melder", "Funderingstype volgens melder"):
       // Don, 2026-09-25, dossier 5594. Null without a pand or a model row.
@@ -872,6 +895,72 @@ dataops.post("/dossier/:id/question", async (c) => {
       : undefined,
     visibleToMelder: true,
     mailMessageId: sent.id ?? null,
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * Hand a dossier to a colleague, or back to the general queue (API #222).
+ *
+ * A reviewer sometimes needs a decision from a specific person (usually the
+ * product owner) on a dossier. Before this, the hand-over happened outside the
+ * system and the dossier stayed in the general queue with nobody visibly
+ * holding it. `{ userId }` hands it over, `{ userId: null }` puts it back;
+ * `note` says what the colleague is asked. Only staff (members of the platform
+ * organisation) can hold a dossier. Open or closed: a reply after the
+ * afronding may need the same person.
+ *
+ * The timeline gets a 'status' line marked `body.assignment`, so the
+ * "Reactie ontvangen" rule (melderRepliedLast) does not read a hand-over as
+ * an answer to the melder.
+ */
+dataops.post("/dossier/:id/assign", async (c) => {
+  const u = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const body = await c.req.json<{ userId?: string | null; note?: string }>();
+  const userId = body.userId ?? null;
+  const note = body.note?.trim() ?? "";
+  if (userId !== null && !UUID.test(userId)) throw new ValidationError(["userId must be a user id or null"]);
+  if (note.length > 1000) throw new ValidationError(["note must be at most 1000 characters"]);
+
+  const [head] = await db
+    .select({ id: dossier.id, assignedTo: dossier.assignedTo })
+    .from(dossier)
+    .where(eq(dossier.id, id))
+    .limit(1);
+  if (!head) throw new NotFoundError("dossier not found");
+
+  let name: string | null = null;
+  if (userId) {
+    const [m] = await db
+      .select({ name: appUser.name, givenName: appUser.givenName, lastName: appUser.lastName, email: appUser.email })
+      .from(appUser)
+      .innerJoin(
+        organizationUser,
+        and(eq(organizationUser.userId, appUser.id), eq(organizationUser.organizationId, env.PLATFORM_ORGANIZATION_ID)),
+      )
+      .where(eq(appUser.id, userId))
+      .limit(1);
+    if (!m) throw new ValidationError(["userId is not a staff member"]);
+    name = m.name?.trim() || [m.givenName, m.lastName].filter(Boolean).join(" ").trim() || m.email;
+  }
+  if ((head.assignedTo ?? null) === userId) return c.json({ ok: true, unchanged: true });
+
+  await db
+    .update(dossier)
+    .set({ assignedTo: userId, assignedAt: userId ? new Date() : null, updatedAt: new Date() })
+    .where(eq(dossier.id, id));
+
+  const what = userId ? `Doorgezet naar ${name}` : "Terug in de algemene wachtrij";
+  await addEntry({
+    dossierId: id,
+    kind: "status",
+    actorKind: "reviewer",
+    actor: u.id,
+    text: note ? `${what}: ${note}` : what,
+    body: { assignment: { to: userId, from: head.assignedTo ?? null, ...(note ? { note } : {}) } },
+    visibleToMelder: false,
   });
   return c.json({ ok: true });
 });

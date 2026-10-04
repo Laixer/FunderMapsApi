@@ -58,6 +58,9 @@ export const dossier = dataopsSchema.table("dossier", {
   outcomeAt: timestamp("outcome_at", { withTimezone: true }),
   /** The rapportage this dossier re-reads (channel audit). Null on intake dossiers. */
   auditInquiryId: integer("audit_inquiry_id"),
+  /** The colleague this dossier is handed to (API #222). Null = in the general queue. */
+  assignedTo: uuid("assigned_to"),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }),
 });
 
 export const artifact = dataopsSchema.table("artifact", {
