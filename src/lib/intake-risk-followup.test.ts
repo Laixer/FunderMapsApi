@@ -30,7 +30,7 @@ describe("compareRisk", () => {
       ["b2", { drystand: "c", dewateringDepth: "e", bioInfection: "c", unclassified: "d" }],
     ]);
     expect(compareRisk(snapshot, current)).toEqual([
-      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e", afterLabel: "E (aanzienlijk hoog risico)" }] },
+      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e", beforeLabel: "C (verhoogd risico)", afterLabel: "E (aanzienlijk hoog risico)" }] },
     ]);
   });
 
@@ -104,6 +104,27 @@ describe("niet van toepassing vs niet bepaald (Don, 2026-10-02)", () => {
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
     expect(mail.text).toContain("droogstand: C (verhoogd risico) → niet van toepassing");
     expect(mail.text).not.toContain("→ niet bepaald");
+  });
+});
+
+describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", () => {
+  test("an empty pile risk that is now computed reads niet van toepassing → value", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Molenwal 15", risk: { drystand: null, dewateringDepth: "d", bioInfection: null, unclassified: null } } } },
+      new Map([["b1", { drystand: "c", dewateringDepth: null, bioInfection: "c", unclassified: null }]]),
+    );
+    const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(mail.text).toContain("droogstand: niet van toepassing → C (verhoogd risico)");
+    expect(mail.text).not.toContain("niet bepaald →");
+  });
+
+  test("all empty before still reads niet bepaald", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Molenwal 15", risk: { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: null } } } },
+      new Map([["b1", { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: "b" }]]),
+    );
+    const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(mail.text).toContain("vastgesteld risico: niet bepaald → B (laag risico)");
   });
 });
 

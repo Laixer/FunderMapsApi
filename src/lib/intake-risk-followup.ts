@@ -72,8 +72,12 @@ const PILE_ONLY_LABELS = new Set(["droogstand", "bacteriële aantasting"]);
 export interface RiskChange {
   buildingId: string;
   address: string;
-  /** `afterLabel`: how `after` reads next to the pand's other current risks ("niet van toepassing" vs "niet bepaald"). */
-  fields: { label: string; before: string | null; after: string | null; afterLabel?: string }[];
+  /**
+   * `beforeLabel` / `afterLabel`: how an empty value reads next to the pand's other risks at that
+   * moment ("niet van toepassing" vs "niet bepaald"). Both sides, since a melder read
+   * "vastgesteld risico: niet bepaald → B" and asked what "niet bepaald" meant (2026-10-06).
+   */
+  fields: { label: string; before: string | null; after: string | null; beforeLabel?: string; afterLabel?: string }[];
 }
 
 /** Which registered risks differ from the snapshot. Pure; the unit tests live here. */
@@ -88,7 +92,9 @@ export function compareRisk(
       const before = was.risk?.[key] ?? null;
       const after = now?.[key] ?? null;
       // "unclassified" is only shown when set; going from nothing to nothing is not news.
-      return (before ?? "") === (after ?? "") ? [] : [{ label, before, after, afterLabel: riskLabelIn(now, after) }];
+      return (before ?? "") === (after ?? "")
+        ? []
+        : [{ label, before, after, beforeLabel: riskLabelIn(was.risk, before), afterLabel: riskLabelIn(now, after) }];
     });
     if (fields.length) changes.push({ buildingId, address: was.address, fields });
   }
@@ -115,7 +121,7 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
   for (const c of input.changes) {
     blocks.push(
       { p: c.address },
-      { ul: c.fields.map((f) => `${f.label}: ${riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}`) },
+      { ul: c.fields.map((f) => `${f.label}: ${f.beforeLabel ?? riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}`) },
     );
   }
   // Droogstand and bacteriële aantasting only exist for wooden piles. When
