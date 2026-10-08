@@ -1,9 +1,9 @@
 // Inbound mail (docs/dataops-pipeline.md §11): melding@funderdata.nl has no
 // mailbox -- Resend receives for the domain and POSTs an event here. This
 // route is deliberately minimal: it verifies the signature, finds the dossier
-// a reply belongs to, and appends the text to the timeline. Attachments and
-// mails that open a NEW dossier are the (later) email-in step; today their
-// presence is only noted, so nothing arrives unseen.
+// a reply belongs to, and appends the text to the timeline. Attachments are
+// stored on the melding as documents (API #230, lib/reply-attachments.ts);
+// mails that open a NEW dossier are the (later) email-in step.
 //
 // Mounted without auth (Resend cannot log in); the Svix signature is the
 // authentication. The webhook payload carries metadata only -- the body text
@@ -13,9 +13,10 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { env } from "../config.ts";
 import { db } from "../db/client.ts";
-import { dossier } from "../db/schema/dataops.ts";
+import { dossier, dossierEntry } from "../db/schema/dataops.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { verifyWebhookSignature } from "../lib/svix.ts";
+import { storeReplyAttachments } from "../lib/reply-attachments.ts";
 
 const webhooks = new Hono();
 
@@ -113,6 +114,13 @@ webhooks.post("/resend", async (c) => {
     return c.json({ ok: true, matched: false });
   }
 
+  // A replay of an event we already logged: nothing to add, and above all no
+  // second copy of its attachments (addEntry ignores the duplicate silently).
+  if (emailId) {
+    const [seen] = await db.select({ id: dossierEntry.id }).from(dossierEntry).where(eq(dossierEntry.mailMessageId, emailId)).limit(1);
+    if (seen) return c.json({ ok: true, matched: true, replay: true });
+  }
+
   const from = addressesOf(data.from)[0] ?? "unknown";
   const subject = typeof data.subject === "string" ? data.subject.slice(0, 500) : null;
   const attachments = Array.isArray(data.attachments) ? data.attachments.length : 0;
@@ -125,7 +133,7 @@ webhooks.post("/resend", async (c) => {
     actor: from,
     text:
       (text ?? "(inhoud kon niet worden opgehaald)").slice(0, 8000) +
-      (attachments ? `\n\n[${attachments} bijlage(n) — nog niet opgeslagen]` : ""),
+      (attachments ? `\n\n[${attachments} bijlage(n): worden bij de melding opgeslagen]` : ""),
     // `body.mail` is what the review log renders as a mail card (#356). The
     // Studio already splits the quoted history off and folds it away
     // (services/mailQuote.ts), so this stores the mail whole: stripping it
@@ -141,6 +149,10 @@ webhooks.post("/resend", async (c) => {
     // Dedupes webhook replays via the unique index on mail_message_id.
     mailMessageId: emailId,
   });
+
+  // The files after the answer: Resend gets its 200 now. A replay stopped
+  // above, before anything was written.
+  if (attachments && emailId) void storeReplyAttachments(head.id, emailId);
 
   console.info(`inbound reply on dossier ${head.id} (${reference}) from ${from}`);
   return c.json({ ok: true, matched: true });
