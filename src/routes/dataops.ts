@@ -22,6 +22,7 @@ import { addEntry } from "../lib/dossier-entries.ts";
 import { organizationUser, user as appUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
+import { existingRapportages } from "../lib/existing-rapportages.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -484,7 +485,7 @@ dataops.get("/dossier/:id", async (c) => {
   ]);
 
   // Signed links are minted here; the browser never sees storage credentials.
-  const [withLinks, entries, addresses] = await Promise.all([
+  const [withLinks, entries, addresses, existing] = await Promise.all([
     Promise.all(
       artifacts.map(async (a) => ({
         ...a,
@@ -496,9 +497,14 @@ dataops.get("/dossier/:id", async (c) => {
     // The addresses this dossier is about: its own pand, what the document
     // names, and what the reviewer decided (ClientApp #333 part C).
     loadDossierAddresses(id, head),
+    // Rapportages already on this pand, for the warning before "Overnemen als
+    // rapportage" (Don, 2026-10-08: Molenwal 15 had one survey five times).
+    head.buildingId
+      ? existingRapportages(head.buildingId, artifacts.map((a) => a.sizeBytes), head.inquiryId ?? head.auditInquiryId ?? null)
+      : Promise.resolve([]),
   ]);
 
-  return c.json({ dossier: head, artifacts: withLinks, fields, entries, addresses });
+  return c.json({ dossier: head, artifacts: withLinks, fields, entries, addresses, existingRapportages: existing });
 });
 
 /**
