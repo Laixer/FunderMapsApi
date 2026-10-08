@@ -292,13 +292,6 @@ const DAMAGE_CHARACTERISTICS_LABEL: Record<string, string> = {
   crooked_floor_wall: "scheve vloeren of wanden",
 };
 
-const RISK_LABEL: Record<string, string> = {
-  a: "A (geen risico)",
-  b: "B (laag risico)",
-  c: "C (verhoogd risico)",
-  d: "D (hoog risico)",
-  e: "E (aanzienlijk hoog risico)",
-};
 
 const RELIABILITY_LABEL: Record<string, string> = {
   indicative: "indicatief",
@@ -362,9 +355,14 @@ export function formatFieldValue(field: string, value: string): string {
   }
 }
 
+/**
+ * A risk class as the melder sees it: the letter only. Until 2026-10-08 it
+ * read "C (verhoogd risico)"; Don: "Haal (verhoogd risico) weg, noem alleen de
+ * A–E indicaties", on the status page and in the mails alike.
+ */
 export function riskLabel(risk: string | null | undefined): string {
   if (!risk) return "niet bepaald";
-  return RISK_LABEL[risk.toLowerCase()] ?? risk.toUpperCase();
+  return risk.toUpperCase();
 }
 
 /**

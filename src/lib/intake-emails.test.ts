@@ -248,7 +248,7 @@ describe("buildClosedEmail", () => {
     expect(mail.text).toContain("- Bouwjaar: 1932 (komt overeen met wat bij ons geregistreerd stond)");
     expect(mail.text).toContain("- Niveau bovenkant langshout: -1.85 m NAP");
     expect(mail.text).toContain(
-      "Funderingsrisico zoals nu bij ons geregistreerd: droogstand B (laag risico), ontwateringsdiepte C (verhoogd risico), bacteriële aantasting A (geen risico).",
+      "Funderingsrisico zoals nu bij ons geregistreerd: droogstand B, ontwateringsdiepte C, bacteriële aantasting A.",
     );
     expect(mail.text).toContain("kan het risico daardoor veranderen");
     expect(mail.text).toContain(base.statusUrl);

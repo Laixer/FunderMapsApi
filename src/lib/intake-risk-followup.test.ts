@@ -30,7 +30,7 @@ describe("compareRisk", () => {
       ["b2", { drystand: "c", dewateringDepth: "e", bioInfection: "c", unclassified: "d" }],
     ]);
     expect(compareRisk(snapshot, current)).toEqual([
-      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e", beforeLabel: "C (verhoogd risico)", afterLabel: "E (aanzienlijk hoog risico)" }] },
+      { buildingId: "b2", address: "Molenwal 15, 3421 CK Oudewater", fields: [{ label: "ontwateringsdiepte", before: "c", after: "e", beforeLabel: "C", afterLabel: "E" }] },
     ]);
   });
 
@@ -86,7 +86,7 @@ describe("niet van toepassing vs niet bepaald (Don, 2026-10-02)", () => {
     const { riskLabelIn } = emails;
     const r = { drystand: null, dewateringDepth: "d", bioInfection: null, unclassified: null };
     expect(riskLabelIn(r, r.drystand)).toBe("niet van toepassing");
-    expect(riskLabelIn(r, r.dewateringDepth)).toBe("D (hoog risico)");
+    expect(riskLabelIn(r, r.dewateringDepth)).toBe("D");
   });
 
   test("all three empty is niet bepaald", () => {
@@ -102,7 +102,7 @@ describe("niet van toepassing vs niet bepaald (Don, 2026-10-02)", () => {
       new Map([["b1", { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: null }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("droogstand: C (verhoogd risico) → niet van toepassing");
+    expect(mail.text).toContain("droogstand: C → niet van toepassing");
     expect(mail.text).not.toContain("→ niet bepaald");
   });
 });
@@ -114,7 +114,7 @@ describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", 
       new Map([["b1", { drystand: "c", dewateringDepth: null, bioInfection: "c", unclassified: null }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("droogstand: niet van toepassing → C (verhoogd risico)");
+    expect(mail.text).toContain("droogstand: niet van toepassing → C");
     expect(mail.text).not.toContain("niet bepaald →");
   });
 
@@ -124,7 +124,7 @@ describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", 
       new Map([["b1", { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: "b" }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("vastgesteld risico: niet bepaald → B (laag risico)");
+    expect(mail.text).toContain("vastgesteld risico: niet bepaald → B");
   });
 });
 
@@ -132,7 +132,7 @@ describe("explainBasis: risk from a QuickScan (Don, 2026-10-02)", () => {
   test("says the risk follows the QuickScan and does not name the registered foundation type", () => {
     const lines = explainBasis(basis({ quickScanRisk: "b" }) as never);
     expect(lines[0]).toContain("Verkennend Funderingsonderzoek (QuickScan)");
-    expect(lines[0]).toContain("B (laag risico)");
+    expect(lines[0]).toContain("B");
     expect(lines.join(" ")).not.toContain("Funderingstype:");
   });
 });
@@ -156,7 +156,7 @@ describe("explainBasis (API #204)", () => {
   test("three tied: a proper Dutch list", () => {
     expect(explainBasis(basis({ drystandRisk: "d", bioInfectionRisk: "d" }) as never).at(-1)).toContain("de droogstand, de ontwateringsdiepte en de bacteriële aantasting");
   });
-  test("everything A: no 'hoogste risico A (geen risico)'", () => {
+  test("everything A: no 'hoogste risico A'", () => {
     expect(explainBasis(basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "a" }) as never).at(-1)).toBe("Geen van de onderdelen geeft een verhoogd risico.");
   });
   test("bacteriële aantasting has no measurement to quote", () => {
