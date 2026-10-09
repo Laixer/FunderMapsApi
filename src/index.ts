@@ -35,6 +35,7 @@ import dataopsAddressRoutes from "./routes/dataops-address.ts";
 import dataopsValueRoutes from "./routes/dataops-value.ts";
 import dataopsContractorRoutes from "./routes/dataops-contractor.ts";
 import dataopsRecoveryRoutes from "./routes/dataops-recovery.ts";
+import dataopsWorkPackageRoutes from "./routes/dataops-work-package.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
 
@@ -142,6 +143,7 @@ app.route("/api/dataops", dataopsAddressRoutes);
 app.route("/api/dataops", dataopsValueRoutes);
 app.route("/api/dataops", dataopsContractorRoutes);
 app.route("/api/dataops", dataopsRecoveryRoutes);
+app.route("/api/dataops", dataopsWorkPackageRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);
