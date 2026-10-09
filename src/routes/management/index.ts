@@ -8,6 +8,7 @@ import sessions from "./session.ts";
 import rateLimits from "./rate-limit.ts";
 import contractors from "./contractor.ts";
 import permission from "./permission.ts";
+import workPackages from "./work-package.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const management = new Hono<AppEnv>();
@@ -21,5 +22,6 @@ management.route("/session", sessions);
 management.route("/rate-limit", rateLimits);
 management.route("/contractor", contractors);
 management.route("/permission", permission);
+management.route("/work-packages", workPackages);
 
 export default management;

@@ -8,6 +8,7 @@ import {
   timestamp,
   uuid,
   jsonb,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -229,3 +230,24 @@ export const dossierEntry = dataopsSchema.table("dossier_entry", {
   visibleToMelder: boolean("visible_to_melder").notNull(),
   mailMessageId: text("mail_message_id"),
 });
+
+/**
+ * Work packages the admin handed to a colleague (Worker migration
+ * 20261009_008). A package is a named filter on the review queue, defined by
+ * the Studio; this table only stores which ids a user was given. No rows for a
+ * user = they pick their own packages in the browser, as before. The set is
+ * replaced as a whole (PUT /api/management/work-packages/:userId), so there is
+ * no UPDATE grant and no surrogate key.
+ */
+export const workPackageAssignment = dataopsSchema.table(
+  "work_package_assignment",
+  {
+    userId: uuid("user_id").notNull(),
+    /** Studio work package id, e.g. `meldingen-funderingstype`; CHECK `^[a-z0-9-]{1,64}$`. */
+    packageId: text("package_id").notNull(),
+    /** The admin who composed the set; null once that account is gone. */
+    assignedBy: uuid("assigned_by"),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.packageId] })],
+);
