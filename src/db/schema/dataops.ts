@@ -213,7 +213,7 @@ export const dossierAddress = dataopsSchema.table("dossier_address", {
 
 /**
  * The verdict per rapportage of a dossier (Don, 2026-10-09; Worker migration
- * 20261009_001). One row per group of documents formed at commit; the closing
+ * 20261009_007). One row per group of documents formed at commit; the closing
  * mail combines the answers into one message to the melder.
  */
 export const dossierRapportage = dataopsSchema.table("dossier_rapportage", {

@@ -129,7 +129,11 @@ type RapportageInput = {
   artifactIds: number[]; type?: string; documentDate?: string; contractor?: number; note?: string; addressIds?: string[];
   verdict?: "accepted" | "rejected"; answer?: string;
 };
-type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string; rapportages?: RapportageInput[] };
+/**
+ * `closingNote`: the Reden the reviewer typed for the melder. It reaches the closing mail; before,
+ * a commit dropped it and the melder read only the default sentence.
+ */
+type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string; closingNote?: string; rapportages?: RapportageInput[] };
 
 const NUMMERAANDUIDING = /^NL\.IMBAG\.NUMMERAANDUIDING\.\d{16}$/;
 
@@ -154,6 +158,7 @@ commit.post("/dossier/:id/commit", async (c) => {
 
   const body = await c.req.json<CommitBody>().catch(() => ({}) as CommitBody);
   const inputErrors = checkInquiryInput("", body);
+  if (body.closingNote != null && (typeof body.closingNote !== "string" || body.closingNote.length > 4000)) inputErrors.push("closingNote must be text of at most 4000 characters");
   if (body.rapportages != null) {
     if (!Array.isArray(body.rapportages) || body.rapportages.length === 0 || body.rapportages.length > 20) {
       inputErrors.push("rapportages must be a list of 1 to 20 rapportages");
@@ -225,7 +230,7 @@ commit.post("/dossier/:id/commit", async (c) => {
   const answers = plans
     .filter((p) => p.answer)
     .map((p) => `${p.files.map((f) => f.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `document ${f.id}`).join(", ")} (${p.verdict === "accepted" ? "overgenomen" : "niet overgenomen"}): ${p.answer}`)
-    .join("\n\n") || null;
+    .join("\n\n") || body.closingNote?.trim() || null;
   const rapportageRows = (inquiryIds: (number | null)[]) =>
     plans.map((p, i) => ({
       dossierId: id, n: p.n, artifactIds: p.files.map((f) => f.id), addressIds: p.addressIds,
