@@ -9,7 +9,7 @@ FunderMaps API — TypeScript port of the legacy C# `FunderMaps.WebApi`. REST AP
 - **Runtime**: Bun
 - **Framework**: Hono
 - **ORM**: Drizzle ORM (PostgreSQL, existing multi-schema database)
-- **Auth**: Better Auth (sessions, bearer plugin, admin plugin, `@better-auth/oauth-provider`, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
+- **Auth**: Better Auth (sessions, bearer plugin, admin plugin, organization plugin, passkeys, `@better-auth/api-key` plugin) + legacy SHA-256 `auth_key` fallback for unrotated keys
 - **Validation**: Zod v4 + `@hono/zod-validator`
 - **Storage**: `@aws-sdk/client-s3` (DigitalOcean Spaces compatible)
 - **Email**: Resend (direct REST API via `fetch`, sender domain funderdata.nl; templates inline in `src/lib/report-emails.ts` for the audit workflow and `src/lib/intake-emails.ts` for melder notifications, the latter logged in `dataops.dossier_mail`)
@@ -33,7 +33,7 @@ Database schema is **not** managed from this repo — `FunderMapsWorker` owns th
 - `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `staff.ts` (platform-org membership via `isPlatformMember`, gates `/api/dataops/*`), `tracker.ts` (product-tracker billing), `error-handler.ts`
 - `src/routes/` — HTTP handlers organized by domain; `management/` subdir for `/api/management/*` (admin-only)
 - `src/services/` — External integrations (`geocoder`, `job`, `mail`, `storage`)
-- `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set + Grafana OIDC client config — and `legacy-password.ts` for the PBKDF2 verify hook)
+- `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set — and `legacy-password.ts` for the PBKDF2 verify hook)
 - `src/types/context.ts` — Hono `AppEnv` type
 
 ## Database Schemas
@@ -42,7 +42,7 @@ PostgreSQL with multiple schemas: `application.*`, `geocoder.*`, `report.*`, `da
 
 ## Auth
 
-Better Auth handles email/password login, sessions, password reset, and an OAuth2.1/OIDC provider surface (`@better-auth/oauth-provider`). Per-client config (`skip_consent`, `require_pkce`) is read directly from the `application.oauth_application` table — no startup-time `trustedClients` hoisting. The bearer plugin lets clients send session tokens as `Authorization: Bearer …`.
+Better Auth handles email/password login, sessions, passkeys and password reset. The apps (maps, studio, admin, auth SPA) authenticate with the Better Auth session cookie; there is no OAuth/OIDC provider any more (removed 2026-10, along with the `jwt` plugin and the `oauth_*`/`jwks` tables). The bearer plugin lets clients send session tokens as `Authorization: Bearer …`.
 
 **API keys are dual-stack** (`src/middleware/auth.ts`):
 1. Try `auth.api.verifyApiKey({ key })` against `application.apikey` (BA-issued keys, prefix `fmsk.`).

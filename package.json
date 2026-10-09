@@ -23,7 +23,6 @@
     "@aws-sdk/s3-request-presigner": "^3.1145.0",
     "@better-auth/api-key": "~1.7.6",
     "@better-auth/core": "~1.7.6",
-    "@better-auth/oauth-provider": "~1.7.6",
     "@better-auth/passkey": "~1.7.6",
     "@hono/zod-validator": "^0.9.1",
     "better-auth": "~1.7.6",

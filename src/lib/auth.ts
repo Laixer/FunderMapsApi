@@ -8,8 +8,6 @@ import {
 import { apiKey } from "@better-auth/api-key";
 import { organization } from "better-auth/plugins/organization";
 import { bearer } from "better-auth/plugins/bearer";
-import { jwt } from "better-auth/plugins/jwt";
-import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -196,11 +194,6 @@ export const auth = betterAuth({
         userVerification: "preferred",
       },
     }),
-    // The plugin's default is to sign a JWT and set a `set-auth-jwt` header on
-    // every /get-session response — a jwks read plus an EdDSA signature per
-    // API request (33,567 jwks reads in the 2026-08-23..09-17 prod window),
-    // for a header no client reads. Signing stays available on /token.
-    jwt({ disableSettingJwtHeader: true }),
     // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
     // via schema overrides onto the EXISTING application.organization +
     // organization_user tables — BA reads/writes the same rows the API
@@ -272,40 +265,6 @@ export const auth = betterAuth({
       rateLimit: {
         enabled: false,
       },
-    }),
-    // OAuth 2.1 / OIDC authorization server (`@better-auth/oauth-provider`,
-    // replaces the deprecated bundled `oidc-provider` plugin 2026-05-18).
-    // loginPage is the dedicated auth SPA (auth.fundermaps.com): when an
-    // unauthenticated user hits /api/auth/oauth2/authorize, the plugin appends
-    // the signed authorization request to this URL and redirects there; after
-    // login the SPA replays that query string back to /oauth2/authorize.
-    //
-    // `requirePKCE` is now a per-client column (application.oauth_application.
-    // require_pkce); the Grafana row needs it set false. New first-party
-    // clients (auth SPA) should leave it null/true.
-    //
-    // `skip_consent` is also a per-client column read directly from DB by
-    // the new plugin — no more startup-time `trustedClients` hoisting.
-    //
-    // `consentPage` is never reached: every first-party FunderMaps app is a
-    // trusted client (skip_consent=true). Kept only because the plugin requires
-    // the option; the placeholder URL 404s and that's fine.
-    oauthProvider({
-      loginPage: env.LOGIN_PAGE_URL,
-      consentPage: "https://admin.fundermaps.com/oauth/consent",
-      // Discovery: the plugin serves its metadata under /api/auth/.well-known/*
-      // while the OIDC spec wants /.well-known/*/<issuer-path>. None of our
-      // clients use discovery (Grafana has explicit auth_url/token_url/
-      // userinfo_url; the SPAs are hard-wired). If that changes, mount the
-      // exported `oauthProviderAuthServerMetadata` /
-      // `oauthProviderOpenIdConfigMetadata` helpers in Hono at the root.
-      // (1.7 removed the `silenceWarnings` option and the warnings with it.)
-      customAccessTokenClaims: ({ user: u }) => ({
-        role: (u as { role?: string } | null | undefined)?.role ?? "user",
-      }),
-      customIdTokenClaims: ({ user: u }) => ({
-        role: (u as { role?: string } | null | undefined)?.role ?? "user",
-      }),
     }),
   ],
 });

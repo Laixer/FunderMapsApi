@@ -46,8 +46,8 @@ app.use("*", secureHeaders());
 
 // CORS. First-party origins (the auth SPA + admin/app frontends listed in
 // TRUSTED_ORIGINS) get *credentialed* CORS so the Better Auth session cookie
-// can be set on sign-in and sent on the subsequent /oauth2/authorize navigation
-// (a navigation can't carry a bearer header). Everyone else keeps permissive,
+// can be set on sign-in and sent with every API call (the apps authenticate with
+// that cookie, not a bearer header). Everyone else keeps permissive,
 // cookie-less CORS (bearer / API-key callers + public endpoints) — additive,
 // so it changes nothing for existing consumers.
 const credentialedCors = cors({
