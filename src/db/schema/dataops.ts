@@ -211,6 +211,27 @@ export const dossierAddress = dataopsSchema.table("dossier_address", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * The verdict per rapportage of a dossier (Don, 2026-10-09; Worker migration
+ * 20261009_001). One row per group of documents formed at commit; the closing
+ * mail combines the answers into one message to the melder.
+ */
+export const dossierRapportage = dataopsSchema.table("dossier_rapportage", {
+  id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
+  /** Inquiry 1, Inquiry 2, ... as the Studio numbers the groups. */
+  n: integer().notNull(),
+  artifactIds: bigint("artifact_ids", { mode: "number" }).array().notNull(),
+  addressIds: text("address_ids").array(),
+  /** accepted (became inquiry_id) · rejected (nothing taken over) */
+  verdict: text().notNull(),
+  /** The text for this rapportage in the closing mail. */
+  answer: text(),
+  inquiryId: integer("inquiry_id"),
+  decidedBy: uuid("decided_by"),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const dossierEntry = dataopsSchema.table("dossier_entry", {
   id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
