@@ -1,16 +1,15 @@
 import { createMiddleware } from "hono/factory";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { auth } from "../lib/auth.ts";
 import { env } from "../config.ts";
 import { db } from "../db/client.ts";
 import {
   user,
   authKey,
-  oauthAccessToken,
   organization,
   organizationUser,
 } from "../db/schema/application.ts";
-import { sha256Base64Url, sha256Hex } from "../lib/api-key.ts";
+import { sha256Hex } from "../lib/api-key.ts";
 import { matchReportRoute, verifyReportToken } from "../lib/report-token.ts";
 import { resolveToBuildingId } from "../services/geocoder.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
@@ -165,31 +164,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     .getSession({ headers: c.req.raw.headers })
     .catch(() => null);
 
-  let userId = session?.user?.id ?? null;
-
-  // OIDC access token. A first-party app acting as an OIDC client calls the API
-  // with the opaque access token issued by /oauth2/token — that's not a BA
-  // session, so resolve it against application.oauth_access_token (token
-  // introspection). Only reached when the session lookup above misses; the
-  // unique, indexed `token` column makes this a single point lookup.
-  if (!userId) {
-    const bearer = c.req.header("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-    if (bearer) {
-      // BA stores the access token hashed (base64url SHA-256); hash before lookup.
-      const tokenHash = await sha256Base64Url(bearer);
-      const tok = await db
-        .select({ userId: oauthAccessToken.userId })
-        .from(oauthAccessToken)
-        .where(
-          and(
-            eq(oauthAccessToken.token, tokenHash),
-            gt(oauthAccessToken.expiresAt, new Date()),
-          ),
-        )
-        .limit(1);
-      if (tok.length > 0) userId = tok[0]!.userId;
-    }
-  }
+  const userId = session?.user?.id ?? null;
 
   if (!userId) {
     return c.json({ message: "Unauthorized" }, 401);

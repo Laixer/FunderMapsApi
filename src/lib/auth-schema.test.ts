@@ -7,8 +7,8 @@ import { describe, test, expect } from "bun:test";
 // took every OIDC login down for 3 hours on 2026-08-23 with a green CI.
 // This test fails the build instead.
 //
-// config.ts parses process.env at import time and the OAuth provider plugin
-// needs a parseable base URL to initialise; none of this opens a connection.
+// config.ts parses process.env at import time and Better Auth needs a
+// parseable base URL to initialise; none of this opens a connection.
 process.env.DATABASE_URL ??= "postgres://test@localhost:5432/test";
 process.env.APP_ID ??= "ci-test-app";
 process.env.AUTH_SECRET ??= "ci-test-secret-not-used-for-anything-real";
