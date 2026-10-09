@@ -117,9 +117,15 @@ function applyField(values: SampleValues, notes: string[], field: string, value:
   }
 }
 
-/** One rapportage the reviewer put together (Don, 2026-10-08): which documents, and what it is. */
-type RapportageInput = { artifactIds: number[]; type?: string; documentDate?: string; contractor?: number; note?: string };
+/**
+ * One rapportage the reviewer put together (Don, 2026-10-08): which documents, and what it is.
+ * `addressIds` (Don, 2026-10-09): the panden this rapportage is about. An archive piece can cover
+ * several panden while a QuickScan in the same dossier covers one, so each rapportage gets its own.
+ */
+type RapportageInput = { artifactIds: number[]; type?: string; documentDate?: string; contractor?: number; note?: string; addressIds?: string[] };
 type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string; rapportages?: RapportageInput[] };
+
+const NUMMERAANDUIDING = /^NL\.IMBAG\.NUMMERAANDUIDING\.\d{16}$/;
 
 /** Merging reads every file into memory; past this the reviewer should split the rapportage. */
 const MAX_MERGE_BYTES = 200 * 1024 * 1024;
@@ -150,6 +156,9 @@ commit.post("/dossier/:id/commit", async (c) => {
         if (!Array.isArray(r.artifactIds) || r.artifactIds.length === 0 || !r.artifactIds.every((a) => Number.isInteger(a) && a > 0)) {
           inputErrors.push(`rapportage ${i + 1}: artifactIds must be a non-empty list of document ids`);
         }
+        if (r.addressIds != null && (!Array.isArray(r.addressIds) || r.addressIds.length === 0 || r.addressIds.length > 200 || !r.addressIds.every((a) => typeof a === "string" && NUMMERAANDUIDING.test(a)))) {
+          inputErrors.push(`rapportage ${i + 1}: addressIds must be a non-empty list of BAG nummeraanduidingen`);
+        }
         inputErrors.push(...checkInquiryInput(`rapportage ${i + 1}: `, r));
       });
     }
@@ -176,7 +185,7 @@ commit.post("/dossier/:id/commit", async (c) => {
   // behaviour before: one rapportage for the whole dossier, values from every
   // document, the first document as its file (API #223), for an older Studio.
   const byArtifactId = new Map(artifacts.map((a) => [a.id, a] as const));
-  type Plan = { label: string; files: (typeof artifacts)[number][]; only: Set<number> | null; explicit: { type?: string; documentDate?: string; contractor?: number; note?: string } };
+  type Plan = { label: string; files: (typeof artifacts)[number][]; only: Set<number> | null; addressIds: string[] | null; explicit: { type?: string; documentDate?: string; contractor?: number; note?: string } };
   let plans: Plan[];
   if (body.rapportages) {
     const seen = new Set<number>();
@@ -189,11 +198,14 @@ commit.post("/dossier/:id/commit", async (c) => {
         seen.add(aid);
         return a!;
       });
-      return { label: `Rapportage ${i + 1}`, files, only: new Set(r.artifactIds), explicit: { type: r.type, documentDate: r.documentDate, contractor: r.contractor, note: r.note } };
+      return {
+        label: `Rapportage ${i + 1}`, files, only: new Set(r.artifactIds), addressIds: r.addressIds ? [...new Set(r.addressIds)] : null,
+        explicit: { type: r.type, documentDate: r.documentDate, contractor: r.contractor, note: r.note },
+      };
     });
     if (errs.length) throw new ValidationError(errs);
   } else {
-    plans = [{ label: "Rapportage", files: [firstDocument], only: null, explicit: { type: body.type, documentDate: body.documentDate, contractor: body.contractor, note: body.note } }];
+    plans = [{ label: "Rapportage", files: [firstDocument], only: null, addressIds: null, explicit: { type: body.type, documentDate: body.documentDate, contractor: body.contractor, note: body.note } }];
   }
 
   // Judged values only. The latest verdict per field wins; 'corrected' carries
@@ -254,8 +266,21 @@ commit.post("/dossier/:id/commit", async (c) => {
       .limit(1);
     if (a?.building) mainAddress = { id: a.id, building: a.building };
   }
+  // The panden a rapportage names must be the dossier's own: the melder's
+  // address, an address the reviewer confirmed, or one a value was read for.
+  // A refused address is not part of the dossier.
+  const chosen = plans.flatMap((p) => p.addressIds ?? []);
+  if (chosen.length) {
+    const known = new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()], [mainAddress?.id ?? null]));
+    const errs = plans.flatMap((p) =>
+      (p.addressIds ?? []).flatMap((a) =>
+        decisions.get(a) === "rejected" ? [`${p.label}: address ${a} was rejected for this dossier`]
+          : known.has(a) ? [] : [`${p.label}: address ${a} is not an address of this dossier`]),
+    );
+    if (errs.length) throw new ValidationError(errs);
+  }
   // Group keys are what the fields store: BAG nummeraanduidingen.
-  const addressIds = [...new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()]).filter((a): a is string => !!a))];
+  const addressIds = [...new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()], chosen).filter((a): a is string => !!a))];
   const resolvedRows = addressIds.length
     ? await db.select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId }).from(geocoderAddress).where(inArray(geocoderAddress.externalId, addressIds))
     : [];
@@ -304,9 +329,26 @@ commit.post("/dossier/:id/commit", async (c) => {
       g.ids.push(j.fieldId);
       g.raw.push(`${j.field} = ${value}`);
     }
-    // A confirmed address without values belongs to the dossier, so it goes
-    // on the first rapportage only: one empty sample, not one per document.
-    if (plan === plans[0]) {
+    if (plan.addressIds) {
+      // The reviewer named this rapportage's panden (Don, 2026-10-09). What
+      // the document says without naming an address is about each of them,
+      // not only the melder's: the second address of dossiers 3628 and 6159
+      // got an empty sample and was filled in by hand after the commit. A
+      // value read for one address stays on that address and wins over the
+      // document-level value, as with the twin below.
+      const docGroup = groups.get("");
+      groups.delete("");
+      for (const addressId of plan.addressIds) {
+        const g = group(addressId, addressId);
+        if (!docGroup) continue;
+        g.values = { ...docGroup.values, ...g.values };
+        g.notes = [...docGroup.notes, ...g.notes];
+        g.ids = [...docGroup.ids, ...g.ids];
+        g.raw = [...docGroup.raw, ...g.raw];
+      }
+    } else if (plan === plans[0]) {
+      // A confirmed address without values belongs to the dossier, so it goes
+      // on the first rapportage only: one empty sample, not one per document.
       for (const [addressId, state] of decisions) {
         if (state === "confirmed" && !groups.has(addressId)) group(addressId, addressId);
       }
