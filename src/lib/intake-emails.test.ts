@@ -354,6 +354,8 @@ describe("describeOutcome hides the commit's internal note", () => {
   test("auto note falls back to the plain explanation", async () => {
     const { describeOutcome, isAutoCommitNote } = await import("./intake-outcome.ts");
     expect(isAutoCommitNote("Overgenomen als rapportage #157806")).toBe(true);
+    // The multi-rapportage commit (API #232) writes its own staff note; it must not reach the melder either.
+    expect(isAutoCommitNote("Overgenomen als 2 rapportages: #160622, #160623")).toBe(true);
     expect(isAutoCommitNote("Overgenomen; de tekening bevestigt houten palen.")).toBe(false);
     expect(describeOutcome("accepted", "Overgenomen als rapportage #157806", true).explanation).toBe(
       "De gegevens van dit pand zijn overgenomen in de Funderingsdatabase.",
