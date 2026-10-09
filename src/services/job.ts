@@ -3,28 +3,6 @@ import { db } from "../db/client.ts";
 import { workerJob } from "../db/schema/application.ts";
 import { NotFoundError, AppError } from "../lib/errors.ts";
 
-interface CreateJobInput {
-  jobType: string;
-  payload?: Record<string, unknown>;
-  priority?: number;
-  maxRetries?: number;
-  processAfter?: Date;
-}
-
-export async function createJob(input: CreateJobInput) {
-  const [job] = await db
-    .insert(workerJob)
-    .values({
-      jobType: input.jobType,
-      payload: input.payload,
-      priority: input.priority ?? 0,
-      maxRetries: input.maxRetries ?? 3,
-      processAfter: input.processAfter,
-    })
-    .returning();
-  return job!;
-}
-
 interface GetJobsOptions {
   jobType?: string;
   status?: string;
