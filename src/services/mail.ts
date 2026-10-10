@@ -30,20 +30,47 @@ export interface MailResult {
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+// "Name <address>" or a bare address -> the lower-cased address.
+function addressOf(recipient: string): string {
+  const m = recipient.match(/<([^<>]+)>\s*$/);
+  return (m ? m[1]! : recipient).trim().toLowerCase();
+}
+
+/**
+ * Split recipients into the ones to send to and the ones on the skip list
+ * (MAIL_SKIP_RECIPIENTS): pipeline accounts with no mailbox. Resend suppresses
+ * such an address after its first bounce but still records every attempt.
+ */
+export function dropSkipped(
+  to: string[],
+  skip: ReadonlySet<string>,
+): { keep: string[]; dropped: string[] } {
+  const keep: string[] = [];
+  const dropped: string[] = [];
+  for (const r of to) (skip.has(addressOf(r)) ? dropped : keep).push(r);
+  return { keep, dropped };
+}
+
 export async function sendMail(opts: MailOptions): Promise<MailResult> {
+  const { keep: to, dropped } = dropSkipped(opts.to, env.MAIL_SKIP_RECIPIENTS);
+  if (dropped.length > 0) {
+    console.info(`Not mailing ${dropped.length} skip-listed recipient(s):`, opts.subject);
+    if (to.length === 0) return { ok: false, error: "all recipients are on MAIL_SKIP_RECIPIENTS" };
+  }
+
   if (!env.RESEND_API_KEY) {
     console.warn("RESEND_API_KEY not set, skipping email:", opts.subject);
     return { ok: false, error: "RESEND_API_KEY not set" };
   }
 
-  if (opts.to.length === 0) {
+  if (to.length === 0) {
     console.warn("No recipients, skipping email:", opts.subject);
     return { ok: false, error: "no recipients" };
   }
 
   const payload = {
     from: opts.from ?? env.MAIL_FROM,
-    to: opts.to,
+    to,
     subject: opts.subject,
     text: opts.text,
     ...(opts.html ? { html: opts.html } : {}),
