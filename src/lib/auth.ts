@@ -153,6 +153,18 @@ export const auth = betterAuth({
   account: {
     modelName: "account",
   },
+  // Better Auth only turns its limiter on by default when NODE_ENV is
+  // "production", and the DO buildpack doesn't set NODE_ENV — so don't rely
+  // on the env: switch it on here. BA's defaults apply:
+  // sign-in/sign-up/change-password 3 per 10 s, password-reset and
+  // verification mail 3 per 60 s, everything else under /api/auth 100 per
+  // 10 s — all per client IP (do-connecting-ip, see advanced.ipAddress).
+  // Counters live in process memory: fine for one instance, they reset on
+  // deploy. API-key verification is a server-side auth.api call and never
+  // passes through this limiter (the apiKey plugin's own limit stays off).
+  rateLimit: {
+    enabled: true,
+  },
   advanced: {
     database: {
       // BA's default ids are 32-char alnum strings; the org-plugin tables

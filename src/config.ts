@@ -52,6 +52,21 @@ const envSchema = z.object({
   // endpoint answers 503 and Resend keeps retrying, so nothing is lost.
   RESEND_WEBHOOK_SECRET: z.string().optional(),
   MAIL_FROM: z.string().default("FunderMaps <noreply@funderdata.nl>"),
+  // Addresses that never get mail: pipeline accounts without a mailbox (the
+  // reviewer a supplier feed is attributed to, service users). Comma-separated,
+  // case-insensitive. Kept in env rather than code because the repo is public.
+  MAIL_SKIP_RECIPIENTS: z
+    .string()
+    .optional()
+    .transform(
+      (v) =>
+        new Set(
+          (v ?? "")
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter((s) => s.length > 0),
+        ),
+    ),
   // Data Studio base URL, used for deep links in workflow emails.
   STUDIO_URL: z.url().default("https://studio.fundermaps.com"),
 

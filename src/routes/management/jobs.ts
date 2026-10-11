@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getAllJobs, getJobById, cancelJob } from "../../services/job.ts";
+import { getAllJobs, getJobById } from "../../services/job.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 // Map Drizzle's camelCase shape to the snake_case wire format the
@@ -38,12 +38,6 @@ jobs.get("/", async (c) => {
 jobs.get("/:id", async (c) => {
   const id = parseInt(c.req.param("id"));
   const job = await getJobById(id);
-  return c.json(toLegacyJob(job));
-});
-
-jobs.post("/:id/cancel", async (c) => {
-  const id = parseInt(c.req.param("id"));
-  const job = await cancelJob(id);
   return c.json(toLegacyJob(job));
 });
 
