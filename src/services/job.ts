@@ -1,7 +1,7 @@
 import { eq, and, sql, desc } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { workerJob } from "../db/schema/application.ts";
-import { NotFoundError, AppError } from "../lib/errors.ts";
+import { NotFoundError } from "../lib/errors.ts";
 
 interface GetJobsOptions {
   jobType?: string;
@@ -41,24 +41,4 @@ export async function getJobById(id: number) {
 
   if (rows.length === 0) throw new NotFoundError("Job not found");
   return rows[0]!;
-}
-
-export async function cancelJob(id: number) {
-  const job = await getJobById(id);
-
-  if (job.status !== "pending" && job.status !== "retry") {
-    throw new AppError(400, "Can only cancel pending or retry jobs");
-  }
-
-  const [updated] = await db
-    .update(workerJob)
-    .set({
-      status: "failed",
-      lastError: "Cancelled by admin",
-      updatedAt: new Date(),
-    })
-    .where(eq(workerJob.id, id))
-    .returning();
-
-  return updated!;
 }

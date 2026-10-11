@@ -76,7 +76,7 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/pdf` — async PDF generation through the worker
 
 Admin-only (`/api/management/*` — gated by `adminMiddleware`):
-- `jobs` (read + cancel; Windmill enqueues `process_mapset`), `layer`, `mapset`, `organization`, `session`, `user`
+- `jobs` (read-only; Windmill enqueues `process_mapset`), `layer`, `mapset`, `organization`, `session`, `user`
 
 ## What's NOT Yet Implemented
 
