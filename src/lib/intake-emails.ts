@@ -20,6 +20,7 @@ import {
   artifact,
   dossier,
   dossierMail,
+  dossierRapportage,
   extraction,
   extractionField,
   verdict,
@@ -889,6 +890,7 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
       value: extractionField.value,
       addressId: extractionField.addressId,
       addressText: extractionField.addressText,
+      artifactId: extraction.artifactId,
       outcome: verdict.outcome,
       finalValue: verdict.finalValue,
     })
@@ -899,10 +901,21 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
     .where(and(eq(artifact.dossierId, head.id), inArray(verdict.outcome, ["confirmed", "corrected"]), inArray(extractionField.state, ["confirmed", "corrected"])))
     .orderBy(asc(verdict.decidedAt));
 
+  // Committed per rapportage (Don, 2026-10-09): only what came from the
+  // documents of an accepted rapportage was taken over. A document in a
+  // rejected rapportage, or in none ('Geen inquiry'), is not claimed.
+  const groupsOfDossier = await db
+    .select({ verdict: dossierRapportage.verdict, artifactIds: dossierRapportage.artifactIds })
+    .from(dossierRapportage)
+    .where(eq(dossierRapportage.dossierId, head.id));
+  const takenDocuments = groupsOfDossier.length
+    ? new Set(groupsOfDossier.filter((g) => g.verdict === "accepted").flatMap((g) => g.artifactIds))
+    : null;
+
   // Latest verdict per field wins; values not tied to a resolvable address
   // were kept in the inquiry note, not taken over, so they are not claimed here.
   const latest = new Map<number, (typeof judged)[number]>();
-  for (const j of judged) latest.set(j.fieldId, j);
+  for (const j of judged) if (!takenDocuments || takenDocuments.has(j.artifactId)) latest.set(j.fieldId, j);
   const groups = new Map<string, { field: string; value: string }[]>();
   const document: TakenField[] = [];
   const unresolved = new Set<string>();

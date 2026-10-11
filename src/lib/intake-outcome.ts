@@ -3,7 +3,7 @@
  * never closed by hand (routes/dataops-commit.ts). It names an internal
  * inquiry id and is for staff; the melder gets the plain explanation instead.
  */
-const AUTO_COMMIT_NOTE = /^Overgenomen als rapportage #\d+$/;
+const AUTO_COMMIT_NOTE = /^Overgenomen als (rapportage #\d+|\d+ rapportages: #\d+(, #\d+)*)$/;
 
 export function isAutoCommitNote(note: string | null): boolean {
   return note !== null && AUTO_COMMIT_NOTE.test(note.trim());

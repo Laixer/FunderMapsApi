@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "../db/client.ts";
-import { dossier, artifact, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
+import { dossier, artifact, dossierRapportage, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution, contractor as contractorTable, fileResource, user as userTable } from "../db/schema/application.ts";
 import { address as geocoderAddress, building as geocoderBuilding } from "../db/schema/geocoder.ts";
@@ -117,9 +117,25 @@ function applyField(values: SampleValues, notes: string[], field: string, value:
   }
 }
 
-/** One rapportage the reviewer put together (Don, 2026-10-08): which documents, and what it is. */
-type RapportageInput = { artifactIds: number[]; type?: string; documentDate?: string; contractor?: number; note?: string };
-type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string; rapportages?: RapportageInput[] };
+/**
+ * One rapportage the reviewer put together (Don, 2026-10-08): which documents, and what it is.
+ * `addressIds` (Don, 2026-10-09): the panden this rapportage is about. An archive piece can cover
+ * several panden while a QuickScan in the same dossier covers one, so each rapportage gets its own.
+ * `verdict` + `answer` (Don, 2026-10-09): each rapportage is accepted or rejected on its own, with
+ * its own answer; the melder still gets one closing mail that combines them. A rejected group
+ * becomes no inquiry and nothing is taken over from it. Without a verdict a group is accepted.
+ */
+type RapportageInput = {
+  artifactIds: number[]; type?: string; documentDate?: string; contractor?: number; note?: string; addressIds?: string[];
+  verdict?: "accepted" | "rejected"; answer?: string;
+};
+/**
+ * `closingNote`: the Reden the reviewer typed for the melder. It reaches the closing mail; before,
+ * a commit dropped it and the melder read only the default sentence.
+ */
+type CommitBody = { type?: string; documentDate?: string; contractor?: number; note?: string; closingNote?: string; rapportages?: RapportageInput[] };
+
+const NUMMERAANDUIDING = /^NL\.IMBAG\.NUMMERAANDUIDING\.\d{16}$/;
 
 /** Merging reads every file into memory; past this the reviewer should split the rapportage. */
 const MAX_MERGE_BYTES = 200 * 1024 * 1024;
@@ -142,6 +158,7 @@ commit.post("/dossier/:id/commit", async (c) => {
 
   const body = await c.req.json<CommitBody>().catch(() => ({}) as CommitBody);
   const inputErrors = checkInquiryInput("", body);
+  if (body.closingNote != null && (typeof body.closingNote !== "string" || body.closingNote.length > 4000)) inputErrors.push("closingNote must be text of at most 4000 characters");
   if (body.rapportages != null) {
     if (!Array.isArray(body.rapportages) || body.rapportages.length === 0 || body.rapportages.length > 20) {
       inputErrors.push("rapportages must be a list of 1 to 20 rapportages");
@@ -150,6 +167,11 @@ commit.post("/dossier/:id/commit", async (c) => {
         if (!Array.isArray(r.artifactIds) || r.artifactIds.length === 0 || !r.artifactIds.every((a) => Number.isInteger(a) && a > 0)) {
           inputErrors.push(`rapportage ${i + 1}: artifactIds must be a non-empty list of document ids`);
         }
+        if (r.addressIds != null && (!Array.isArray(r.addressIds) || r.addressIds.length === 0 || r.addressIds.length > 200 || !r.addressIds.every((a) => typeof a === "string" && NUMMERAANDUIDING.test(a)))) {
+          inputErrors.push(`rapportage ${i + 1}: addressIds must be a non-empty list of BAG nummeraanduidingen`);
+        }
+        if (r.verdict != null && r.verdict !== "accepted" && r.verdict !== "rejected") inputErrors.push(`rapportage ${i + 1}: verdict must be accepted or rejected`);
+        if (r.answer != null && (typeof r.answer !== "string" || r.answer.length > 4000)) inputErrors.push(`rapportage ${i + 1}: answer must be text of at most 4000 characters`);
         inputErrors.push(...checkInquiryInput(`rapportage ${i + 1}: `, r));
       });
     }
@@ -176,7 +198,10 @@ commit.post("/dossier/:id/commit", async (c) => {
   // behaviour before: one rapportage for the whole dossier, values from every
   // document, the first document as its file (API #223), for an older Studio.
   const byArtifactId = new Map(artifacts.map((a) => [a.id, a] as const));
-  type Plan = { label: string; files: (typeof artifacts)[number][]; only: Set<number> | null; explicit: { type?: string; documentDate?: string; contractor?: number; note?: string } };
+  type Plan = {
+    n: number; label: string; files: (typeof artifacts)[number][]; only: Set<number> | null; addressIds: string[] | null;
+    verdict: "accepted" | "rejected"; answer: string | null; explicit: { type?: string; documentDate?: string; contractor?: number; note?: string };
+  };
   let plans: Plan[];
   if (body.rapportages) {
     const seen = new Set<number>();
@@ -189,11 +214,53 @@ commit.post("/dossier/:id/commit", async (c) => {
         seen.add(aid);
         return a!;
       });
-      return { label: `Rapportage ${i + 1}`, files, only: new Set(r.artifactIds), explicit: { type: r.type, documentDate: r.documentDate, contractor: r.contractor, note: r.note } };
+      return {
+        n: i + 1, label: `Rapportage ${i + 1}`, files, only: new Set(r.artifactIds), addressIds: r.addressIds ? [...new Set(r.addressIds)] : null,
+        verdict: r.verdict ?? "accepted", answer: r.answer?.trim() || null,
+        explicit: { type: r.type, documentDate: r.documentDate, contractor: r.contractor, note: r.note },
+      };
     });
     if (errs.length) throw new ValidationError(errs);
   } else {
-    plans = [{ label: "Rapportage", files: [firstDocument], only: null, explicit: { type: body.type, documentDate: body.documentDate, contractor: body.contractor, note: body.note } }];
+    plans = [{ n: 1, label: "Rapportage", files: [firstDocument], only: null, addressIds: null, verdict: "accepted", answer: null, explicit: { type: body.type, documentDate: body.documentDate, contractor: body.contractor, note: body.note } }];
+  }
+  const acceptedPlans = plans.filter((p) => p.verdict === "accepted");
+  // The closing note the melder reads: one paragraph per rapportage that got
+  // an answer, named by its documents (the melder knows no "Inquiry 2").
+  const answers = plans
+    .filter((p) => p.answer)
+    .map((p) => `${p.files.map((f) => f.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `document ${f.id}`).join(", ")} (${p.verdict === "accepted" ? "overgenomen" : "niet overgenomen"}): ${p.answer}`)
+    .join("\n\n") || body.closingNote?.trim() || null;
+  const rapportageRows = (inquiryIds: (number | null)[]) =>
+    plans.map((p, i) => ({
+      dossierId: id, n: p.n, artifactIds: p.files.map((f) => f.id), addressIds: p.addressIds,
+      verdict: p.verdict, answer: p.answer, inquiryId: inquiryIds[i] ?? null, decidedBy: u.id,
+    }));
+  const supersedeOpen = (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => tx.execute(sql`
+      update ${extractionField} f set state = 'superseded'
+      from ${extraction} e join ${artifact} a on a.id = e.artifact_id
+      where e.id = f.extraction_id and a.dossier_id = ${id}
+        and f.state in ('pending', 'auto_accepted', 'rejected')
+        and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
+
+  // Every rapportage refused: nothing becomes an inquiry, the dossier closes
+  // as rejected with the answers, and the melder gets the one closing mail.
+  if (acceptedPlans.length === 0) {
+    await db.transaction(async (tx) => {
+      await tx.insert(dossierRapportage).values(rapportageRows([]));
+      await tx
+        .update(dossier)
+        .set({ outcome: "rejected", outcomeNote: answers ?? head.outcomeNote, outcomeAt: new Date() })
+        .where(eq(dossier.id, id));
+      await supersedeOpen(tx);
+    });
+    await sendDossierClosedMail([id]);
+    await addEntry({
+      dossierId: id, kind: "status", actorKind: "reviewer", actor: u.id,
+      text: `Afgewezen: ${plans.length === 1 ? "de rapportage" : `alle ${plans.length} rapportages`} niet overgenomen`,
+      body: { rejected: plans.map((p) => p.n) }, visibleToMelder: true,
+    });
+    return c.json({ ok: true, inquiryId: null, samples: 0, skippedRejected: 0, rapportages: [], rejected: plans.map((p) => p.n), unresolved: [] });
   }
 
   // Judged values only. The latest verdict per field wins; 'corrected' carries
@@ -254,8 +321,21 @@ commit.post("/dossier/:id/commit", async (c) => {
       .limit(1);
     if (a?.building) mainAddress = { id: a.id, building: a.building };
   }
+  // The panden a rapportage names must be the dossier's own: the melder's
+  // address, an address the reviewer confirmed, or one a value was read for.
+  // A refused address is not part of the dossier.
+  const chosen = plans.flatMap((p) => p.addressIds ?? []);
+  if (chosen.length) {
+    const known = new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()], [mainAddress?.id ?? null]));
+    const errs = plans.flatMap((p) =>
+      (p.addressIds ?? []).flatMap((a) =>
+        decisions.get(a) === "rejected" ? [`${p.label}: address ${a} was rejected for this dossier`]
+          : known.has(a) ? [] : [`${p.label}: address ${a} is not an address of this dossier`]),
+    );
+    if (errs.length) throw new ValidationError(errs);
+  }
   // Group keys are what the fields store: BAG nummeraanduidingen.
-  const addressIds = [...new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()]).filter((a): a is string => !!a))];
+  const addressIds = [...new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()], chosen).filter((a): a is string => !!a))];
   const resolvedRows = addressIds.length
     ? await db.select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId }).from(geocoderAddress).where(inArray(geocoderAddress.externalId, addressIds))
     : [];
@@ -283,7 +363,7 @@ commit.post("/dossier/:id/commit", async (c) => {
   };
   const prepared: Prepared[] = [];
   let skippedRejected = 0;
-  for (const plan of plans) {
+  for (const plan of acceptedPlans) {
     const where = plans.length > 1 ? `${plan.label}: ` : "";
     const groups = new Map<string, Group>();
     const group = (key: string, label: string) => {
@@ -304,9 +384,26 @@ commit.post("/dossier/:id/commit", async (c) => {
       g.ids.push(j.fieldId);
       g.raw.push(`${j.field} = ${value}`);
     }
-    // A confirmed address without values belongs to the dossier, so it goes
-    // on the first rapportage only: one empty sample, not one per document.
-    if (plan === plans[0]) {
+    if (plan.addressIds) {
+      // The reviewer named this rapportage's panden (Don, 2026-10-09). What
+      // the document says without naming an address is about each of them,
+      // not only the melder's: the second address of dossiers 3628 and 6159
+      // got an empty sample and was filled in by hand after the commit. A
+      // value read for one address stays on that address and wins over the
+      // document-level value, as with the twin below.
+      const docGroup = groups.get("");
+      groups.delete("");
+      for (const addressId of plan.addressIds) {
+        const g = group(addressId, addressId);
+        if (!docGroup) continue;
+        g.values = { ...docGroup.values, ...g.values };
+        g.notes = [...docGroup.notes, ...g.notes];
+        g.ids = [...docGroup.ids, ...g.ids];
+        g.raw = [...docGroup.raw, ...g.raw];
+      }
+    } else if (plan === acceptedPlans[0]) {
+      // A confirmed address without values belongs to the dossier, so it goes
+      // on the first rapportage only: one empty sample, not one per document.
       for (const [addressId, state] of decisions) {
         if (state === "confirmed" && !groups.has(addressId)) group(addressId, addressId);
       }
@@ -529,22 +626,27 @@ commit.post("/dossier/:id/commit", async (c) => {
       made.push({ inquiryId: inq!.id, samples, emptySamples: p.emptySamples, auditStatus: p.auditStatus, type: p.type, documentDate: p.documentDate, contractorId: p.contractorId, contractorUnmatched: p.contractorUnmatched, documentName: p.documentName, artifactIds: p.plan.files.map((f) => f.id) });
     }
 
+    // The verdict per rapportage, with the inquiry each accepted one became
+    // (prepared, and so made, follow acceptedPlans in order).
+    if (body.rapportages) {
+      const inquiryIds: number[] = made.map((m) => m.inquiryId as number);
+      const byPlan = new Map(acceptedPlans.map((p, i) => [p, inquiryIds[i]!] as const));
+      await tx.insert(dossierRapportage).values(rapportageRows(plans.map((p) => byPlan.get(p) ?? null)));
+    }
+
     const ids = made.map((m) => `#${m.inquiryId}`).join(", ");
     await tx
       .update(dossier)
       .set({
         inquiryId: made[0]!.inquiryId,
         outcome: head.outcome ?? "accepted",
-        outcomeNote: head.outcomeNote ?? (made.length === 1 ? `Overgenomen als rapportage ${ids}` : `Overgenomen als ${made.length} rapportages: ${ids}`),
+        // The reviewer's answers go to the melder; without any, the staff
+        // note naming the rapportages (never shown in the mail).
+        outcomeNote: answers ?? head.outcomeNote ?? (made.length === 1 ? `Overgenomen als rapportage ${ids}` : `Overgenomen als ${made.length} rapportages: ${ids}`),
         outcomeAt: head.outcomeAt ?? new Date(),
       })
       .where(eq(dossier.id, id));
-    await tx.execute(sql`
-      update ${extractionField} f set state = 'superseded'
-      from ${extraction} e join ${artifact} a on a.id = e.artifact_id
-      where e.id = f.extraction_id and a.dossier_id = ${id}
-        and f.state in ('pending', 'auto_accepted', 'rejected')
-        and not exists (select 1 from ${verdict} v where v.extraction_field_id = f.id)`);
+    await supersedeOpen(tx);
     return made;
   });
 
