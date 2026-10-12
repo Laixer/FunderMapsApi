@@ -216,7 +216,7 @@ async function lookupHierarchy(
     LIMIT 1
   `);
 
-  if (rows.length === 0) throw new NotFoundError(`${table} not found`);
+  if (rows.length === 0) throw new NotFoundError(`${table.charAt(0).toUpperCase()}${table.slice(1)} not found`);
   return rows[0] as Record<string, unknown>;
 }
 

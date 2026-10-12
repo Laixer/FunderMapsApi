@@ -19,9 +19,11 @@ import type { AppEnv } from "../types/context.ts";
 const samples = new Hono<AppEnv>();
 
 function inquiryId(c: Context<AppEnv>): number {
-  const id = parseInt(c.req.param("inquiry_id") ?? "");
-  if (isNaN(id)) throw new NotFoundError("Inquiry not found");
-  return id;
+  const raw = c.req.param("inquiry_id") ?? "";
+  // Digits only, and within the column's range: a longer number is not an id we
+  // ever gave out, and used to end in a 500 from the database.
+  if (!/^[0-9]{1,9}$/.test(raw)) throw new NotFoundError("Inquiry not found");
+  return Number(raw);
 }
 
 async function loadSampleScoped(
@@ -134,7 +136,7 @@ samples.get("/stats", async (c) => {
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
-samples.get("/:sid{[0-9]+}", async (c) => {
+samples.get("/:sid{[0-9]{1,9}}", async (c) => {
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));
   const row = await loadSampleScoped(sid, inqId, dataScope(c));
@@ -433,7 +435,7 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   return c.json(toLegacyInquirySample(created));
 });
 
-samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => {
+samples.put("/:sid{[0-9]{1,9}}", zValidator("json", sampleBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));
@@ -467,7 +469,7 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   return c.body(null, 204);
 });
 
-samples.delete("/:sid{[0-9]+}", async (c) => {
+samples.delete("/:sid{[0-9]{1,9}}", async (c) => {
   const orgId = activeOrgId(c);
   const inqId = inquiryId(c);
   const sid = parseInt(c.req.param("sid"));

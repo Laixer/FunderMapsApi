@@ -37,6 +37,7 @@ import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { dossier } from "../db/schema/dataops.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
+import { listPage } from "../lib/pagination.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import {
   sendApprovedEmail,
@@ -255,8 +256,7 @@ inquiries.get("/stats", async (c) => {
 inquiries.get("/building/:bid", async (c) => {
   const scope = dataScope(c);
   const buildingId = c.req.param("bid");
-  const limit = parseInt(c.req.query("limit") ?? "100");
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = listPage((name) => c.req.query(name), 100);
 
   const rows = await inquirySelector()
     .innerJoin(inquirySample, eq(inquirySample.inquiry, inquiry.id))
@@ -315,8 +315,7 @@ inquiries.get("/", async (c) => {
   // When searching, default to a larger ceiling so the staff actually see
   // their matches; bare browse stays at 100. Caller can still override.
   const defaultLimit = q ? 500 : 100;
-  const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = listPage((name) => c.req.query(name), defaultLimit);
 
   const where = listFilters(c, scope);
 
@@ -356,7 +355,7 @@ inquiries.get("/", async (c) => {
   return c.json(rows.map((r) => toLegacyInquiry(r.inquiry, r.attr)));
 });
 
-inquiries.get("/:id{[0-9]+}", async (c) => {
+inquiries.get("/:id{[0-9]{1,9}}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
   // The dossier this rapportage came out of, when the review lane made it.
@@ -375,7 +374,7 @@ inquiries.get("/:id{[0-9]+}", async (c) => {
 
 // `accessLink` is unchanged; the rest is additive, so existing callers are
 // unaffected. See lib/document-file.ts for why the name has to be looked up.
-inquiries.get("/:id{[0-9]+}/download", async (c) => {
+inquiries.get("/:id{[0-9]{1,9}}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row } = await loadInquiryUnscoped(id);
   return c.json(await describeDocumentFile("inquiry-report", row.documentFile));
@@ -481,7 +480,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   return c.json(toLegacyInquiry(row, attr));
 });
 
-inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) => {
+inquiries.put("/:id{[0-9]{1,9}}", zValidator("json", inquiryBodySchema), async (c) => {
   const id = parseInt(c.req.param("id"));
   const data = c.req.valid("json");
   const u = c.get("user");
@@ -537,7 +536,7 @@ inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) =
   return c.body(null, 204);
 });
 
-inquiries.delete("/:id{[0-9]+}", async (c) => {
+inquiries.delete("/:id{[0-9]{1,9}}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -567,7 +566,7 @@ const dataOwnerSchema = z.object({
 });
 
 inquiries.put(
-  "/:id{[0-9]+}/data-owner",
+  "/:id{[0-9]{1,9}}/data-owner",
   zValidator("json", dataOwnerSchema),
   async (c) => {
     const id = parseInt(c.req.param("id"));
@@ -605,7 +604,7 @@ inquiries.put(
 // Status state machine
 // ─────────────────────────────────────────────────────────────────────────
 
-inquiries.post("/:id{[0-9]+}/status_review", async (c) => {
+inquiries.post("/:id{[0-9]{1,9}}/status_review", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -629,7 +628,7 @@ const statusChangeSchema = z.object({
 });
 
 inquiries.post(
-  "/:id{[0-9]+}/status_rejected",
+  "/:id{[0-9]{1,9}}/status_rejected",
   zValidator("json", statusChangeSchema),
   async (c) => {
     const id = parseInt(c.req.param("id"));
@@ -656,7 +655,7 @@ inquiries.post(
   },
 );
 
-inquiries.post("/:id{[0-9]+}/status_approved", async (c) => {
+inquiries.post("/:id{[0-9]{1,9}}/status_approved", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -673,7 +672,7 @@ inquiries.post("/:id{[0-9]+}/status_approved", async (c) => {
   return c.body(null, 204);
 });
 
-inquiries.post("/:id{[0-9]+}/reset", async (c) => {
+inquiries.post("/:id{[0-9]{1,9}}/reset", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -705,7 +704,7 @@ inquiries.post("/:id{[0-9]+}/reset", async (c) => {
  * check as reading the dossier itself — the trail names people and carries
  * rejection motivations, so it is no less sensitive than the record.
  */
-inquiries.get("/:id{[0-9]+}/events", async (c) => {
+inquiries.get("/:id{[0-9]{1,9}}/events", async (c) => {
   const id = parseInt(c.req.param("id"));
   await loadInquiryScoped(id, dataScope(c));
   return c.json(await listEvents({ inquiry: id }));

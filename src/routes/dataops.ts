@@ -252,6 +252,9 @@ const KINDS = new Set([
   "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
   "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
   "foundation_research", "additional_research", "ground_water_level_research", "soil_investigation",
+  // The current QuickScan (the Studio offers it as "QuickScan (addendum)"). Missing
+  // here, that filter answered 400 "unknown kind" and the list showed an error.
+  "facade_scan",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);

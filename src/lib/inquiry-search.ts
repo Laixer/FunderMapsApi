@@ -74,5 +74,7 @@ export function buildInquirySearchPredicate(q: string): SQL {
     return or(byPand(`NL.IMBAG.PAND.${cleaned}`), byNummeraanduiding(`NL.IMBAG.NUMMERAANDUIDING.${cleaned}`))!;
   }
 
-  return ilike(inquiry.documentName, `%${q}%`);
+  // The reviewer's % and _ are characters of a file name, not wildcards: a
+  // search for "_" used to match every rapportage.
+  return ilike(inquiry.documentName, `%${q.replace(/[\\%_]/g, "\\$&")}%`);
 }
