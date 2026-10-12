@@ -4,7 +4,7 @@ process.env.DATABASE_URL ??= "postgres://localhost:5432/test";
 process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
-const { formatAddress, mergeAddresses } = await import("./dossier-addresses.ts");
+const { chooseOwnAddress, formatAddress, mergeAddresses } = await import("./dossier-addresses.ts");
 type AddressInfo = import("./dossier-addresses.ts").AddressInfo;
 
 const info = new Map<string, AddressInfo>([
@@ -101,5 +101,39 @@ describe("mergeAddresses", () => {
   test("no own pand: the list starts with what the document names", () => {
     const list = mergeAddresses({ own: null, rows: [], groups: [{ addressId: "NL.IMBAG.NUMMERAANDUIDING.19", addressText: "Molenwal 19", open: 1, total: 1, superseded: 0 }], info });
     expect(list.map((a) => a.own)).toEqual([false]);
+  });
+});
+
+describe("chooseOwnAddress", () => {
+  // Nieuwstraat 109 and 115 are one pand; building_number sorts as text, so 109 is the pand's first address.
+  type Row = { id: string; buildingId: string | null };
+  const first: Row = { id: "109", buildingId: "NL.IMBAG.PAND.1" };
+  const melder: Row = { id: "115", buildingId: "NL.IMBAG.PAND.1" };
+
+  test("the melder's address, not the pand's first", () => {
+    expect(chooseOwnAddress({ melder, firstOfPand: first, buildingId: "NL.IMBAG.PAND.1" })).toBe(melder);
+  });
+
+  test("no melder's address: the pand's first", () => {
+    expect(chooseOwnAddress({ melder: null, firstOfPand: first, buildingId: "NL.IMBAG.PAND.1" })).toBe(first);
+  });
+
+  test("the reviewer chose another pand: that pand's first address", () => {
+    const other: Row = { id: "7", buildingId: "NL.IMBAG.PAND.2" };
+    expect(chooseOwnAddress({ melder, firstOfPand: other, buildingId: "NL.IMBAG.PAND.2" })).toBe(other);
+  });
+
+  test("the dossier's pand has no address: still the melder's", () => {
+    expect(chooseOwnAddress({ melder, firstOfPand: null, buildingId: "NL.IMBAG.PAND.GONE" })).toBe(melder);
+  });
+
+  test("a dossier without a pand follows the melder's address", () => {
+    expect(chooseOwnAddress({ melder, firstOfPand: null, buildingId: null })).toBe(melder);
+  });
+
+  test("a melder's address without a pand cannot carry a sample", () => {
+    const loose: Row = { id: "115", buildingId: null };
+    expect(chooseOwnAddress({ melder: loose, firstOfPand: first, buildingId: "NL.IMBAG.PAND.1" })).toBe(first);
+    expect(chooseOwnAddress({ melder: loose, firstOfPand: null, buildingId: null })).toBeNull();
   });
 });

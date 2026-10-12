@@ -14,7 +14,8 @@ import { sendDossierClosedMail } from "../lib/intake-emails.ts";
 import { resolveDocumentDate } from "../lib/document-date.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { matchContractor } from "../lib/contractor-match.ts";
-import { addressDecisions } from "../lib/dossier-addresses.ts";
+import { addressDecisions, fieldGroups, ownAddress } from "../lib/dossier-addresses.ts";
+import { closingNoteText } from "../lib/closing-note.ts";
 import { nummeraanduidingOf } from "../lib/geocoder-id.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import { numericOverflows } from "../lib/numeric-limits.ts";
@@ -226,11 +227,17 @@ commit.post("/dossier/:id/commit", async (c) => {
   }
   const acceptedPlans = plans.filter((p) => p.verdict === "accepted");
   // The closing note the melder reads: one paragraph per rapportage that got
-  // an answer, named by its documents (the melder knows no "Inquiry 2").
-  const answers = plans
-    .filter((p) => p.answer)
-    .map((p) => `${p.files.map((f) => f.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `document ${f.id}`).join(", ")} (${p.verdict === "accepted" ? "overgenomen" : "niet overgenomen"}): ${p.answer}`)
-    .join("\n\n") || body.closingNote?.trim() || null;
+  // an answer, named by its documents (the melder knows no "Inquiry 2"), then
+  // the reviewer's Reden about the dossier as a whole. Both reach the mail:
+  // the Reden used to be dropped as soon as one rapportage had an answer.
+  const answers = closingNoteText(
+    plans.map((p) => ({
+      documents: p.files.map((f) => f.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `document ${f.id}`),
+      verdict: p.verdict,
+      answer: p.answer,
+    })),
+    body.closingNote,
+  );
   const rapportageRows = (inquiryIds: (number | null)[]) =>
     plans.map((p, i) => ({
       dossierId: id, n: p.n, artifactIds: p.files.map((f) => f.id), addressIds: p.addressIds,
@@ -296,37 +303,21 @@ commit.post("/dossier/:id/commit", async (c) => {
   // was refused; a confirmed address gets a sample even with no values.
   const decisions = await addressDecisions(id);
 
-  // Resolve the document-level group to the dossier's building.
-  // The address the melder submitted wins (#200). Resolving the document group
-  // to the building's first address writes the report onto a neighbour whenever
-  // a pand has several front doors: FM2026-000184 was a report about Nieuwstraat
-  // 115 and its foundation type was committed to Nieuwstraat 109, because
-  // building_number sorts as text and "109" precedes "115". The melder noticed.
-  let mainAddress: { id: string; building: string } | null = null;
-  if (head.bagId) {
-    // The sample stores the nummeraanduiding (Worker #158 step 2).
-    const [a] = await db
-      .select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId })
-      .from(geocoderAddress)
-      .where(eq(geocoderAddress.externalId, nummeraanduidingOf(head.bagId)))
-      .limit(1);
-    if (a?.building) mainAddress = { id: a.id, building: a.building };
-  }
-  if (!mainAddress && head.buildingId) {
-    const [a] = await db
-      .select({ id: geocoderAddress.externalId, building: geocoderAddress.buildingId })
-      .from(geocoderAddress)
-      .where(eq(geocoderAddress.buildingId, head.buildingId))
-      .orderBy(asc(geocoderAddress.buildingNumber))
-      .limit(1);
-    if (a?.building) mainAddress = { id: a.id, building: a.building };
-  }
-  // The panden a rapportage names must be the dossier's own: the melder's
-  // address, an address the reviewer confirmed, or one a value was read for.
-  // A refused address is not part of the dossier.
+  // The document-level group lands on the dossier's own address: the one the
+  // melder submitted (#200), by the same rule the address panel shows it with
+  // (`chooseOwnAddress`). FM2026-000184 was a report about Nieuwstraat 115
+  // whose foundation type was committed to Nieuwstraat 109, the pand's first
+  // address; the melder noticed.
+  const own = await ownAddress(head);
+  const mainAddress = own?.buildingId ? { id: own.id, building: own.buildingId } : null;
+  // The panden a rapportage names must be the dossier's own: every address
+  // its address list shows (the melder's, one with a row, one a value was
+  // read for, judged or not), so what the reviewer can tick is never refused
+  // here. A refused address is not part of the dossier.
   const chosen = plans.flatMap((p) => p.addressIds ?? []);
   if (chosen.length) {
-    const known = new Set([...latest.values()].map((j) => j.addressId).concat([...decisions.keys()], [mainAddress?.id ?? null]));
+    const read = (await fieldGroups(id)).map((g) => g.addressId);
+    const known = new Set([...read, ...decisions.keys(), mainAddress?.id ?? null]);
     const errs = plans.flatMap((p) =>
       (p.addressIds ?? []).flatMap((a) =>
         decisions.get(a) === "rejected" ? [`${p.label}: address ${a} was rejected for this dossier`]
