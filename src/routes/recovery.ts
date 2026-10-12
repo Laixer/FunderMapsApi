@@ -42,8 +42,8 @@ import {
 } from "../lib/recovery-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
-import { listPage } from "../lib/pagination.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
+import { listPage } from "../lib/pagination.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const recoveries = new Hono<AppEnv>();

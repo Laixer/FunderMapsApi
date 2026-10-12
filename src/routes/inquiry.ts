@@ -37,7 +37,6 @@ import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { dossier } from "../db/schema/dataops.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
-import { listPage } from "../lib/pagination.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import {
   sendApprovedEmail,
@@ -45,6 +44,7 @@ import {
   sendReviewRequestedEmail,
   type InquiryEmailContext,
 } from "../lib/inquiry-emails.ts";
+import { listPage } from "../lib/pagination.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const inquiries = new Hono<AppEnv>();
