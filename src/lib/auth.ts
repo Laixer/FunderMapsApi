@@ -27,6 +27,7 @@ import {
   verifyFunderMapsCustom,
 } from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
+import { resetPasswordMail } from "./account-emails.ts";
 import { ac as orgAc, roles as orgRoles } from "./permissions.ts";
 
 // Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
@@ -88,15 +89,7 @@ export const auth = betterAuth({
     // callbackURL=<frontend>, which validates and redirects to the frontend
     // with ?token=<valid_token> in the query.
     sendResetPassword: async ({ user, url }) => {
-      await sendMail({
-        to: [user.email],
-        subject: "Reset your FunderMaps password",
-        text:
-          `Hi ${user.name || user.email},\n\n` +
-          `A password reset was requested for your FunderMaps account.\n\n` +
-          `Open the link below to set a new password (valid for 1 hour):\n${url}\n\n` +
-          `If you did not request this, ignore this email — your password is unchanged.`,
-      });
+      await sendMail({ to: [user.email], ...resetPasswordMail(user, url) });
     },
     // Wipe all active sessions when a user resets their password — defensive
     // against stolen-credential scenarios where the attacker still has a
