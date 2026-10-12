@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { env } from "./config.ts";
 import { auth } from "./lib/auth.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
+import { handleUnhandledRejection } from "./lib/db-errors.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { csrfGuard } from "./middleware/csrf.ts";
 import { adminMiddleware } from "./middleware/admin.ts";
@@ -154,6 +155,13 @@ app.route("/api/management", managementRoutes);
 
 // 404 fallback
 app.notFound((c) => c.json({ message: "Not found" }, 404));
+
+// A database blip must not take the process down: see lib/db-errors.ts.
+// Only when running as the server; tests import this module and keep the
+// test runner's own unhandled-rejection reporting.
+if (import.meta.main) {
+  process.on("unhandledRejection", (reason) => handleUnhandledRejection(reason));
+}
 
 export default {
   port: env.PORT,
