@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
 import { env } from "../config.ts";
 import { db } from "../db/client.ts";
-import { artifact, dossier } from "../db/schema/dataops.ts";
+import { artifact } from "../db/schema/dataops.ts";
 import { addEntry } from "./dossier-entries.ts";
+import { createFollowUpDossier, finishFollowUp, isClosed, loadFollowUpSource, type FollowUpRef } from "./follow-up-dossier.ts";
 import { ALLOWED_UPLOAD_MIMES, MAX_UPLOAD_BYTES, putObject, uniqueFileName } from "./s3.ts";
 import { ingestDossierNow } from "./windmill.ts";
 
@@ -17,7 +17,7 @@ import { ingestDossierNow } from "./windmill.ts";
  * Each attachment is fetched from Resend (the received email's attachment
  * list carries a signed download URL), stored under dataops/ like an upload
  * and added to the melding as a document; an open melding is then read at
- * once. Left out: inline images and small pictures (mail logos and
+ * once, a closed one gets a vervolgmelding that holds the files. Left out: inline images and small pictures (mail logos and
  * signatures), and anything the upload whitelist would refuse (a forwarded
  * .eml, for one). What was stored and what was left out goes on the timeline.
  */
@@ -69,12 +69,21 @@ async function resend<T>(path: string): Promise<T> {
  * Store the attachments of one received email on its dossier. Never throws:
  * the reply itself is already on the timeline, and a failure is logged there
  * too, so a reviewer knows to ask for the file.
+ *
+ * On a closed dossier the files become a vervolgmelding (Don, 2026-10-12;
+ * lib/follow-up-dossier.ts): a new dossier in the review queue, and a line
+ * on the closed one pointing at it. `replyText` is its note. Only when
+ * something was actually stored; a mail logo alone opens nothing.
  */
-export async function storeReplyAttachments(dossierId: number, emailId: string): Promise<void> {
+export async function storeReplyAttachments(dossierId: number, emailId: string, replyText: string | null = null): Promise<void> {
   try {
+    const source = await loadFollowUpSource(dossierId);
+    if (!source) return;
     const list = (await resend<{ data?: ResendAttachment[] }>(`emails/receiving/${emailId}/attachments`)).data ?? [];
     const { keep, skipped } = sortAttachments(list);
-    const stored: { id: number; name: string }[] = [];
+    // Bytes first, rows after: the target dossier is only known once there
+    // is something to put in it.
+    const fetched: { name: string; key: string; mime: string; size: number }[] = [];
     for (const a of keep) {
       if (!a.download_url) { skipped.push({ name: a.filename, why: "geen downloadlink" }); continue; }
       const file = await fetch(a.download_url, { signal: AbortSignal.timeout(120_000) });
@@ -83,30 +92,35 @@ export async function storeReplyAttachments(dossierId: number, emailId: string):
       const mime = a.content_type.split(";")[0]!.trim().toLowerCase();
       const key = `dataops/${uniqueFileName(a.filename, mime)}`;
       await putObject(key, bytes, mime);
-      const [row] = await db
-        .insert(artifact)
-        .values({ dossierId, storageKey: key, originalFilename: a.filename, mimeType: mime, sizeBytes: bytes.byteLength, declaredCategory: null, lane: "none" })
-        .returning({ id: artifact.id });
-      stored.push({ id: row!.id, name: a.filename });
+      fetched.push({ name: a.filename, key, mime, size: bytes.byteLength });
     }
+
+    const closed = isClosed(source);
+    const { stored, followUp } = await db.transaction(async (tx) => {
+      if (!fetched.length) return { stored: [], followUp: null };
+      const followUp: FollowUpRef | null = closed ? await createFollowUpDossier(tx, source, { note: replyText }) : null;
+      const rows = await tx
+        .insert(artifact)
+        .values(fetched.map((f) => ({ dossierId: followUp?.id ?? dossierId, storageKey: f.key, originalFilename: f.name, mimeType: f.mime, sizeBytes: f.size, declaredCategory: null, lane: "none" })))
+        .returning({ id: artifact.id });
+      return { stored: rows.map((r, i) => ({ id: r.id, name: fetched[i]!.name })), followUp };
+    });
+    const target = followUp?.id ?? dossierId;
+
     if (stored.length || skipped.length) {
       const lines = [
         stored.length ? `Bijlage${stored.length === 1 ? "" : "n"} uit het antwoord opgeslagen: ${stored.map((s) => s.name).join(", ")}` : null,
         skipped.length ? `Niet opgeslagen: ${skipped.map((s) => `${s.name} (${s.why})`).join(", ")}` : null,
       ].filter(Boolean);
       await addEntry({
-        dossierId, kind: "status", actorKind: "system",
+        dossierId: target, kind: "status", actorKind: "system",
         text: lines.join("\n"),
         body: { email_id: emailId, artifact_ids: stored.map((s) => s.id), skipped },
         visibleToMelder: false,
       });
     }
-    if (stored.length) {
-      const [head] = await db.select({ outcome: dossier.outcome, inquiryId: dossier.inquiryId }).from(dossier).where(eq(dossier.id, dossierId)).limit(1);
-      // An open melding is read now; a closed one keeps the file for the
-      // reviewer to see, and is not reopened by a mail.
-      if (head && !head.outcome && !head.inquiryId) await ingestDossierNow(dossierId);
-    }
+    if (followUp) await finishFollowUp(source, followUp, { actorKind: "system" });
+    else if (stored.length && !closed) await ingestDossierNow(dossierId);
   } catch (err) {
     console.error(`reply attachments for dossier ${dossierId} (email ${emailId}) failed:`, err);
     await addEntry({
