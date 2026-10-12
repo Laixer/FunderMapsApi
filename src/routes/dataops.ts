@@ -24,6 +24,7 @@ import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import { queueScopeOf } from "../lib/queue-scope.ts";
 import { existingRapportages } from "../lib/existing-rapportages.ts";
+import { createFollowUpDossier, finishFollowUp, isClosed, loadFollowUpSource } from "../lib/follow-up-dossier.ts";
 import type { AppEnv } from "../types/context.ts";
 
 /**
@@ -908,6 +909,68 @@ dataops.post("/dossier/:id/question", async (c) => {
     mailMessageId: sent.id ?? null,
   });
   return c.json({ ok: true });
+});
+
+/**
+ * Files that already sit on a closed dossier, into a vervolgmelding (Don,
+ * 2026-10-12): what the reply webhook now does by itself
+ * (lib/reply-attachments.ts), for documents that arrived before it did, or
+ * another way. `{ artifactIds }`, all of this dossier.
+ *
+ * The documents are COPIED (same storage key, new artifact row on the new
+ * dossier), not moved: the API role may insert into dataops.artifact but not
+ * update it, and the closed dossier keeps the record of what it was sent.
+ */
+dataops.post("/dossier/:id/follow-up", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
+  const body = await c.req.json<{ artifactIds?: unknown }>();
+  const ids = Array.isArray(body.artifactIds) ? [...new Set(body.artifactIds.map(Number))] : [];
+  if (!ids.length || ids.some((a) => !Number.isInteger(a))) {
+    throw new ValidationError(["artifactIds must be a non-empty list of artifact ids"]);
+  }
+  if (ids.length > 50) throw new ValidationError(["at most 50 artifacts per call"]);
+
+  const source = await loadFollowUpSource(id);
+  if (!source) throw new NotFoundError("dossier not found");
+  if (!isClosed(source)) throw new ValidationError(["dossier is still open; its documents are reviewed there"]);
+
+  const files = await db
+    .select()
+    .from(artifact)
+    .where(and(eq(artifact.dossierId, id), inArray(artifact.id, ids)))
+    .orderBy(asc(artifact.id));
+  const foreign = ids.filter((a) => !files.some((f) => f.id === a));
+  if (foreign.length) throw new ValidationError([`not a document of dossier ${id}: ${foreign.join(", ")}`]);
+
+  const { created, copies } = await db.transaction(async (tx) => {
+    const created = await createFollowUpDossier(tx, source);
+    const copies = await tx
+      .insert(artifact)
+      .values(files.map((f) => ({
+        dossierId: created.id,
+        storageKey: f.storageKey,
+        originalFilename: f.originalFilename,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+        declaredCategory: f.declaredCategory,
+        // Read afresh on the new dossier.
+        lane: "none",
+      })))
+      .returning({ id: artifact.id });
+    return { created, copies };
+  });
+
+  const by = { actorKind: "reviewer" as const, actor: c.get("user").id };
+  await addEntry({
+    dossierId: created.id,
+    kind: "status", ...by,
+    text: `Overgenomen uit ${source.reference ?? `melding ${id}`}: ${files.map((f) => f.originalFilename ?? `document ${f.id}`).join(", ")}`,
+    body: { copied_from: files.map((f, i) => ({ artifact_id: f.id, copy_id: copies[i]!.id })) },
+    visibleToMelder: false,
+  });
+  await finishFollowUp(source, created, by);
+  return c.json({ ok: true, dossierId: created.id, reference: created.reference });
 });
 
 /**

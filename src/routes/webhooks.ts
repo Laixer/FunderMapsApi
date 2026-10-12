@@ -2,7 +2,8 @@
 // mailbox -- Resend receives for the domain and POSTs an event here. This
 // route is deliberately minimal: it verifies the signature, finds the dossier
 // a reply belongs to, and appends the text to the timeline. Attachments are
-// stored on the melding as documents (API #230, lib/reply-attachments.ts);
+// stored on the melding as documents (API #230, lib/reply-attachments.ts; on
+// a closed melding, in a vervolgmelding: lib/follow-up-dossier.ts);
 // mails that open a NEW dossier are the (later) email-in step.
 //
 // Mounted without auth (Resend cannot log in); the Svix signature is the
@@ -152,7 +153,7 @@ webhooks.post("/resend", async (c) => {
 
   // The files after the answer: Resend gets its 200 now. A replay stopped
   // above, before anything was written.
-  if (attachments && emailId) void storeReplyAttachments(head.id, emailId);
+  if (attachments && emailId) void storeReplyAttachments(head.id, emailId, text);
 
   console.info(`inbound reply on dossier ${head.id} (${reference}) from ${from}`);
   return c.json({ ok: true, matched: true });
