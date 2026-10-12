@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { dossier, dossierAddress, artifact, extraction, extractionField } from "../db/schema/dataops.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
-import { GeocoderDatasource, fromIdentifier } from "./geocoder-id.ts";
+import { GeocoderDatasource, fromIdentifier, nummeraanduidingOf } from "./geocoder-id.ts";
 import { NotFoundError, ValidationError } from "./errors.ts";
 
 /**
@@ -233,22 +233,47 @@ export async function findAddress(input: string): Promise<AddressInfo> {
   return toInfo(r);
 }
 
-/** The first address of the dossier's own pand, or null when it has none. */
-export async function ownAddress(buildingId: string | null): Promise<AddressInfo | null> {
-  if (!buildingId) return null;
-  const [r] = await db
-    .select({
-      externalId: geocoderAddress.externalId,
-      buildingId: geocoderAddress.buildingId,
-      street: geocoderAddress.street,
-      buildingNumber: geocoderAddress.buildingNumber,
-      postalCode: geocoderAddress.postalCode,
-      city: geocoderAddress.city,
-    })
-    .from(geocoderAddress)
-    .where(eq(geocoderAddress.buildingId, buildingId))
-    .orderBy(asc(geocoderAddress.buildingNumber))
-    .limit(1);
+/**
+ * Which address is the dossier's own: the one the panel shows first and the
+ * one the commit writes document-level values on. One rule for both, so they
+ * cannot disagree again: the commit took the melder's address since #200
+ * while the panel still took the pand's first, and `building_number` sorts as
+ * text, so on Nieuwstraat 109/115 (one pand) the panel showed 109 for a melder
+ * living at 115.
+ *
+ * The melder's address when it is in the dossier's pand; otherwise the pand's
+ * first address (the reviewer chose another pand, or there is no melder's
+ * address); the melder's address again when that pand has no address at all.
+ */
+export function chooseOwnAddress<T extends { buildingId: string | null }>(input: {
+  melder: T | null;
+  firstOfPand: T | null;
+  buildingId: string | null;
+}): T | null {
+  const { melder, firstOfPand, buildingId } = input;
+  if (melder?.buildingId && (!buildingId || melder.buildingId === buildingId)) return melder;
+  return firstOfPand ?? (melder?.buildingId ? melder : null);
+}
+
+/** The dossier's own address (see `chooseOwnAddress`), or null when it has none. */
+export async function ownAddress(head: { bagId: string | null; buildingId: string | null }): Promise<AddressInfo | null> {
+  const columns = {
+    externalId: geocoderAddress.externalId,
+    buildingId: geocoderAddress.buildingId,
+    street: geocoderAddress.street,
+    buildingNumber: geocoderAddress.buildingNumber,
+    postalCode: geocoderAddress.postalCode,
+    city: geocoderAddress.city,
+  };
+  const [melder, firstOfPand] = await Promise.all([
+    head.bagId
+      ? db.select(columns).from(geocoderAddress).where(eq(geocoderAddress.externalId, nummeraanduidingOf(head.bagId))).limit(1)
+      : Promise.resolve([]),
+    head.buildingId
+      ? db.select(columns).from(geocoderAddress).where(eq(geocoderAddress.buildingId, head.buildingId)).orderBy(asc(geocoderAddress.buildingNumber)).limit(1)
+      : Promise.resolve([]),
+  ]);
+  const r = chooseOwnAddress({ melder: melder[0] ?? null, firstOfPand: firstOfPand[0] ?? null, buildingId: head.buildingId });
   return r ? toInfo(r) : null;
 }
 
@@ -275,12 +300,12 @@ export async function fieldGroups(dossierId: number): Promise<FieldGroup[]> {
 /** The full list for one dossier. `head` saves a query when the caller has it. */
 export async function loadDossierAddresses(
   dossierId: number,
-  head?: { buildingId: string | null },
+  head?: { bagId: string | null; buildingId: string | null },
 ): Promise<DossierAddressView[]> {
-  const h = head ?? (await db.select({ buildingId: dossier.buildingId }).from(dossier).where(eq(dossier.id, dossierId)).limit(1))[0];
+  const h = head ?? (await db.select({ bagId: dossier.bagId, buildingId: dossier.buildingId }).from(dossier).where(eq(dossier.id, dossierId)).limit(1))[0];
   if (!h) throw new NotFoundError("dossier not found");
   const [own, rows, groups] = await Promise.all([
-    ownAddress(h.buildingId),
+    ownAddress(h),
     db
       .select({
         addressId: dossierAddress.addressId,

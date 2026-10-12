@@ -280,7 +280,7 @@ routes.post("/dossier/:id/building", async (c) => {
     body: { building_id: a.buildingId, previous_building_id: head.buildingId, address_id: a.id },
     visibleToMelder: false,
   });
-  return c.json({ ok: true, addresses: await loadDossierAddresses(id, { buildingId: a.buildingId }) });
+  return c.json({ ok: true, addresses: await loadDossierAddresses(id, { bagId: head.bagId, buildingId: a.buildingId }) });
 });
 
 export default routes;
