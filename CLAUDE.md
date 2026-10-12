@@ -28,17 +28,17 @@ Database schema is **not** managed from this repo — `FunderMapsWorker` owns th
 
 - `src/index.ts` — Hono app, middleware stack, route mounting
 - `src/config.ts` — Zod-validated env vars (Bun loads `.env` automatically)
-- `src/db/schema/` — One file per PG schema (`application`, `report`, `geocoder`, `data`, `maplayer`)
+- `src/db/schema/` — One file per PG schema (`application`, `report`, `geocoder`, `data`, `dataops`, `maplayer`)
 - `src/db/client.ts` — Drizzle + postgres.js pool
 - `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `staff.ts` (platform-org membership via `isPlatformMember`, gates `/api/dataops/*`), `tracker.ts` (product-tracker billing), `error-handler.ts`
 - `src/routes/` — HTTP handlers organized by domain; `management/` subdir for `/api/management/*` (admin-only)
-- `src/services/` — External integrations (`geocoder`, `job`, `mail`, `storage`)
+- `src/services/` — `geocoder` and `mail` (Resend). The other integrations live in `src/lib/`: `s3.ts` (Spaces), `windmill.ts` (kicks the document reader for one dossier), and the Gotenberg call sits in `routes/pdf.ts`
 - `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set — and `legacy-password.ts` for the PBKDF2 verify hook)
 - `src/types/context.ts` — Hono `AppEnv` type
 
 ## Database Schemas
 
-PostgreSQL with multiple schemas: `application.*`, `geocoder.*`, `report.*`, `data.*`, `maplayer.*`. PostGIS is loaded; geometry columns are typed as `text()` in Drizzle (no first-class geometry type) — wrap reads with `ST_AsText`/`ST_AsGeoJSON` when you need a usable shape.
+PostgreSQL with multiple schemas: `application.*`, `geocoder.*`, `report.*`, `data.*`, `dataops.*`, `maplayer.*`. PostGIS is loaded; geometry columns are typed as `text()` in Drizzle (no first-class geometry type) — wrap reads with `ST_AsText`/`ST_AsGeoJSON` when you need a usable shape.
 
 ## Auth
 
@@ -54,7 +54,7 @@ Better Auth handles email/password login, sessions, passkeys and password reset.
 
 Admin routes require `c.get("user").role === "administrator"`. Two writers to that column today: BA's `setRole` (via the admin plugin's `/api/auth/admin/*` surface) and this repo's `routes/management/user.ts`. Same literal both sides — fine, but a co-existence point to keep in mind.
 
-Better Auth routes mount at `/api/auth/*`. The FunderMaps-specific admin surface stays at `/api/management/*` and is **not** rewritten onto BA's `/api/auth/admin/*` — `/api/management/*` covers ~50 endpoints (geolocks, mapsets, jobs, layers, api-key admin) that BA can't replace anyway.
+Better Auth routes mount at `/api/auth/*`. The FunderMaps-specific admin surface stays at `/api/management/*` and is **not** rewritten onto BA's `/api/auth/admin/*` — `/api/management/*` covers ~50 endpoints (geolocks, mapsets, layers, api-key admin) that BA can't replace anyway.
 
 ## Route Surface (mounted in `src/index.ts`)
 
@@ -63,6 +63,11 @@ Public (no auth):
 - `/api/geocoder` — building/address/residence/neighborhood/district/municipality/state lookup
 - `/api/mapset` — layer set metadata
 - `/api/data/contractor` — contractor reference data
+
+Machine callers (their own secret, no user):
+- `/api/intake` — `POST dossier` and `status` from the melden site, `risk-followup` from Windmill after a model refresh; shared secret `Bearer INTAKE_TOKEN`
+- `POST /api/webhooks/resend` — a melder's reply by e-mail, verified by Resend's signature
+- the report page inside Gotenberg — a five-minute, one-pand `Bearer fmrt.…` token that opens a GET allowlist only (`src/lib/report-token.ts`)
 
 Auth-protected (session or `fmsk.` API key):
 - `/api/user` — profile, metadata, account self-service
@@ -75,8 +80,13 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/incident` — read-only listing by building (no submission surface — incidents reach `report.incident` via other channels)
 - `/api/pdf` — PDF rendering: Gotenberg renders the report front-end and the bytes come back inline
 
+Platform staff only (`/api/dataops/*` — gated by `staffMiddleware`):
+- the review lane: queue and its count, dossier, verdicts, outcome, questions to the melder, hand-over, commit (one or several rapportages), upload, addresses, values, contractor, recovery, work packages
+
 Admin-only (`/api/management/*` — gated by `adminMiddleware`):
-- `layer`, `mapset`, `organization`, `session`, `user`
+- `user`, `org`, `mapset`, `layer`, `session`, `rate-limit`, `contractor`, `permission`, `work-packages`
+
+Nothing runs on a timer in this process. Scheduled work lives in Windmill (the model refresh, the hourly document reader); the queue-worker `jobs` routes were removed on 2026-10-12.
 
 ## What's NOT Yet Implemented
 
