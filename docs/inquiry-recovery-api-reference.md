@@ -63,8 +63,10 @@ Authorization is by the caller's **org role** (`reader` / `writer` /
 `verifier` and `superuser` also satisfy `writer`; `superuser` satisfies all.
 A role too low for the operation → **403**.
 
-**Creator ≠ reviewer:** when creating or updating a report, the `reviewer` in
-the attribution block must not be the calling user → **403** otherwise.
+**Creator ≠ reviewer:** the `reviewer` in the attribution block must not be the
+report's creator, nor the calling user → **403** otherwise. On a create those
+are the same person; on an update of a report somebody else created, both
+apply.
 
 ---
 
