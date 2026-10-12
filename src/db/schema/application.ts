@@ -7,7 +7,6 @@ import {
   timestamp,
   jsonb,
   bigint,
-  bigserial,
   serial,
   primaryKey,
   unique,
@@ -17,15 +16,6 @@ import {
 import { sql } from "drizzle-orm";
 
 export const applicationSchema = pgSchema("application");
-
-// Enums
-export const jobStatusEnum = applicationSchema.enum("job_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
-  "retry",
-]);
 
 // Tables
 export const user = applicationSchema.table("user", {
@@ -380,24 +370,6 @@ export const productTracker = applicationSchema.table("product_tracker", {
     .defaultNow()
     .notNull(),
   identifier: text().notNull(),
-});
-
-export const workerJob = applicationSchema.table("worker_jobs", {
-  id: bigserial({ mode: "number" }).primaryKey(),
-  jobType: text("job_type").notNull(),
-  payload: jsonb().$type<Record<string, unknown>>(),
-  status: jobStatusEnum().default("pending").notNull(),
-  priority: integer().default(0).notNull(),
-  retryCount: integer("retry_count").default(0).notNull(),
-  maxRetries: integer("max_retries").default(3).notNull(),
-  lastError: text("last_error"),
-  processAfter: timestamp("process_after", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
 });
 
 // Geolock junction tables

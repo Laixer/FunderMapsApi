@@ -73,10 +73,10 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (reviewer / approved / declined, see `src/lib/report-emails.ts`)
 - `/api/recovery`, `/api/recovery/:recovery_id/sample` — same shape as inquiry
 - `/api/incident` — read-only listing by building (no submission surface — incidents reach `report.incident` via other channels)
-- `/api/pdf` — async PDF generation through the worker
+- `/api/pdf` — PDF rendering: Gotenberg renders the report front-end and the bytes come back inline
 
 Admin-only (`/api/management/*` — gated by `adminMiddleware`):
-- `jobs` (read-only; Windmill enqueues `process_mapset`), `layer`, `mapset`, `organization`, `session`, `user`
+- `layer`, `mapset`, `organization`, `session`, `user`
 
 ## What's NOT Yet Implemented
 
