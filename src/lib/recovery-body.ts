@@ -1,6 +1,8 @@
 // The body of POST /api/dataops/dossier/:id/recovery (Studio #341), validated
 // without touching config or the database so it can be tested on its own.
 
+import { documentDateProblem } from "./document-date.ts";
+
 // report.* enum labels, as the database spells them (lib/inquiry-enums.ts).
 const DOCUMENT_TYPES = new Set(["permit", "foundation_report", "archive_report", "owner_evidence", "unknown"]);
 const RECOVERY_TYPES = new Set(["table", "beam_on_pile", "pile_lowering", "pile_in_wall", "injection", "unknown"]);
@@ -35,6 +37,8 @@ export function validateRecoveryBody(body: Partial<RecoveryBody>): string[] {
   const errors: string[] = [];
   if (!body.documentType || !DOCUMENT_TYPES.has(body.documentType)) errors.push(`documentType must be one of ${[...DOCUMENT_TYPES].join(", ")}`);
   if (!body.documentDate || !DATE.test(body.documentDate)) errors.push("documentDate must be YYYY-MM-DD");
+  const dateProblem = documentDateProblem(body.documentDate);
+  if (dateProblem) errors.push(`documentDate: ${dateProblem}`);
   if (body.contractor != null && (!Number.isInteger(body.contractor) || body.contractor <= 0)) errors.push("contractor must be a contractor id");
   if (!Array.isArray(body.samples) || body.samples.length === 0) errors.push("at least one pand (samples[]) is required");
   (body.samples ?? []).forEach((s, i) => {

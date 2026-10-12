@@ -36,6 +36,7 @@ import { describeDocumentFile } from "../lib/document-file.ts";
 import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { dossier } from "../db/schema/dataops.ts";
+import { documentDateProblem } from "../lib/document-date.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import {
@@ -392,7 +393,10 @@ const inquiryBodySchema = z.object({
   jointMeasurement: z.boolean().optional(),
   floorMeasurement: z.boolean().optional(),
   note: z.string().nullish(),
-  documentDate: z.string(),
+  documentDate: z.string().superRefine((value, ctx) => {
+    const problem = documentDateProblem(value);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  }),
   documentFile: z.string(),
   type: z.number().int(),
   standardF3o: z.boolean().optional(),

@@ -14,6 +14,9 @@ describe("validateRecoveryBody (Studio #341)", () => {
   test("the minimum: document type, date, one pand with a type", () => {
     expect(validateRecoveryBody({ documentType: "unknown", documentDate: "2024-05-01", samples: [{ building: "NL.IMBAG.PAND.1", type: "unknown" }] })).toEqual([]);
   });
+  test("an impossible document date is named (2926 for 2026)", () => {
+    expect(validateRecoveryBody({ ...ok, documentDate: "2926-05-01" })).toEqual([expect.stringContaining("documentDate: De documentdatum 2926-05-01")]);
+  });
   test("every problem is reported at once", () => {
     const errors = validateRecoveryBody({ documentType: "drawing", documentDate: "1-5-2024", contractor: 0, samples: [] });
     expect(errors.length).toBe(4);

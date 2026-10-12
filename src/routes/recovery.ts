@@ -41,6 +41,7 @@ import {
   sendReviewRequestedEmail,
 } from "../lib/recovery-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
+import { documentDateProblem } from "../lib/document-date.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
@@ -317,7 +318,10 @@ recoveries.get("/:id{[0-9]+}/download", async (c) => {
 const recoveryBodySchema = z.object({
   documentName: z.string().min(1),
   note: z.string().nullish(),
-  documentDate: z.string(),
+  documentDate: z.string().superRefine((value, ctx) => {
+    const problem = documentDateProblem(value);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  }),
   documentFile: z.string(),
   type: z.number().int(),
   // #973: optionally assign the data to another organization (central-account
