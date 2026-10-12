@@ -22,6 +22,7 @@ import { addEntry } from "../lib/dossier-entries.ts";
 import { organizationUser, user as appUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
+import { queueScopeOf } from "../lib/queue-scope.ts";
 import { existingRapportages } from "../lib/existing-rapportages.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -226,7 +227,6 @@ const queueSelector = () =>
  *             (ClientApp #333, point 11).
  */
 const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
-const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
 const STATES = new Set(["unread", "empty", "proposals", "replied", "question"]);
 
 /**
@@ -261,14 +261,15 @@ const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim())
  * number always belongs to the page it accompanies.
  */
 function queueScope(c: Context<AppEnv>): SQL {
-  const outcomes = csv(c.req.query("outcome"));
-  // "Reactie ontvangen" spans open and closed dossiers: the reply that needs
-  // an answer most is the one on a dossier we already closed.
-  if (!outcomes.length && csv(c.req.query("state")).includes("replied")) return sql`true`;
-  if (!outcomes.length) return onDesk()!;
-  const bad = outcomes.filter((x) => !CLOSED_OUTCOMES.has(x));
-  if (bad.length) throw new ValidationError([`unknown outcome: ${bad.join(", ")}`]);
-  return inArray(dossier.outcome, outcomes);
+  // The rule, and why `scope=all` is a parameter of its own: lib/queue-scope.ts.
+  const scope = queueScopeOf({
+    outcomes: csv(c.req.query("outcome")),
+    states: csv(c.req.query("state")),
+    scope: c.req.query("scope"),
+  });
+  if (scope.kind === "all") return sql`true`;
+  if (scope.kind === "desk") return onDesk()!;
+  return inArray(dossier.outcome, scope.outcomes);
 }
 
 function queueFilters(c: Context<AppEnv>): SQL[] {
@@ -352,6 +353,10 @@ function queueOrder(c: Context<AppEnv>): SQL[] {
  *
  * Same contract as `GET /inquiry`: `q`, `limit`, `offset`. Bare browse pages
  * at 100, a search at 500; the client can override either.
+ *
+ * `scope=all` drops the desk restriction: open and closed dossiers alike, the
+ * other filters still applying. The Studio sends it with a search on "Alles"
+ * (#191); see lib/queue-scope.ts.
  */
 dataops.get("/queue", async (c) => {
   const q = c.req.query("q")?.trim();
