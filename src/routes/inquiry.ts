@@ -37,6 +37,7 @@ import { lookupUserEmails } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { dossier } from "../db/schema/dataops.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
+import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import {
   sendApprovedEmail,
   sendRejectedEmail,
@@ -433,9 +434,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
-  if (data.attribution.reviewer === u.id) {
-    throw new ForbiddenError("Reviewer must differ from creator");
-  }
+  assertReviewerAllowed(data.attribution.reviewer, u.id, u.id);
 
   const typeStr = intToEnum("inquiry_type", data.type)!;
   const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
@@ -489,12 +488,11 @@ inquiries.put("/:id{[0-9]+}", zValidator("json", inquiryBodySchema), async (c) =
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
-  if (data.attribution.reviewer === u.id) {
-    throw new ForbiddenError("Reviewer must differ from creator");
-  }
-
   const typeStr = intToEnum("inquiry_type", data.type)!;
-  const { row } = await loadInquiryScoped(id, dataScope(c));
+  const { row, attr } = await loadInquiryScoped(id, dataScope(c));
+
+  // Against the stored creator: the editor need not be the one who made it.
+  assertReviewerAllowed(data.attribution.reviewer, attr.creator, u.id);
 
   await db.transaction(async (tx) => {
     await tx

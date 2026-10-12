@@ -42,6 +42,7 @@ import {
 } from "../lib/recovery-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
+import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const recoveries = new Hono<AppEnv>();
@@ -357,9 +358,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "recovery", "write");
 
-  if (data.attribution.reviewer === u.id) {
-    throw new ForbiddenError("Reviewer must differ from creator");
-  }
+  assertReviewerAllowed(data.attribution.reviewer, u.id, u.id);
 
   const typeStr = intToEnum("recovery_document_type", data.type)!;
   const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
@@ -408,12 +407,11 @@ recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c)
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "recovery", "write");
 
-  if (data.attribution.reviewer === u.id) {
-    throw new ForbiddenError("Reviewer must differ from creator");
-  }
-
   const typeStr = intToEnum("recovery_document_type", data.type)!;
-  const { row } = await loadRecoveryScoped(id, dataScope(c));
+  const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
+
+  // Against the stored creator: the editor need not be the one who made it.
+  assertReviewerAllowed(data.attribution.reviewer, attr.creator, u.id);
 
   await db.transaction(async (tx) => {
     await tx
