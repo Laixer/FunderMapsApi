@@ -214,7 +214,7 @@ export const dossierAddress = dataopsSchema.table("dossier_address", {
 
 /**
  * The verdict per rapportage of a dossier (Don, 2026-10-09; Worker migration
- * 20261009_007). One row per group of documents formed at commit; the closing
+ * 20261011_001). One row per group of documents formed at commit; the closing
  * mail combines the answers into one message to the melder.
  */
 export const dossierRapportage = dataopsSchema.table("dossier_rapportage", {
@@ -254,7 +254,7 @@ export const dossierEntry = dataopsSchema.table("dossier_entry", {
 
 /**
  * Work packages the admin handed to a colleague (Worker migration
- * 20261009_008). A package is a named filter on the review queue, defined by
+ * 20261011_002). A package is a named filter on the review queue, defined by
  * the Studio; this table only stores which ids a user was given. No rows for a
  * user = they pick their own packages in the browser, as before. The set is
  * replaced as a whole (PUT /api/management/work-packages/:userId), so there is
