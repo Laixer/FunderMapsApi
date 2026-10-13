@@ -69,6 +69,8 @@ const RISK_FIELDS: { key: keyof RegisteredRisk; label: string }[] = [
 /** Risks that only exist for a foundation on wooden piles. */
 const PILE_ONLY_LABELS = new Set(["droogstand", "bacteriële aantasting"]);
 
+const capitalised = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);
+
 export interface RiskChange {
   buildingId: string;
   address: string;
@@ -121,7 +123,9 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
   for (const c of input.changes) {
     blocks.push(
       { p: `${c.address}:` },
-      { ul: c.fields.map((f) => `${f.label}: ${f.beforeLabel ?? riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}`) },
+      // A capital and a full stop, as the list of the "ongewijzigd" mail has them. Here only:
+      // the label itself is a key (PILE_ONLY_LABELS, the body of the Verloop entry).
+      { ul: c.fields.map((f) => `${capitalised(f.label)}: ${f.beforeLabel ?? riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}.`) },
     );
   }
   // Droogstand and bacteriële aantasting only exist for wooden piles. When
@@ -279,7 +283,8 @@ export function buildRiskConfirmedEmail(input: RiskConfirmedEmailInput): Rendere
  * brings a colon of its own ("Gebaseerd op: ..."). Pure, for the tests.
  */
 export function riskUnchangedLine(buildings: { address: string; basis: RiskBasis | null }[]): string {
-  return "Funderingsrisico herberekend: ongewijzigd. " + buildings.map((b) => `${b.address} – ${explainBasis(b.basis).join(" ")}`).join("; ");
+  // A space between the addresses: every explanation ends in a full stop of its own.
+  return "Funderingsrisico herberekend: ongewijzigd. " + buildings.map((b) => `${b.address} – ${explainBasis(b.basis).join(" ")}`).join(" ");
 }
 
 export function riskChangedLine(changes: RiskChange[]): string {

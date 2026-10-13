@@ -30,6 +30,7 @@ import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
 import { nummeraanduidingOf } from "./geocoder-id.ts";
 import { escapeHtml, wrapHtml } from "./mail-html.ts";
+import { namedRecipient } from "./mail-recipient.ts";
 import { describeOutcome } from "./intake-outcome.ts";
 import { addEntry } from "./dossier-entries.ts";
 import { storeRiskSnapshot } from "./intake-risk-followup.ts";
@@ -310,6 +311,8 @@ const NAP_FIELDS = new Set([
   "groundwater_level",
   "foundation_depth",
   "groundlevel",
+  "threshold_front_level",
+  "threshold_back_level",
 ]);
 
 /** "-1.85" -> "-1,85": the Dutch decimal comma, as the risk follow-up writes its metres. */
@@ -358,7 +361,7 @@ export function formatFieldValue(field: string, value: string): string {
     default:
       if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} m NAP`;
       if (UNIT[field] && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} ${UNIT[field]}`;
-      // A bare number without a unit of its own (a drempelniveau) is still a number; free text is left alone.
+      // A bare number without a unit of its own is still a number; free text is left alone.
       if (/^-?\d+\.\d+$/.test(value)) return decimalComma(value);
       return value.replaceAll("_", " ");
   }
@@ -761,7 +764,7 @@ export async function deliver(head: DossierHead, kind: MailKind, to: Recipient, 
   }
 
   const result = await sendMail({
-    to: [to.name ? `${to.name} <${to.email}>` : to.email],
+    to: [namedRecipient(to.email, to.name)],
     subject: mail.subject,
     text: mail.text,
     html: mail.html,
@@ -1135,7 +1138,7 @@ export function buildMelderMessage(
       greeting,
       { p: `Naar aanleiding van uw melding ${reference}:` },
       { p: text },
-      { p: "Heeft u nog een vraag? U kunt deze e-mail direct beantwoorden; uw reactie wordt aan het dossier toegevoegd." },
+      { p: "Heeft u nog een vraag? U kunt deze e-mail direct beantwoorden; uw reactie wordt automatisch aan uw melding gekoppeld." },
       ...status,
     ]);
   }
@@ -1143,7 +1146,7 @@ export function buildMelderMessage(
     greeting,
     { p: `Bij de behandeling van uw melding ${reference} hebben wij een vraag:` },
     { p: text },
-    { p: "U kunt deze e-mail direct beantwoorden; uw antwoord wordt aan het dossier toegevoegd." },
+    { p: "U kunt deze e-mail direct beantwoorden; uw antwoord wordt automatisch aan uw melding gekoppeld." },
     ...status,
   ]);
 }
@@ -1175,7 +1178,7 @@ export async function sendDossierQuestionMail(
     .returning({ id: dossierMail.id });
 
   const result = await sendMail({
-    to: [to.name ? `${to.name} <${to.email}>` : to.email],
+    to: [namedRecipient(to.email, to.name)],
     subject,
     text: mail.text,
     html: mail.html,

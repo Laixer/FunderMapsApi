@@ -10,6 +10,7 @@ import { db } from "../db/client.ts";
 import { user } from "../db/schema/application.ts";
 import { sendMail } from "../services/mail.ts";
 import { escapeHtml, wrapHtml } from "./mail-html.ts";
+import { namedRecipient } from "./mail-recipient.ts";
 
 export type ReportKind = "inquiry" | "recovery";
 
@@ -80,22 +81,13 @@ const SUBJECT_LABEL: Record<ReportKind, string> = {
   recovery: "Herstelrapport",
 };
 
-// A name is free text from the account page; these characters would end or
-// split the address in a "Name <address>" recipient.
-function headerName(name: string): string {
-  return name.replace(/[<>()[\]:;,"\\\r\n]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
 // Attribution rows can point at users without a resolvable address (deleted
 // accounts, #973 backfill placeholders). Drop those rather than sending an
 // invalid "to" that fails the whole call.
 function recipients(...pairs: [email: string, name: string][]): string[] {
   return pairs
     .filter(([email]) => email.includes("@"))
-    .map(([email, name]) => {
-      const display = headerName(name);
-      return display ? `${display} <${email}>` : email;
-    });
+    .map(([email, name]) => namedRecipient(email, name));
 }
 
 function reportUrl(ctx: ReportEmailContext): string {

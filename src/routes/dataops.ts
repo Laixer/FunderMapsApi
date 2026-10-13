@@ -164,9 +164,15 @@ const readKind = sql<string | null>`(
   limit 1
 )`;
 
-/** The display name of whoever holds the dossier: name, else given + last name, else email. */
+/**
+ * The display name of whoever holds the dossier, by the rule of lib/person-name.ts:
+ * given + last name, else `name` when it is not an e-mail address, else the email.
+ */
 const assignedName = sql<string | null>`(
-  select coalesce(nullif(u.name, ''), nullif(trim(concat_ws(' ', u.given_name, u.last_name)), ''), u.email)
+  select coalesce(
+    nullif(concat_ws(' ', nullif(trim(u.given_name), ''), nullif(trim(u.last_name), '')), ''),
+    case when u.name like '%@%' then null else nullif(trim(u.name), '') end,
+    u.email)
   from application."user" u where u.id = "dataops"."dossier"."assigned_to"
 )`;
 
