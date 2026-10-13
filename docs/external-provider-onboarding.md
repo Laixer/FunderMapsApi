@@ -143,7 +143,7 @@ curl -s -X POST "$API/api/inquiry/$INQ_ID/status_review" \
 # → 204
 ```
 
-Transitions `pending` → `pending_review` and sends a "ter review" email to the assigned reviewer.
+Moves the inquiry to `pending_review` and sends a "ter review" email to the assigned reviewer. Accepted in every editable state (`todo`, `pending`, `rejected`).
 
 ## Reviewer (customer side): approve or reject
 
@@ -162,7 +162,7 @@ curl -s -X POST "$API/api/inquiry/$INQ_ID/status_rejected" \
 # → 204, sends report-declined email with motivation
 ```
 
-A rejected inquiry can be edited (`PUT /api/inquiry/$INQ_ID`) which auto-transitions it back to `pending` for resubmission.
+A rejected inquiry can be edited (`PUT /api/inquiry/$INQ_ID`), which moves it back to `pending`, and offered again with `status_review` (also straight from `rejected`).
 
 ## Audit-status state machine
 

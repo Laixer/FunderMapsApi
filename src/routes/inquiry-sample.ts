@@ -163,6 +163,10 @@ samples.get("/:sid{[0-9]+}", async (c) => {
 // datum. The C# annotation is wrong — do not "restore" it.
 const numericLevel = z.number().gte(-999.99).lte(999.99).nullish();
 const numericLength = z.number().gte(0).lte(999.99).nullish();
+// The two lintvoeg ratios (1 : n) are numeric(7,2) since Worker #223: a wall
+// measured at 1 : 1117 is real, and the review lane stores such values. With
+// the bound of a length the editor could not save a sample the lane had written.
+const numericRatio = z.number().gte(0).lte(99999.99).nullish();
 
 // Entry rules ruled by Yorick 2026-08-22 after the inquiry data audit; both are
 // also CHECK constraints on report.inquiry_sample, so rejecting here turns a
@@ -251,9 +255,9 @@ const sampleBodySchema = z.object({
   thresholdUpdownSkewed: z.boolean().nullish(),
   thresholdFrontLevel: numericLevel,
   thresholdBackLevel: numericLevel,
-  skewedParallel: numericLength,
+  skewedParallel: numericRatio,
   skewedParallelFacade: z.number().int().nullish(),
-  skewedPerpendicular: numericLength,
+  skewedPerpendicular: numericRatio,
   skewedPerpendicularFacade: z.number().int().nullish(),
   settlementSpeed,
   skewedWindowFrame: z.boolean().nullish(),
