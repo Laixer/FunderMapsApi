@@ -45,6 +45,7 @@ import { documentDateProblem } from "../lib/document-date.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
 import { transitionStatus, WRITABLE_STATES } from "../lib/audit-status.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
+import { listPage } from "../lib/pagination.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
 const recoveries = new Hono<AppEnv>();
@@ -186,8 +187,7 @@ recoveries.get("/stats", async (c) => {
 recoveries.get("/building/:bid", async (c) => {
   const scope = dataScope(c);
   const buildingId = c.req.param("bid");
-  const limit = parseInt(c.req.query("limit") ?? "100");
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = listPage((name) => c.req.query(name), 100);
 
   const rows = await recoverySelector()
     .innerJoin(recoverySample, eq(recoverySample.recovery, recovery.id))
@@ -225,8 +225,7 @@ recoveries.get("/", async (c) => {
   const scope = dataScope(c);
   const q = c.req.query("q")?.trim();
   const defaultLimit = q ? 500 : 100;
-  const limit = parseInt(c.req.query("limit") ?? String(defaultLimit));
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = listPage((name) => c.req.query(name), defaultLimit);
 
   const where: SQL[] = [];
   if (scope !== null)
@@ -277,14 +276,14 @@ function buildRecoverySearchPredicate(q: string): SQL {
   return or(ilike(recovery.documentName, like), sampleMatch)!;
 }
 
-recoveries.get("/:id{[0-9]+}", async (c) => {
+recoveries.get("/:id{[0-9]{1,9}}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
   return c.json(toLegacyRecovery(row, attr));
 });
 
 // `accessLink` is unchanged; the rest is additive. See lib/document-file.ts.
-recoveries.get("/:id{[0-9]+}/download", async (c) => {
+recoveries.get("/:id{[0-9]{1,9}}/download", async (c) => {
   const id = parseInt(c.req.param("id"));
   const { row } = await loadRecoveryUnscoped(id);
   return c.json(await describeDocumentFile("recovery-report", row.documentFile));
@@ -384,7 +383,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   return c.json(toLegacyRecovery(row, attr));
 });
 
-recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c) => {
+recoveries.put("/:id{[0-9]{1,9}}", zValidator("json", recoveryBodySchema), async (c) => {
   const id = parseInt(c.req.param("id"));
   const data = c.req.valid("json");
   const u = c.get("user");
@@ -434,7 +433,7 @@ recoveries.put("/:id{[0-9]+}", zValidator("json", recoveryBodySchema), async (c)
   return c.body(null, 204);
 });
 
-recoveries.delete("/:id{[0-9]+}", async (c) => {
+recoveries.delete("/:id{[0-9]{1,9}}", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -463,7 +462,7 @@ const dataOwnerSchema = z.object({
 });
 
 recoveries.put(
-  "/:id{[0-9]+}/data-owner",
+  "/:id{[0-9]{1,9}}/data-owner",
   zValidator("json", dataOwnerSchema),
   async (c) => {
     const id = parseInt(c.req.param("id"));
@@ -500,7 +499,7 @@ recoveries.put(
 // Status state machine
 // ─────────────────────────────────────────────────────────────────────────
 
-recoveries.post("/:id{[0-9]+}/status_review", async (c) => {
+recoveries.post("/:id{[0-9]{1,9}}/status_review", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -524,7 +523,7 @@ const statusChangeSchema = z.object({
 });
 
 recoveries.post(
-  "/:id{[0-9]+}/status_rejected",
+  "/:id{[0-9]{1,9}}/status_rejected",
   zValidator("json", statusChangeSchema),
   async (c) => {
     const id = parseInt(c.req.param("id"));
@@ -549,7 +548,7 @@ recoveries.post(
   },
 );
 
-recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
+recoveries.post("/:id{[0-9]{1,9}}/status_approved", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -566,7 +565,7 @@ recoveries.post("/:id{[0-9]+}/status_approved", async (c) => {
   return c.body(null, 204);
 });
 
-recoveries.post("/:id{[0-9]+}/reset", async (c) => {
+recoveries.post("/:id{[0-9]{1,9}}/reset", async (c) => {
   const id = parseInt(c.req.param("id"));
   const u = c.get("user");
   const orgId = activeOrgId(c);
@@ -597,7 +596,7 @@ recoveries.post("/:id{[0-9]+}/reset", async (c) => {
  * check as reading the dossier itself — the trail names people and carries
  * rejection motivations, so it is no less sensitive than the record.
  */
-recoveries.get("/:id{[0-9]+}/events", async (c) => {
+recoveries.get("/:id{[0-9]{1,9}}/events", async (c) => {
   const id = parseInt(c.req.param("id"));
   await loadRecoveryScoped(id, dataScope(c));
   return c.json(await listEvents({ recovery: id }));

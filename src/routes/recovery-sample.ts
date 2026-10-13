@@ -7,6 +7,7 @@ import { recovery, recoverySample } from "../db/schema/report.ts";
 import { attribution } from "../db/schema/application.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
+import { listPage } from "../lib/pagination.ts";
 import { intToEnum, intsToEnums } from "../lib/inquiry-enums.ts";
 import { fromIdentifier, GeocoderDatasource } from "../lib/geocoder-id.ts";
 import { toLegacyRecoverySample } from "../lib/recovery-serializer.ts";
@@ -16,9 +17,11 @@ import type { AppEnv } from "../types/context.ts";
 const samples = new Hono<AppEnv>();
 
 function recoveryId(c: Context<AppEnv>): number {
-  const id = parseInt(c.req.param("recovery_id") ?? "");
-  if (isNaN(id)) throw new NotFoundError("Recovery not found");
-  return id;
+  const raw = c.req.param("recovery_id") ?? "";
+  // Digits only, and within the column's range: a longer number is not an id we
+  // ever gave out, and used to end in a 500 from the database.
+  if (!/^[0-9]{1,9}$/.test(raw)) throw new NotFoundError("Recovery not found");
+  return Number(raw);
 }
 
 async function loadSampleScoped(
@@ -51,8 +54,7 @@ samples.get("/", async (c) => {
   const recId = recoveryId(c);
   await loadRecoveryScoped(recId, dataScope(c));
 
-  const limit = parseInt(c.req.query("limit") ?? "100");
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const { limit, offset } = listPage((name) => c.req.query(name), 100);
 
   const rows = await db
     .select()
@@ -76,7 +78,7 @@ samples.get("/stats", async (c) => {
   return c.json({ count: Number(stat?.value ?? 0) });
 });
 
-samples.get("/:sid{[0-9]+}", async (c) => {
+samples.get("/:sid{[0-9]{1,9}}", async (c) => {
   const recId = recoveryId(c);
   const sid = parseInt(c.req.param("sid"));
   const row = await loadSampleScoped(sid, recId, dataScope(c));
@@ -174,7 +176,7 @@ samples.post("/", zValidator("json", sampleBodySchema), async (c) => {
   return c.json(toLegacyRecoverySample(created));
 });
 
-samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => {
+samples.put("/:sid{[0-9]{1,9}}", zValidator("json", sampleBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   const recId = recoveryId(c);
   const sid = parseInt(c.req.param("sid"));
@@ -202,7 +204,7 @@ samples.put("/:sid{[0-9]+}", zValidator("json", sampleBodySchema), async (c) => 
   return c.body(null, 204);
 });
 
-samples.delete("/:sid{[0-9]+}", async (c) => {
+samples.delete("/:sid{[0-9]{1,9}}", async (c) => {
   const orgId = activeOrgId(c);
   const recId = recoveryId(c);
   const sid = parseInt(c.req.param("sid"));

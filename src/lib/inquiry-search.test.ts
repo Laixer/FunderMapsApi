@@ -47,6 +47,11 @@ describe("inquiry search predicate", () => {
     expect(params).toEqual(["NL.IMBAG.PAND.0632100000033693", "NL.IMBAG.NUMMERAANDUIDING.0632100000033693"]);
   });
 
+  test("% and _ in the term are characters, not wildcards", () => {
+    expect(render("50%_def").params).toEqual(["%50\\%\\_def%"]);
+    expect(render("a\\b").params).toEqual(["%a\\\\b%"]);
+  });
+
   test("free text only touches document_name", () => {
     const { sql, params } = render("kerkstraat");
     expect(sql).toMatch(/"report"\."inquiry"\."document_name" ilike \$1/);
