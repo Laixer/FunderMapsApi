@@ -29,6 +29,7 @@ import { model_risk_static } from "../db/schema/data.ts";
 import { address as geocoderAddress } from "../db/schema/geocoder.ts";
 import { sendMail } from "../services/mail.ts";
 import { nummeraanduidingOf } from "./geocoder-id.ts";
+import { escapeHtml, wrapHtml } from "./mail-html.ts";
 import { describeOutcome } from "./intake-outcome.ts";
 import { addEntry } from "./dossier-entries.ts";
 import { storeRiskSnapshot } from "./intake-risk-followup.ts";
@@ -311,6 +312,11 @@ const NAP_FIELDS = new Set([
   "groundlevel",
 ]);
 
+/** "-1.85" -> "-1,85": the Dutch decimal comma, as the risk follow-up writes its metres. */
+function decimalComma(value: string): string {
+  return value.replace(/(\d)\.(?=\d)/g, "$1,");
+}
+
 export function fieldLabel(field: string): string {
   return FIELD_LABEL[field] ?? field.replaceAll("_", " ");
 }
@@ -350,8 +356,10 @@ export function formatFieldValue(field: string, value: string): string {
     case "contractor":
       return value;
     default:
-      if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${value} m NAP`;
-      if (UNIT[field] && Number.isFinite(parseFloat(value))) return `${value} ${UNIT[field]}`;
+      if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} m NAP`;
+      if (UNIT[field] && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} ${UNIT[field]}`;
+      // A bare number without a unit of its own (a drempelniveau) is still a number; free text is left alone.
+      if (/^-?\d+\.\d+$/.test(value)) return decimalComma(value);
       return value.replaceAll("_", " ");
   }
 }
@@ -396,14 +404,6 @@ export interface RenderedMail {
   html: string;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 /**
  * Both bodies from one list of blocks, so the two renderings cannot drift.
  * Paragraphs, bullet lists and a bare link are all a melder mail needs.
@@ -420,16 +420,15 @@ export function render(subject: string, blocks: Block[]): RenderedMail {
     })
     .join("\n\n");
 
-  const html =
-    `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#1f2937">` +
+  const html = wrapHtml(
     all
       .map((b) => {
         if ("p" in b) return `<p>${escapeHtml(b.p).replaceAll("\n", "<br>")}</p>`;
         if ("ul" in b) return `<ul>${b.ul.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
         return `<p><a href="${escapeHtml(b.url)}">${escapeHtml(b.url)}</a></p>`;
       })
-      .join("") +
-    `</div>`;
+      .join(""),
+  );
 
   return { subject, text, html };
 }
@@ -476,19 +475,20 @@ export function buildReceivedEmail(input: ReceivedEmailInput): RenderedMail {
     blocks.push({ p: "U heeft geen bestanden meegestuurd." });
   }
 
+  // Without files there are no documents to promise a look at.
+  const assessed = fileLines.length > 0 ? "uw melding en de meegestuurde documenten" : "uw melding";
   blocks.push(
     {
       p:
-        `Wat gebeurt er nu? Een medewerker van FunderMaps beoordeelt uw melding en de meegestuurde documenten. ` +
+        `Wat gebeurt er nu? Een medewerker van FunderMaps beoordeelt ${assessed}. ` +
         `Gegevens over de fundering die wij kunnen gebruiken, nemen wij over in de Funderingsdatabase. ` +
         `Zodra dat is gebeurd, krijgt u daarvan per e-mail bericht.`,
     },
     { p: `U hoort uiterlijk ${deadline} van ons.` },
     { p: "De status van uw melding kunt u volgen via:" },
     { url: input.statusUrl },
-    {
-      p: `Vragen over uw melding? Stuur een e-mail naar ${input.replyTo} en vermeld daarbij uw meldcode.`,
-    },
+    // The address carries the meldcode already, so the mail does not ask for it again.
+    { p: `Vragen over uw melding? Stuur een e-mail naar ${input.replyTo}.` },
   );
 
   return render(`FunderMaps - Uw melding ${input.reference} is ontvangen`, blocks);
@@ -546,11 +546,11 @@ function describeField(f: TakenField): string {
   const head = `${fieldLabel(f.field)}: ${formatFieldValue(f.field, f.value)}`;
   switch (f.comparison) {
     case "same":
-      return `${head} (komt overeen met wat bij ons geregistreerd stond)`;
+      return `${head}; komt overeen met wat bij ons geregistreerd stond`;
     case "differs": {
       const rel = f.registeredReliability ? `, ${RELIABILITY_LABEL[f.registeredReliability] ?? f.registeredReliability}` : "";
       const was = f.registered ? formatFieldValue(f.field, f.registered) : "geen gegevens";
-      return `${head} (bij ons stond: ${was}${rel})`;
+      return `${head}; bij ons stond: ${was}${rel}`;
     }
     default:
       return head;
@@ -1131,7 +1131,7 @@ export function buildMelderMessage(
   const greeting = { p: `Beste ${name || "melder"},` };
   const status = [{ p: "De actuele stand van uw melding vindt u op:" }, { url: statusUrl(reference) }];
   if (kind === "answer") {
-    return render(`Reactie op uw melding ${reference}`, [
+    return render(`FunderMaps - Reactie op uw melding ${reference}`, [
       greeting,
       { p: `Naar aanleiding van uw melding ${reference}:` },
       { p: text },
@@ -1139,7 +1139,7 @@ export function buildMelderMessage(
       ...status,
     ]);
   }
-  return render(`Vraag over uw melding ${reference}`, [
+  return render(`FunderMaps - Vraag over uw melding ${reference}`, [
     greeting,
     { p: `Bij de behandeling van uw melding ${reference} hebben wij een vraag:` },
     { p: text },

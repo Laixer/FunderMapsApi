@@ -22,6 +22,7 @@ const {
 } = await import("./intake-emails.ts");
 
 const { nummeraanduidingOf } = await import("./geocoder-id.ts");
+const { referenceOf } = await import("../routes/webhooks.ts");
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -95,7 +96,20 @@ describe("formatFieldValue", () => {
     );
   });
   test("levels get their unit", () => {
-    expect(formatFieldValue("wood_level", "-1.85")).toBe("-1.85 m NAP");
+    expect(formatFieldValue("wood_level", "-1.85")).toBe("-1,85 m NAP");
+  });
+  test("measurements read with a decimal comma, like the rest of the mails", () => {
+    expect(formatFieldValue("groundwater_level", "-1.6")).toBe("-1,6 m NAP");
+    expect(formatFieldValue("skewed_parallel", "4.5")).toBe("4,5 mm/m");
+    expect(formatFieldValue("settlement_speed", "1.2")).toBe("1,2 mm per jaar");
+    expect(formatFieldValue("pile_diameter_top", "180")).toBe("180 mm");
+    // A number without a unit of its own is still a number.
+    expect(formatFieldValue("threshold_front_level", "-0.35")).toBe("-0,35");
+  });
+  test("a full stop in words is not a decimal point", () => {
+    expect(formatFieldValue("recovery_note", "Zie rapport v1.2, par. 3.4.")).toBe("Zie rapport v1.2, par. 3.4.");
+    expect(formatFieldValue("contractor", "Bureau 2.0 B.V.")).toBe("Bureau 2.0 B.V.");
+    expect(formatFieldValue("document_date", "3.11.2014")).toBe("3.11.2014");
   });
   test("booleans and terms read as Dutch", () => {
     expect(formatFieldValue("recovery_advised", "true")).toBe("ja");
@@ -117,7 +131,7 @@ describe("formatFieldValue", () => {
 describe("buildMelderMessage (API #209)", () => {
   test("a question reads as a question, as before", () => {
     const mail = buildMelderMessage("question", "FM2026-000042", "Jan Poland", "Welk jaar is het pand gebouwd?");
-    expect(mail.subject).toBe("Vraag over uw melding FM2026-000042");
+    expect(mail.subject).toBe("FunderMaps - Vraag over uw melding FM2026-000042");
     expect(mail.text).toContain("Beste Jan Poland,");
     expect(mail.text).toContain("hebben wij een vraag:");
     expect(mail.text).toContain("Welk jaar is het pand gebouwd?");
@@ -125,13 +139,26 @@ describe("buildMelderMessage (API #209)", () => {
 
   test("an answer never says we have a question", () => {
     const mail = buildMelderMessage("answer", "FM2026-000042", "", "Het risico is berekend op het funderingsonderzoek uit 2021.");
-    expect(mail.subject).toBe("Reactie op uw melding FM2026-000042");
+    expect(mail.subject).toBe("FunderMaps - Reactie op uw melding FM2026-000042");
     expect(mail.text).toContain("Beste melder,");
     expect(mail.text).toContain("Naar aanleiding van uw melding FM2026-000042:");
     expect(mail.text).toContain("Het risico is berekend op het funderingsonderzoek uit 2021.");
     expect(mail.text).toContain("U kunt deze e-mail direct beantwoorden");
     expect(mail.text).not.toContain("vraag:");
     expect(mail.text).toContain("/melding/FM2026-000042");
+  });
+
+  // The subject is only the reply router's second resort (the reply address
+  // carries the code), but a reply must keep finding its dossier by it.
+  test("a reply to either still routes to its dossier by the subject alone", () => {
+    for (const kind of ["question", "answer"] as const) {
+      const { subject } = buildMelderMessage(kind, "FM2026-000042", "Jan Poland", "Tekst");
+      expect(subject).toStartWith("FunderMaps - ");
+      for (const prefix of ["", "Re: ", "RE: ", "Antw: ", "FW: Re: "]) {
+        expect(referenceOf({ subject: prefix + subject })).toBe("FM2026-000042");
+      }
+    }
+    expect(referenceOf({ subject: "FunderMaps - zonder meldcode" })).toBeNull();
   });
 });
 
@@ -158,10 +185,12 @@ describe("buildReceivedEmail", () => {
     expect(mail.text).toContain("Ontvangen bestanden (2):");
     expect(mail.text).toContain("- Februari 1980 heien Jollenpad 13.pdf (bouwtekening / archiefstuk)");
     expect(mail.text).toContain("- foto <voorgevel>.jpg (foto's van de woning)");
-    expect(mail.text).toContain("Wat gebeurt er nu?");
+    expect(mail.text).toContain("Wat gebeurt er nu? Een medewerker van FunderMaps beoordeelt uw melding en de meegestuurde documenten. ");
     expect(mail.text).toContain("U hoort uiterlijk maandag 7 september 2026 van ons.");
     expect(mail.text).toContain("https://melden.fundermaps.com/melding/FM2026-000042");
-    expect(mail.text).toContain("Stuur een e-mail naar melding+FM2026-000042@funderdata.nl en vermeld daarbij uw meldcode.");
+    // The address carries the meldcode; the mail does not ask for it again.
+    expect(mail.text).toContain("\n\nVragen over uw melding? Stuur een e-mail naar melding+FM2026-000042@funderdata.nl.\n\n");
+    expect(mail.text).not.toContain("vermeld daarbij uw meldcode");
     expect(mail.text.trimEnd().endsWith("Met vriendelijke groet,\nFunderMaps")).toBe(true);
   });
 
@@ -174,11 +203,23 @@ describe("buildReceivedEmail", () => {
     expect(mail.html).not.toContain("<voorgevel>");
   });
 
+  test("HTML lets a long file name or a BAG id wrap instead of widening the mail", () => {
+    const mail = buildReceivedEmail({
+      ...input,
+      address: "NL.IMBAG.NUMMERAANDUIDING.0363200000123456",
+      files: [{ name: `${"Funderingsonderzoek_".repeat(8)}.pdf`, category: null }],
+    });
+    expect(mail.html).toMatch(/^<div style="[^"]*overflow-wrap:anywhere;word-break:break-word">/);
+  });
+
   test("no files says so, and a nameless melder is still greeted", () => {
     const mail = buildReceivedEmail({ ...input, recipientName: "", files: [] });
     expect(mail.text).toContain("Beste melder,");
     expect(mail.text).toContain("U heeft geen bestanden meegestuurd.");
     expect(mail.text).not.toContain("Ontvangen bestanden");
+    // Nothing was sent along, so there are no documents to look at.
+    expect(mail.text).toContain("Wat gebeurt er nu? Een medewerker van FunderMaps beoordeelt uw melding. Gegevens over de fundering");
+    expect(mail.text).not.toContain("meegestuurde documenten");
   });
 });
 
@@ -244,14 +285,45 @@ describe("buildClosedEmail", () => {
     expect(mail.text).toContain("Uw melding met meldcode FM2026-000042 is verwerkt.");
     expect(mail.text).toContain("Dit hebben wij overgenomen in de Funderingsdatabase:");
     expect(mail.text).toContain("Jollenpad 13, 1081 KC Amsterdam:");
-    expect(mail.text).toContain("- Funderingstype: houten palen (bij ons stond: betonnen palen, indicatief)");
-    expect(mail.text).toContain("- Bouwjaar: 1932 (komt overeen met wat bij ons geregistreerd stond)");
-    expect(mail.text).toContain("- Niveau bovenkant langshout: -1.85 m NAP");
+    expect(mail.text).toContain("- Funderingstype: houten palen; bij ons stond: betonnen palen, indicatief\n");
+    expect(mail.text).toContain("- Bouwjaar: 1932; komt overeen met wat bij ons geregistreerd stond\n");
+    expect(mail.text).toContain("- Niveau bovenkant langshout: -1,85 m NAP");
     expect(mail.text).toContain(
       "Funderingsrisico zoals nu bij ons geregistreerd: droogstand B, ontwateringsdiepte C, bacteriële aantasting A.",
     );
     expect(mail.text).toContain("kan het risico daardoor veranderen");
     expect(mail.text).toContain(base.statusUrl);
+  });
+
+  test("a foundation type with a bracket of its own is not followed by a second bracket", () => {
+    const mail = buildClosedEmail({
+      ...base,
+      outcome: "accepted",
+      note: null,
+      hasInquiry: true,
+      addresses: [
+        {
+          address: "Voorbeeldstraat 1, 1234 AB Voorbeeldstad",
+          fields: [{ field: "foundation_type", value: "no_pile", registered: "no_pile", registeredReliability: "established", comparison: "same" }],
+          risk: null,
+        },
+        {
+          address: "Voorbeeldstraat 3, 1234 AB Voorbeeldstad",
+          fields: [{ field: "foundation_type", value: "wood_amsterdam", registered: "wood", registeredReliability: "cluster", comparison: "differs" }],
+          risk: null,
+        },
+        {
+          address: "Voorbeeldstraat 5, 1234 AB Voorbeeldstad",
+          fields: [{ field: "foundation_type", value: "wood", registered: null, comparison: "differs" }],
+          risk: null,
+        },
+      ],
+    });
+    expect(mail.text).toContain("- Funderingstype: ondiepe fundering (op staal); komt overeen met wat bij ons geregistreerd stond\n");
+    expect(mail.text).toContain("- Funderingstype: houten palen (Amsterdamse fundering); bij ons stond: houten palen, afgeleid\n");
+    expect(mail.text).toContain("- Funderingstype: houten palen; bij ons stond: geen gegevens\n");
+    expect(mail.text).not.toContain(") (");
+    expect(mail.html).not.toContain(") (");
   });
 
   test("document facts once, units on measurements, unresolved addresses named (Don #321 §4/§5/§7)", () => {

@@ -33,7 +33,7 @@ import {
   type AttributionView,
 } from "../lib/inquiry-serializer.ts";
 import { describeDocumentFile } from "../lib/document-file.ts";
-import { lookupUserEmails } from "../lib/report-emails.ts";
+import { lookupUserContacts, reportParties } from "../lib/report-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { dossier } from "../db/schema/dataops.ts";
 import { documentDateProblem } from "../lib/document-date.ts";
@@ -148,14 +148,13 @@ async function emailContext(
   inq: typeof inquiry.$inferSelect,
   attr: AttributionView,
 ): Promise<InquiryEmailContext> {
-  const emails = await lookupUserEmails([attr.creator, attr.reviewer]);
+  // Names come from the accounts, not from attr.creatorName / attr.reviewerName:
+  // those hold the e-mail address (the API's attribution fields).
+  const contacts = await lookupUserContacts([attr.creator, attr.reviewer]);
   return {
     inquiryId: inq.id,
     documentName: inq.documentName,
-    creatorEmail: emails.get(attr.creator) ?? "",
-    creatorName: attr.creatorName ?? "",
-    reviewerEmail: emails.get(attr.reviewer) ?? "",
-    reviewerName: attr.reviewerName ?? "",
+    ...reportParties(attr, contacts),
     organizationName: attr.ownerName ?? "",
   };
 }

@@ -24,7 +24,8 @@ import { ingestDossierNow } from "./windmill.ts";
 
 export interface ResendAttachment {
   id: string;
-  filename: string;
+  /** Left out by Resend when the sender gave the attachment no name (a forwarded mail, for one). */
+  filename?: string;
   content_type: string;
   content_disposition?: string | null;
   content_id?: string | null;
@@ -36,9 +37,9 @@ export interface ResendAttachment {
 const SMALL_IMAGE_BYTES = 60_000;
 
 /** Which attachments become documents, and why the rest do not. Pure, for the tests. */
-export function sortAttachments(list: ResendAttachment[]): { keep: ResendAttachment[]; skipped: { name: string; why: string }[] } {
+export function sortAttachments(list: ResendAttachment[]): { keep: ResendAttachment[]; skipped: { name?: string; why: string }[] } {
   const keep: ResendAttachment[] = [];
-  const skipped: { name: string; why: string }[] = [];
+  const skipped: { name?: string; why: string }[] = [];
   for (const a of list) {
     const mime = (a.content_type || "application/octet-stream").split(";")[0]!.trim().toLowerCase();
     if (mime.startsWith("image/") && (a.content_disposition === "inline" || a.size < SMALL_IMAGE_BYTES)) {
@@ -54,6 +55,19 @@ export function sortAttachments(list: ResendAttachment[]): { keep: ResendAttachm
     }
   }
   return { keep, skipped };
+}
+
+/**
+ * The timeline text about what was stored and what was left out. An
+ * attachment without a name is called that, here only: what is stored about
+ * it stays as it came in. Pure, for the tests.
+ */
+export function attachmentLines(stored: { name?: string }[], skipped: { name?: string; why: string }[]): string {
+  const shown = (name?: string) => name?.trim() || "naamloze bijlage";
+  return [
+    stored.length ? `Bijlage${stored.length === 1 ? "" : "n"} uit het antwoord opgeslagen: ${stored.map((s) => shown(s.name)).join(", ")}` : null,
+    skipped.length ? `Niet opgeslagen: ${skipped.map((s) => `${shown(s.name)} (${s.why})`).join(", ")}` : null,
+  ].filter(Boolean).join("\n");
 }
 
 async function resend<T>(path: string): Promise<T> {
@@ -83,7 +97,7 @@ export async function storeReplyAttachments(dossierId: number, emailId: string, 
     const { keep, skipped } = sortAttachments(list);
     // Bytes first, rows after: the target dossier is only known once there
     // is something to put in it.
-    const fetched: { name: string; key: string; mime: string; size: number }[] = [];
+    const fetched: { name?: string; key: string; mime: string; size: number }[] = [];
     for (const a of keep) {
       if (!a.download_url) { skipped.push({ name: a.filename, why: "geen downloadlink" }); continue; }
       const file = await fetch(a.download_url, { signal: AbortSignal.timeout(120_000) });
@@ -108,13 +122,9 @@ export async function storeReplyAttachments(dossierId: number, emailId: string, 
     const target = followUp?.id ?? dossierId;
 
     if (stored.length || skipped.length) {
-      const lines = [
-        stored.length ? `Bijlage${stored.length === 1 ? "" : "n"} uit het antwoord opgeslagen: ${stored.map((s) => s.name).join(", ")}` : null,
-        skipped.length ? `Niet opgeslagen: ${skipped.map((s) => `${s.name} (${s.why})`).join(", ")}` : null,
-      ].filter(Boolean);
       await addEntry({
         dossierId: target, kind: "status", actorKind: "system",
-        text: lines.join("\n"),
+        text: attachmentLines(stored, skipped),
         body: { email_id: emailId, artifact_ids: stored.map((s) => s.id), skipped },
         visibleToMelder: false,
       });

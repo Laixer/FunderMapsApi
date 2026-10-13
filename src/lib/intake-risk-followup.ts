@@ -120,7 +120,7 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
   ];
   for (const c of input.changes) {
     blocks.push(
-      { p: c.address },
+      { p: `${c.address}:` },
       { ul: c.fields.map((f) => `${f.label}: ${f.beforeLabel ?? riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}`) },
     );
   }
@@ -252,13 +252,14 @@ export function buildRiskConfirmedEmail(input: RiskConfirmedEmailInput): Rendere
   for (const b of input.buildings) {
     const shown = b.risk
       ? [
-          `droogstand: ${riskLabelIn(b.risk, b.risk.drystand)}`,
-          `ontwateringsdiepte: ${riskLabelIn(b.risk, b.risk.dewateringDepth)}`,
-          `bacteriële aantasting: ${riskLabelIn(b.risk, b.risk.bioInfection)}`,
-          ...(b.risk.unclassified ? [`vastgesteld risico: ${riskLabel(b.risk.unclassified)}`] : []),
+          `Droogstand: ${riskLabelIn(b.risk, b.risk.drystand)}.`,
+          `Ontwateringsdiepte: ${riskLabelIn(b.risk, b.risk.dewateringDepth)}.`,
+          `Bacteriële aantasting: ${riskLabelIn(b.risk, b.risk.bioInfection)}.`,
+          ...(b.risk.unclassified ? [`Vastgesteld risico: ${riskLabel(b.risk.unclassified)}.`] : []),
         ]
       : [];
-    blocks.push({ p: b.address }, { ul: [...shown, ...explainBasis(b.basis)] });
+    // One list with the onderbouwing below it, so every line reads like those: a capital and a full stop.
+    blocks.push({ p: `${b.address}:` }, { ul: [...shown, ...explainBasis(b.basis)] });
   }
   blocks.push(
     {
@@ -270,6 +271,22 @@ export function buildRiskConfirmedEmail(input: RiskConfirmedEmailInput): Rendere
     { url: input.statusUrl },
   );
   return render(`FunderMaps - Het funderingsrisico van uw melding ${input.reference} is ongewijzigd`, blocks);
+}
+
+/**
+ * The Verloop lines of the follow-up, which the melder's status page shows
+ * too. A dash between the address and what is said about it: the explanation
+ * brings a colon of its own ("Gebaseerd op: ..."). Pure, for the tests.
+ */
+export function riskUnchangedLine(buildings: { address: string; basis: RiskBasis | null }[]): string {
+  return "Funderingsrisico herberekend: ongewijzigd. " + buildings.map((b) => `${b.address} – ${explainBasis(b.basis).join(" ")}`).join("; ");
+}
+
+export function riskChangedLine(changes: RiskChange[]): string {
+  return (
+    "Funderingsrisico herberekend: " +
+    changes.map((c) => `${c.address} – ${c.fields.map((f) => `${f.label} ${riskLabel(f.before)} → ${riskLabel(f.after)}`).join(", ")}`).join("; ")
+  );
 }
 
 export async function currentBasis(buildingIds: string[]): Promise<Map<string, RiskBasis>> {
@@ -479,9 +496,7 @@ async function followUpOne(
           kind: "status",
           actorKind: "system",
           actor: "model",
-          text:
-            "Funderingsrisico herberekend: ongewijzigd. " +
-            buildings.map((b) => `${b.address}: ${explainBasis(b.basis).join(" ")}`).join("; "),
+          text: riskUnchangedLine(buildings),
           body: { unchanged: true, basis: buildings.map((b) => ({ address: b.address, basis: b.basis })) },
           visibleToMelder: true,
         });
@@ -510,9 +525,7 @@ async function followUpOne(
           kind: "status",
           actorKind: "system",
           actor: "model",
-          text:
-            "Funderingsrisico herberekend: " +
-            changes.map((c) => `${c.address}: ${c.fields.map((f) => `${f.label} ${riskLabel(f.before)} → ${riskLabel(f.after)}`).join(", ")}`).join("; "),
+          text: riskChangedLine(changes),
           body: { changes },
           visibleToMelder: true,
         });
