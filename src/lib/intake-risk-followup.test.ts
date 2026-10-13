@@ -4,7 +4,7 @@ process.env.DATABASE_URL ??= "postgres://localhost:5432/test";
 process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
-const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail } = await import("./intake-risk-followup.ts");
+const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail, riskChangedLine, riskUnchangedLine } = await import("./intake-risk-followup.ts");
 const emails = await import("./intake-emails.ts");
 
 const snapshot = {
@@ -71,6 +71,11 @@ describe("buildRiskChangedEmail", () => {
 
   test("singular/plural intro follows the number of addresses", () => {
     expect(mail.text).toContain("het volgende adres");
+  });
+
+  test("the address introduces its list with a colon, as in the afronding", () => {
+    expect(mail.text).toContain("\n\nMolenwal 15, 3421 CK Oudewater:\n\n- ontwateringsdiepte: ");
+    expect(mail.html).toContain("<p>Molenwal 15, 3421 CK Oudewater:</p><ul><li>ontwateringsdiepte: ");
   });
 });
 
@@ -181,11 +186,72 @@ describe("buildRiskConfirmedEmail (API #204)", () => {
     expect(mail.text).toContain("Funderingskaart Haarlem");
     expect(mail.text).toContain("ontwateringsdiepte (1,27 m)");
   });
+  test("one list in one style: the risks read like the onderbouwing under them", () => {
+    expect(mail.text).toContain(
+      "\n\nSpaarne 67C, 2011 CH Haarlem:\n\n" +
+        "- Droogstand: B.\n" +
+        "- Ontwateringsdiepte: D.\n" +
+        "- Bacteriële aantasting: C.\n" +
+        "- Gebaseerd op: ",
+    );
+    const items = mail.text.split("\n").filter((line) => line.startsWith("- "));
+    expect(items.length).toBe(6);
+    for (const item of items) expect(item).toMatch(/^- \p{Lu}.*\.$/u);
+  });
+  test("a vastgesteld risico and 'niet van toepassing' follow the same style", () => {
+    const other = buildRiskConfirmedEmail({
+      reference: "FM2026-000000", recipientName: "",
+      buildings: [{ address: "Voorbeeldstraat 3", risk: { drystand: null, dewateringDepth: "d", bioInfection: null, unclassified: "d" }, basis: null }],
+      statusUrl: "https://x", replyTo: "y",
+    });
+    expect(other.text).toContain(
+      "\n\nVoorbeeldstraat 3:\n\n" +
+        "- Droogstand: niet van toepassing.\n" +
+        "- Ontwateringsdiepte: D.\n" +
+        "- Bacteriële aantasting: niet van toepassing.\n" +
+        "- Vastgesteld risico: D.\n" +
+        "- Voor dit pand is op dit moment geen risicoberekening beschikbaar.\n\n",
+    );
+  });
   test("leaves out 'dagelijks herberekend' (Don: it invites 'wanneer dan wel?')", () => {
     expect(mail.text).not.toContain("dagelijks");
   });
   test("invites a newer document or a herstel by reply", () => {
     expect(mail.text).toContain("hersteld");
+  });
+});
+
+describe("the Verloop lines of the follow-up (the melder's status page shows them too)", () => {
+  test("unchanged: a dash after the address, so the explanation's colon is the only one", () => {
+    const line = riskUnchangedLine([
+      { address: "Voorbeeldstraat 1, 1234 AB Voorbeeldstad", basis: basis({ quickScanRisk: "b" }) as never },
+    ]);
+    expect(line).toBe(
+      "Funderingsrisico herberekend: ongewijzigd. Voorbeeldstraat 1, 1234 AB Voorbeeldstad – " +
+        "Gebaseerd op: het Verkennend Funderingsonderzoek (QuickScan) van dit pand, uitkomst B. Het funderingsrisico volgt deze uitkomst. " +
+        "Het hoogste risico komt uit de ontwateringsdiepte (1,27 m): D.",
+    );
+    expect(line).not.toContain("Voorbeeldstad: ");
+  });
+
+  test("unchanged, several addresses: the same for each", () => {
+    const line = riskUnchangedLine([
+      { address: "Voorbeeldstraat 1", basis: basis() as never },
+      { address: "Voorbeeldstraat 3", basis: null },
+    ]);
+    expect(line).toStartWith('Funderingsrisico herberekend: ongewijzigd. Voorbeeldstraat 1 – Gebaseerd op: archiefonderzoek "Funderingskaart Haarlem" (2025). ');
+    expect(line).toEndWith("; Voorbeeldstraat 3 – Voor dit pand is op dit moment geen risicoberekening beschikbaar.");
+    expect(line).not.toMatch(/Voorbeeldstraat \d: /);
+  });
+
+  test("changed: the same dash between the address and what changed", () => {
+    const line = riskChangedLine([
+      { buildingId: "b1", address: "Voorbeeldstraat 1", fields: [{ label: "droogstand", before: "c", after: "e" }, { label: "vastgesteld risico", before: null, after: "d" }] },
+      { buildingId: "b3", address: "Voorbeeldstraat 3", fields: [{ label: "ontwateringsdiepte", before: "b", after: "a" }] },
+    ]);
+    expect(line).toBe(
+      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → E, vastgesteld risico niet bepaald → D; Voorbeeldstraat 3 – ontwateringsdiepte B → A",
+    );
   });
 });
 

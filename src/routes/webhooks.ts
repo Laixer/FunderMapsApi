@@ -36,7 +36,7 @@ function addressesOf(value: unknown): string[] {
   return [];
 }
 
-function referenceOf(data: Record<string, unknown>): string | null {
+export function referenceOf(data: Record<string, unknown>): string | null {
   for (const addr of [...addressesOf(data.to), ...addressesOf(data.cc)]) {
     const m = addr.match(PLUS_ADDRESS_RE);
     if (m) return m[1]!.toUpperCase();

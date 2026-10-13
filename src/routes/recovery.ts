@@ -33,7 +33,7 @@ import {
 } from "../lib/recovery-serializer.ts";
 import type { AttributionView } from "../lib/inquiry-serializer.ts";
 import { describeDocumentFile } from "../lib/document-file.ts";
-import { lookupUserEmails } from "../lib/report-emails.ts";
+import { lookupUserContacts, reportParties } from "../lib/report-emails.ts";
 import {
   type RecoveryEmailContext,
   sendApprovedEmail,
@@ -145,14 +145,13 @@ async function emailContext(
   rec: typeof recovery.$inferSelect,
   attr: AttributionView,
 ): Promise<RecoveryEmailContext> {
-  const emails = await lookupUserEmails([attr.creator, attr.reviewer]);
+  // Names come from the accounts, not from attr.creatorName / attr.reviewerName:
+  // those hold the e-mail address (the API's attribution fields).
+  const contacts = await lookupUserContacts([attr.creator, attr.reviewer]);
   return {
     recoveryId: rec.id,
     documentName: rec.documentName,
-    creatorEmail: emails.get(attr.creator) ?? "",
-    creatorName: attr.creatorName ?? "",
-    reviewerEmail: emails.get(attr.reviewer) ?? "",
-    reviewerName: attr.reviewerName ?? "",
+    ...reportParties(attr, contacts),
     organizationName: attr.ownerName ?? "",
   };
 }
