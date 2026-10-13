@@ -24,12 +24,21 @@ describe("resetPasswordMail", () => {
     expect(mail.text).toContain("1 uur geldig");
   });
 
-  test("greets by e-mail address when the user has no name", () => {
-    for (const name of ["", null, undefined]) {
+  // An account made without a name has its e-mail address stored as its name.
+  test("greets nobody by name when the user has no name, or an e-mail address for a name", () => {
+    for (const name of ["", "  ", null, undefined, "geen-naam@example.test", " Geen-Naam@Example.test ", "ander@example.test"]) {
       const mail = resetPasswordMail({ email: "geen-naam@example.test", name }, URL_IN_MAIL);
-      expect(mail.text).toStartWith("Hallo geen-naam@example.test,\n\n");
-      expect(mail.html).toContain("<p>Hallo geen-naam@example.test,</p>");
+      expect(mail.text).toStartWith("Hallo,\n\nEr is een nieuw wachtwoord aangevraagd");
+      expect(mail.html).toContain("<p>Hallo,</p><p>Er is een nieuw wachtwoord aangevraagd");
+      // The address is where the mail goes, not something to call the reader.
+      expect(mail.text).not.toContain("@");
+      expect(mail.html).not.toContain("@");
     }
+  });
+
+  test("a name is used as it is stored, without the spaces around it", () => {
+    expect(resetPasswordMail({ email: "jan@example.test", name: " Jan Jansen " }, URL_IN_MAIL).text).toStartWith("Hallo Jan Jansen,\n\n");
+    expect(resetPasswordMail({ email: "an@example.test", name: "An" }, URL_IN_MAIL).html).toContain("<p>Hallo An,</p>");
   });
 
   test("has an HTML version with the same words and the link as a text link", () => {

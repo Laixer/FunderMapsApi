@@ -64,7 +64,7 @@ describe("buildRiskChangedEmail", () => {
   test("body lists the address and the before → after in Dutch labels", () => {
     expect(mail.text).toContain("Beste J. de Vries");
     expect(mail.text).toContain("Molenwal 15, 3421 CK Oudewater");
-    expect(mail.text).toMatch(/ontwateringsdiepte: .+ → .+/);
+    expect(mail.text).toContain("\n- Ontwateringsdiepte: C → E.\n");
     expect(mail.text).toContain("dagelijks herberekend");
     expect(mail.text).toContain("https://melden.fundermaps.com/melding/FM2026-000042");
   });
@@ -74,8 +74,46 @@ describe("buildRiskChangedEmail", () => {
   });
 
   test("the address introduces its list with a colon, as in the afronding", () => {
-    expect(mail.text).toContain("\n\nMolenwal 15, 3421 CK Oudewater:\n\n- ontwateringsdiepte: ");
-    expect(mail.html).toContain("<p>Molenwal 15, 3421 CK Oudewater:</p><ul><li>ontwateringsdiepte: ");
+    expect(mail.text).toContain("\n\nMolenwal 15, 3421 CK Oudewater:\n\n- Ontwateringsdiepte: ");
+    expect(mail.html).toContain("<p>Molenwal 15, 3421 CK Oudewater:</p><ul><li>Ontwateringsdiepte: C → E.</li></ul>");
+  });
+
+  // The list of the "ongewijzigd" mail reads "Droogstand: C."; this one read "droogstand: C → E".
+  test("every line of the list starts with a capital and ends with a full stop", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Voorbeeldstraat 1", risk: { drystand: "c", dewateringDepth: "b", bioInfection: "b", unclassified: null } } } },
+      new Map([["b1", { drystand: "e", dewateringDepth: "a", bioInfection: "c", unclassified: "d" }]]),
+    );
+    const changed = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(changed.text).toContain(
+      "\n\nVoorbeeldstraat 1:\n\n" +
+        "- Droogstand: C → E.\n" +
+        "- Ontwateringsdiepte: B → A.\n" +
+        "- Bacteriële aantasting: B → C.\n" +
+        "- Vastgesteld risico: niet van toepassing → D.\n\n",
+    );
+    expect(changed.html).toContain(
+      "<ul><li>Droogstand: C → E.</li><li>Ontwateringsdiepte: B → A.</li><li>Bacteriële aantasting: B → C.</li><li>Vastgesteld risico: niet van toepassing → D.</li></ul>",
+    );
+    const items = changed.text.split("\n").filter((line) => line.startsWith("- "));
+    expect(items.length).toBe(4);
+    for (const item of items) expect(item).toMatch(/^- \p{Lu}.*\.$/u);
+  });
+
+  test("only the mail's list changes: the labels stay the keys they are", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Voorbeeldstraat 1", risk: { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null } } } },
+      new Map([["b1", { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: "d" }]]),
+    );
+    // What is kept on the Verloop entry (body.changes) and matched for the "houten palen" paragraph.
+    expect(changes[0]!.fields.map((f) => f.label)).toEqual(["droogstand", "ontwateringsdiepte", "bacteriële aantasting", "vastgesteld risico"]);
+    const changed = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(changed.text).toContain("- Droogstand: C → niet van toepassing.\n");
+    expect(changed.text).toContain("alleen voor een fundering op houten palen");
+    // Inside a sentence the label keeps its small letter.
+    expect(riskChangedLine(changes)).toBe(
+      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → niet bepaald, ontwateringsdiepte niet bepaald → B, bacteriële aantasting B → niet bepaald, vastgesteld risico niet bepaald → D",
+    );
   });
 });
 
@@ -107,7 +145,7 @@ describe("niet van toepassing vs niet bepaald (Don, 2026-10-02)", () => {
       new Map([["b1", { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: null }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("droogstand: C → niet van toepassing");
+    expect(mail.text).toContain("Droogstand: C → niet van toepassing.");
     expect(mail.text).not.toContain("→ niet bepaald");
   });
 });
@@ -119,7 +157,7 @@ describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", 
       new Map([["b1", { drystand: "c", dewateringDepth: null, bioInfection: "c", unclassified: null }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("droogstand: niet van toepassing → C");
+    expect(mail.text).toContain("Droogstand: niet van toepassing → C.");
     expect(mail.text).not.toContain("niet bepaald →");
   });
 
@@ -129,7 +167,7 @@ describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", 
       new Map([["b1", { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: "b" }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("vastgesteld risico: niet bepaald → B");
+    expect(mail.text).toContain("Vastgesteld risico: niet bepaald → B.");
   });
 });
 
@@ -240,8 +278,47 @@ describe("the Verloop lines of the follow-up (the melder's status page shows the
       { address: "Voorbeeldstraat 3", basis: null },
     ]);
     expect(line).toStartWith('Funderingsrisico herberekend: ongewijzigd. Voorbeeldstraat 1 – Gebaseerd op: archiefonderzoek "Funderingskaart Haarlem" (2025). ');
-    expect(line).toEndWith("; Voorbeeldstraat 3 – Voor dit pand is op dit moment geen risicoberekening beschikbaar.");
     expect(line).not.toMatch(/Voorbeeldstraat \d: /);
+  });
+
+  // Every explanation ends in a full stop, so "; " between two addresses gave ".; ".
+  test("unchanged, several addresses: a space between them, no '.;'", () => {
+    const line = riskUnchangedLine([
+      { address: "Voorbeeldstraat 1", basis: basis({ quickScanRisk: "b" }) as never },
+      { address: "Voorbeeldstraat 3", basis: basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "a" }) as never },
+      { address: "Voorbeeldstraat 5", basis: null },
+    ]);
+    expect(line).toBe(
+      "Funderingsrisico herberekend: ongewijzigd. " +
+        "Voorbeeldstraat 1 – Gebaseerd op: het Verkennend Funderingsonderzoek (QuickScan) van dit pand, uitkomst B. Het funderingsrisico volgt deze uitkomst. " +
+        "Het hoogste risico komt uit de ontwateringsdiepte (1,27 m): D. " +
+        'Voorbeeldstraat 3 – Gebaseerd op: archiefonderzoek "Funderingskaart Haarlem" (2025). Funderingstype: houten palen. Geen van de onderdelen geeft een verhoogd risico. ' +
+        "Voorbeeldstraat 5 – Voor dit pand is op dit moment geen risicoberekening beschikbaar.",
+    );
+    expect(line).not.toContain(".;");
+    expect(line).not.toContain(";");
+  });
+
+  // The rule the join relies on.
+  test("every line of an explanation ends in a full stop", () => {
+    const variants = [
+      null,
+      basis(),
+      basis({ quickScanRisk: "c" }),
+      basis({ inquiryType: null, documentName: null, foundationTypeReliability: "cluster" }),
+      basis({ inquiryType: null, documentName: null, foundationTypeReliability: "indicative" }),
+      basis({ drystandRisk: "d" }),
+      basis({ drystandRisk: "d", bioInfectionRisk: "d" }),
+      basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "a" }),
+      basis({ drystandRisk: "a", dewateringDepthRisk: "a", bioInfectionRisk: "e" }),
+      basis({ documentName: null, documentDate: null }),
+      basis({ foundationType: null, drystandRisk: null, dewateringDepthRisk: null, bioInfectionRisk: null }),
+    ];
+    for (const b of variants) {
+      const lines = explainBasis(b as never);
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines) expect(line).toEndWith(".");
+    }
   });
 
   test("changed: the same dash between the address and what changed", () => {

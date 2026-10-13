@@ -19,6 +19,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { dossierEvent } from "../db/schema/report.ts";
 import { user } from "../db/schema/application.ts";
+import { personName } from "./person-name.ts";
 
 /** Mirrors `report.dossier_event_kind`. */
 export type DossierEventKind =
@@ -89,22 +90,13 @@ export interface LegacyDossierEvent {
 }
 
 /**
+ * A dossier's trail, oldest first — the order it happened in.
+ *
  * Names are resolved here rather than snapshotted onto the event, so a user who
  * corrects their own name does not leave a trail of stale spellings. The cost is
  * a join and the loss of the name when an account is deleted — which the FK's
  * `ON DELETE SET NULL` makes explicit rather than silent.
  */
-function displayName(row: {
-  name: string | null;
-  givenName: string | null;
-  lastName: string | null;
-  email: string;
-}): string {
-  const full = [row.givenName, row.lastName].filter(Boolean).join(" ").trim();
-  return row.name?.trim() || full || row.email;
-}
-
-/** A dossier's trail, oldest first — the order it happened in. */
 export async function listEvents(
   subject: DossierSubject,
 ): Promise<LegacyDossierEvent[]> {
@@ -145,7 +137,7 @@ export async function listEvents(
   return rows.map((row) => ({
     kind: row.kind as DossierEventKind,
     date: row.createDate.toISOString(),
-    actorName: row.email ? displayName(row as never) : null,
+    actorName: row.email ? personName({ ...row, email: row.email }) : null,
     note: row.note,
     metadata: row.metadata ?? null,
   }));

@@ -104,7 +104,15 @@ describe("formatFieldValue", () => {
     expect(formatFieldValue("settlement_speed", "1.2")).toBe("1,2 mm per jaar");
     expect(formatFieldValue("pile_diameter_top", "180")).toBe("180 mm");
     // A number without a unit of its own is still a number.
-    expect(formatFieldValue("threshold_front_level", "-0.35")).toBe("-0,35");
+    expect(formatFieldValue("some_measurement", "-0.35")).toBe("-0,35");
+  });
+  // The map app, the Studio and the PDF report show a drempelniveau in metres relative to NAP.
+  test("a drempelniveau is a level like the others: metres NAP", () => {
+    expect(formatFieldValue("threshold_front_level", "-0.35")).toBe("-0,35 m NAP");
+    expect(formatFieldValue("threshold_back_level", "0.4")).toBe("0,4 m NAP");
+    expect(formatFieldValue("threshold_back_level", "-1")).toBe("-1 m NAP");
+    // Words stay as they were recorded, without a unit behind them.
+    expect(formatFieldValue("threshold_front_level", "gelijk aan maaiveld")).toBe("gelijk aan maaiveld");
   });
   test("a full stop in words is not a decimal point", () => {
     expect(formatFieldValue("recovery_note", "Zie rapport v1.2, par. 3.4.")).toBe("Zie rapport v1.2, par. 3.4.");
@@ -135,6 +143,23 @@ describe("buildMelderMessage (API #209)", () => {
     expect(mail.text).toContain("Beste Jan Poland,");
     expect(mail.text).toContain("hebben wij een vraag:");
     expect(mail.text).toContain("Welk jaar is het pand gebouwd?");
+  });
+
+  // "Dossier" is the word staff use; every other mail to a melder says "uw melding".
+  test("a reply is linked to 'uw melding', in the words of the other melder mails", () => {
+    const question = buildMelderMessage("question", "FM2026-000042", "Jan Poland", "Welk jaar is het pand gebouwd?");
+    expect(question.text).toContain(
+      "\n\nU kunt deze e-mail direct beantwoorden; uw antwoord wordt automatisch aan uw melding gekoppeld.\n\n",
+    );
+    const answer = buildMelderMessage("answer", "FM2026-000042", "Jan Poland", "Het risico is berekend.");
+    expect(answer.text).toContain(
+      "\n\nHeeft u nog een vraag? U kunt deze e-mail direct beantwoorden; uw reactie wordt automatisch aan uw melding gekoppeld.\n\n",
+    );
+    for (const mail of [question, answer]) {
+      expect(mail.text.toLowerCase()).not.toContain("dossier");
+      expect(mail.html.toLowerCase()).not.toContain("dossier");
+      expect(mail.html).toContain("automatisch aan uw melding gekoppeld.</p>");
+    }
   });
 
   test("an answer never says we have a question", () => {
