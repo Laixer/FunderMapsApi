@@ -193,7 +193,7 @@ fields on create/update: `documentName`, `documentDate`, `documentFile`,
 | POST | `/api/inquiry` | writer | 200 — created inquiry (state `todo`) |
 | PUT | `/api/inquiry/{id}` | writer | 204 — updated (rejected → resets to pending) |
 | DELETE | `/api/inquiry/{id}` | superuser | 204 — deletes inquiry + samples + attribution |
-| POST | `/api/inquiry/{id}/status_review` | writer | 204 — pending → pending_review (notifies reviewer) |
+| POST | `/api/inquiry/{id}/status_review` | writer | 204 — todo / pending / rejected → pending_review (notifies reviewer) |
 | POST | `/api/inquiry/{id}/status_approved` | verifier | 204 — pending_review → done |
 | POST | `/api/inquiry/{id}/status_rejected` | verifier | 204 — pending_review → rejected |
 | POST | `/api/inquiry/{id}/reset` | writer | 204 — unconditionally → pending |
@@ -257,7 +257,8 @@ An unresolvable `address` → **400**. That includes the internal `gfm-…` addr
 **Field reference** — all optional except `address`. Enum fields take the
 integer from the [Enum reference](#enum-reference). "Level" fields are signed
 depths in metres, range −999.99…999.99; "length" fields are non-negative sizes,
-range 0…999.99. Out-of-range numerics → **400**.
+range 0…999.99; "ratio" fields are the n of a lintvoeg slope 1 : n, range
+0…99999.99. Out-of-range numerics → **400**.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -297,7 +298,7 @@ range 0…999.99. Out-of-range numerics → **400**.
 | `deformedFacade` | boolean | |
 | `thresholdUpdownSkewed` | boolean | |
 | `thresholdFrontLevel`, `thresholdBackLevel` | level | |
-| `skewedParallel`, `skewedPerpendicular` | length | |
+| `skewedParallel`, `skewedPerpendicular` | ratio | lintvoegmeting, the n of 1 : n |
 | `skewedParallelFacade`, `skewedPerpendicularFacade` | enum int | `rotation_type` |
 | `settlementSpeed` | number | |
 | `skewedWindowFrame` | boolean | |
@@ -393,6 +394,8 @@ report progresses:
   report in `pending_review` or `done` returns **403**.
 - `PUT` on a `rejected` report resets it to `pending` for resubmission.
 - `reset` forces `pending` from any state (writer convenience).
+- `status_review` is accepted in every editable state (`todo` / `pending` /
+  `rejected`), so a rejected report can be offered again without a `PUT` first.
 - Approve/reject require `pending_review`; an illegal transition → **400**.
 
 Status transitions trigger notification emails (Resend) to the relevant
@@ -501,7 +504,7 @@ curl -s -X POST "$API/api/inquiry/$INQ/sample" \
   -d '{"address":"NL.IMBAG.NUMMERAANDUIDING.0344200000000001",
        "foundationType":1,"groundLevel":-0.5,"constructionLevel":-1.2}'
 
-# 4. Request review (pending → pending_review; emails the reviewer)
+# 4. Request review (→ pending_review; emails the reviewer)
 curl -s -X POST "$API/api/inquiry/$INQ/status_review" -H "Authorization: Bearer $KEY"
 
 # 5. Poll for the verdict

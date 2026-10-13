@@ -42,6 +42,7 @@ import {
 } from "../lib/recovery-emails.ts";
 import { recordEvent, listEvents } from "../lib/dossier-events.ts";
 import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
+import { transitionStatus, WRITABLE_STATES } from "../lib/audit-status.ts";
 import { assertReviewerAllowed } from "../lib/reviewer-rule.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
@@ -131,32 +132,11 @@ async function loadRecoveryUnscoped(
 }
 
 function requireWritable(row: typeof recovery.$inferSelect) {
-  const allowed = ["todo", "pending", "rejected"];
-  if (!row.auditStatus || !allowed.includes(row.auditStatus)) {
+  if (!row.auditStatus || !WRITABLE_STATES.includes(row.auditStatus)) {
     throw new ForbiddenError(
       `Recovery is read-only in state '${row.auditStatus}'`,
     );
   }
-}
-
-function transitionStatus(
-  current: string | null,
-  target: "pending" | "pending_review" | "done" | "rejected" | "todo",
-): string {
-  const cur = current ?? "todo";
-  const allowed: Record<typeof target, string[]> = {
-    pending: [],
-    pending_review: ["pending"],
-    done: ["pending_review"],
-    rejected: ["pending_review"],
-    todo: ["pending"],
-  };
-  if (target !== "pending" && !allowed[target].includes(cur)) {
-    throw new ValidationError([
-      `Illegal audit-status transition: ${cur} → ${target}`,
-    ]);
-  }
-  return target;
 }
 
 async function emailContext(
