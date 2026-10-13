@@ -11,7 +11,7 @@ import { env } from "../config.ts";
 import { recordEvent } from "../lib/dossier-events.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
 import { sendDossierClosedMail } from "../lib/intake-emails.ts";
-import { resolveDocumentDate } from "../lib/document-date.ts";
+import { documentDateProblem, resolveDocumentDate } from "../lib/document-date.ts";
 import { assertOrgPermission } from "../lib/auth-helpers.ts";
 import { matchContractor } from "../lib/contractor-match.ts";
 import { addressDecisions, fieldGroups, ownAddress } from "../lib/dossier-addresses.ts";
@@ -449,6 +449,9 @@ commit.post("/dossier/:id/commit", async (c) => {
       throw new ValidationError([`${where}documentDate: geen rapportdatum in het document gevonden; vul de datum in`]);
     }
     const documentDate = dateChoice.date;
+    // Whether typed by the reviewer or read from the document: 2926 is a slip for 2026.
+    const dateProblem = documentDateProblem(documentDate);
+    if (dateProblem) throw new ValidationError([`${where}documentDate: ${dateProblem}`]);
     const names = plan.files.map((f) => f.originalFilename ?? `document-${f.id}`);
     const documentName = plan.files.length > 1 ? mergedName(names) : (first.originalFilename?.replace(/^[0-9a-f]{16}-/, "") ?? `dossier-${id}`);
 
