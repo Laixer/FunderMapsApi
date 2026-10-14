@@ -90,10 +90,10 @@ describe("buildRiskChangedEmail", () => {
         "- Droogstand: C → E.\n" +
         "- Ontwateringsdiepte: B → A.\n" +
         "- Bacteriële aantasting: B → C.\n" +
-        "- Vastgesteld risico: niet van toepassing → D.\n\n",
+        "- Vastgesteld risico: niet vastgesteld → D.\n\n",
     );
     expect(changed.html).toContain(
-      "<ul><li>Droogstand: C → E.</li><li>Ontwateringsdiepte: B → A.</li><li>Bacteriële aantasting: B → C.</li><li>Vastgesteld risico: niet van toepassing → D.</li></ul>",
+      "<ul><li>Droogstand: C → E.</li><li>Ontwateringsdiepte: B → A.</li><li>Bacteriële aantasting: B → C.</li><li>Vastgesteld risico: niet vastgesteld → D.</li></ul>",
     );
     const items = changed.text.split("\n").filter((line) => line.startsWith("- "));
     expect(items.length).toBe(4);
@@ -112,7 +112,7 @@ describe("buildRiskChangedEmail", () => {
     expect(changed.text).toContain("alleen voor een fundering op houten palen");
     // Inside a sentence the label keeps its small letter.
     expect(riskChangedLine(changes)).toBe(
-      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → niet bepaald, ontwateringsdiepte niet bepaald → B, bacteriële aantasting B → niet bepaald, vastgesteld risico niet bepaald → D",
+      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → niet van toepassing, ontwateringsdiepte niet van toepassing → B, bacteriële aantasting B → niet van toepassing, vastgesteld risico niet vastgesteld → D",
     );
   });
 });
@@ -164,10 +164,76 @@ describe("changed mail: the 'was' side reads like the 'now' side (2026-10-06)", 
   test("all empty before still reads niet bepaald", () => {
     const changes = compareRisk(
       { at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Molenwal 15", risk: { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: null } } } },
-      new Map([["b1", { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: "b" }]]),
+      new Map([["b1", { drystand: "c", dewateringDepth: null, bioInfection: null, unclassified: "b" }]]),
     );
     const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
-    expect(mail.text).toContain("Vastgesteld risico: niet bepaald → B.");
+    expect(mail.text).toContain("Droogstand: niet bepaald → C.");
+    expect(mail.text).toContain("Vastgesteld risico: niet vastgesteld → B.");
+  });
+});
+
+// "Vastgesteld risico: niet van toepassing → D" said the vastgesteld risico did not apply; it was
+// only not set. "niet van toepassing" / "niet bepaald" are about the three computed risks.
+describe("changed mail: a missing vastgesteld risico is niet vastgesteld", () => {
+  const changesOf = (before: Record<string, string | null>, after: Record<string, string | null>) =>
+    compareRisk({ at: "2026-09-30T10:00:00Z", buildings: { b1: { address: "Molenwal 15", risk: before as never } } }, new Map([["b1", after as never]]));
+
+  test("on either side, whatever the other risks are", () => {
+    for (const [before, after, line] of [
+      [{ drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null }, { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: "d" }, "- Vastgesteld risico: niet vastgesteld → D.\n"],
+      [{ drystand: null, dewateringDepth: null, bioInfection: null, unclassified: null }, { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: "b" }, "- Vastgesteld risico: niet vastgesteld → B.\n"],
+      [{ drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: "e" }, { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null }, "- Vastgesteld risico: E → niet vastgesteld.\n"],
+      [{ drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: "c" }, { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: "d" }, "- Vastgesteld risico: C → D.\n"],
+    ] as const) {
+      const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes: changesOf(before, after), statusUrl: "https://x", replyTo: "y" });
+      expect(mail.text).toContain(line);
+    }
+  });
+
+  test("the three computed risks keep their words", () => {
+    const changes = changesOf(
+      { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null },
+      { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: "d" },
+    );
+    const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    expect(mail.text).toContain("- Droogstand: C → niet van toepassing.\n- Ontwateringsdiepte: niet van toepassing → B.\n");
+    expect(mail.text).toContain("- Vastgesteld risico: niet vastgesteld → D.\n");
+  });
+
+  test("what is kept on the Verloop entry (body.changes) is not touched", () => {
+    const changes = changesOf(
+      { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null },
+      { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: "d" },
+    );
+    expect(changes).toEqual([
+      { buildingId: "b1", address: "Molenwal 15", fields: [{ label: "vastgesteld risico", before: null, after: "d", beforeLabel: "niet van toepassing", afterLabel: "D" }] },
+    ]);
+  });
+});
+
+// The Verloop line said "niet bepaald" where the mail beside it said "niet van toepassing".
+describe("changed: the Verloop line uses the words of the mail", () => {
+  test("every before → after of the mail's list is in the line, in the same words", () => {
+    const changes = compareRisk(
+      { at: "2026-09-30T10:00:00Z", buildings: {
+        b1: { address: "Voorbeeldstraat 1", risk: { drystand: "c", dewateringDepth: null, bioInfection: "b", unclassified: null } },
+        b2: { address: "Voorbeeldstraat 3", risk: { drystand: null, dewateringDepth: null, bioInfection: null, unclassified: null } },
+      } },
+      new Map([
+        ["b1", { drystand: null, dewateringDepth: "b", bioInfection: null, unclassified: "d" }],
+        ["b2", { drystand: "a", dewateringDepth: null, bioInfection: "a", unclassified: null }],
+      ]),
+    );
+    const line = riskChangedLine(changes);
+    expect(line).toBe(
+      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → niet van toepassing, ontwateringsdiepte niet van toepassing → B, " +
+        "bacteriële aantasting B → niet van toepassing, vastgesteld risico niet vastgesteld → D; " +
+        "Voorbeeldstraat 3 – droogstand niet bepaald → A, bacteriële aantasting niet bepaald → A",
+    );
+    const mail = buildRiskChangedEmail({ reference: "FM2026-000042", recipientName: "", changes, statusUrl: "https://x", replyTo: "y" });
+    const said = mail.text.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.replace(/^- [^:]+: /, "").replace(/\.$/, ""));
+    expect(said.length).toBe(6);
+    for (const s of said) expect(line).toContain(s);
   });
 });
 
@@ -327,7 +393,7 @@ describe("the Verloop lines of the follow-up (the melder's status page shows the
       { buildingId: "b3", address: "Voorbeeldstraat 3", fields: [{ label: "ontwateringsdiepte", before: "b", after: "a" }] },
     ]);
     expect(line).toBe(
-      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → E, vastgesteld risico niet bepaald → D; Voorbeeldstraat 3 – ontwateringsdiepte B → A",
+      "Funderingsrisico herberekend: Voorbeeldstraat 1 – droogstand C → E, vastgesteld risico niet vastgesteld → D; Voorbeeldstraat 3 – ontwateringsdiepte B → A",
     );
   });
 });

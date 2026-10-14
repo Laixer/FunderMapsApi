@@ -82,6 +82,17 @@ export interface RiskChange {
   fields: { label: string; before: string | null; after: string | null; beforeLabel?: string; afterLabel?: string }[];
 }
 
+/**
+ * One side of a change as the mail and its Verloop line write it. A missing vastgesteld risico is
+ * "niet vastgesteld": "niet van toepassing" / "niet bepaald" are about the three computed risks.
+ * Here and not in compareRisk, so what is kept on the entry (body.changes) stays as it is.
+ */
+function shownRisk(f: RiskChange["fields"][number], side: "before" | "after"): string {
+  const value = side === "before" ? f.before : f.after;
+  if (f.label === "vastgesteld risico" && !value) return "niet vastgesteld";
+  return (side === "before" ? f.beforeLabel : f.afterLabel) ?? riskLabel(value);
+}
+
 /** Which registered risks differ from the snapshot. Pure; the unit tests live here. */
 export function compareRisk(
   snapshot: RiskSnapshot,
@@ -125,7 +136,7 @@ export function buildRiskChangedEmail(input: RiskChangedEmailInput): RenderedMai
       { p: `${c.address}:` },
       // A capital and a full stop, as the list of the "ongewijzigd" mail has them. Here only:
       // the label itself is a key (PILE_ONLY_LABELS, the body of the Verloop entry).
-      { ul: c.fields.map((f) => `${capitalised(f.label)}: ${f.beforeLabel ?? riskLabel(f.before)} → ${f.afterLabel ?? riskLabel(f.after)}.`) },
+      { ul: c.fields.map((f) => `${capitalised(f.label)}: ${shownRisk(f, "before")} → ${shownRisk(f, "after")}.`) },
     );
   }
   // Droogstand and bacteriële aantasting only exist for wooden piles. When
@@ -290,7 +301,8 @@ export function riskUnchangedLine(buildings: { address: string; basis: RiskBasis
 export function riskChangedLine(changes: RiskChange[]): string {
   return (
     "Funderingsrisico herberekend: " +
-    changes.map((c) => `${c.address} – ${c.fields.map((f) => `${f.label} ${riskLabel(f.before)} → ${riskLabel(f.after)}`).join(", ")}`).join("; ")
+    // The same words as the mail ("niet van toepassing" where it says so); new lines only.
+    changes.map((c) => `${c.address} – ${c.fields.map((f) => `${f.label} ${shownRisk(f, "before")} → ${shownRisk(f, "after")}`).join(", ")}`).join("; ")
   );
 }
 

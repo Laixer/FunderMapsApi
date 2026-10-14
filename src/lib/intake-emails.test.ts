@@ -100,11 +100,27 @@ describe("formatFieldValue", () => {
   });
   test("measurements read with a decimal comma, like the rest of the mails", () => {
     expect(formatFieldValue("groundwater_level", "-1.6")).toBe("-1,6 m NAP");
-    expect(formatFieldValue("skewed_parallel", "4.5")).toBe("4,5 mm/m");
     expect(formatFieldValue("settlement_speed", "1.2")).toBe("1,2 mm per jaar");
     expect(formatFieldValue("pile_diameter_top", "180")).toBe("180 mm");
     // A number without a unit of its own is still a number.
     expect(formatFieldValue("some_measurement", "-0.35")).toBe("-0,35");
+  });
+  // A scheefstand is stored as the n of a 1:n ratio (Don, 2026-09-11) and the Studio, the map app and the
+  // PDF report show it as that ratio: "1:300". The mail said "300 mm/m", a unit that was simply wrong.
+  test("a lintvoegmeting or loodmeting is the ratio, as the Studio, the map and the PDF show it", () => {
+    for (const field of ["skewed_parallel", "skewed_perpendicular"]) {
+      expect(formatFieldValue(field, "300")).toBe("1:300");
+      expect(formatFieldValue(field, "1117")).toBe("1:1117");
+      expect(formatFieldValue(field, " 250 ")).toBe("1:250");
+      // The n as the map and the PDF print it: a whole number.
+      expect(formatFieldValue(field, "275.5")).toBe("1:276");
+      expect(formatFieldValue(field, "275,5")).toBe("1:276");
+      expect(formatFieldValue(field, "300.00")).toBe("1:300");
+      // Anything but a bare number stays as it was recorded, and gets no unit.
+      expect(formatFieldValue(field, "1:300")).toBe("1:300");
+      expect(formatFieldValue(field, "niet gemeten")).toBe("niet gemeten");
+      expect(formatFieldValue(field, "-300")).toBe("-300");
+    }
   });
   // The map app, the Studio and the PDF report show a drempelniveau in metres relative to NAP.
   test("a drempelniveau is a level like the others: metres NAP", () => {
@@ -379,7 +395,8 @@ describe("buildClosedEmail", () => {
     expect(mail.text).toContain("- Datum van het rapport: 3 november 2014");
     expect(mail.text).toContain("- Soort document: funderingsonderzoek");
     expect(mail.text).toContain("- Opgesteld door: Fugro GeoServices B.V.");
-    expect(mail.text).toContain("- Lintvoegmeting: 300 mm/m");
+    expect(mail.text).toContain("- Lintvoegmeting: 1:300\n");
+    expect(mail.text).not.toContain("mm/m");
     expect(mail.text).toContain("- Scheurvorming voorgevel: matig");
     expect(mail.text).toContain("- Houtsoort: vuren");
     expect(mail.text).toContain("niet aan een pand konden koppelen");

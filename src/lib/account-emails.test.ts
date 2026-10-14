@@ -36,6 +36,32 @@ describe("resetPasswordMail", () => {
     }
   });
 
+  // Better Auth hands the hook the whole account, the given name with it (an additional field in
+  // auth.ts). Most accounts have their address in `name`; the given name is what "je" goes with.
+  test("greets by the given name when the account has one", () => {
+    const mail = resetPasswordMail({ email: "jan@example.test", name: "jan@example.test", givenName: "Jan" }, URL_IN_MAIL);
+    expect(mail.text).toStartWith("Hallo Jan,\n\nEr is een nieuw wachtwoord aangevraagd");
+    expect(mail.html).toContain("<p>Hallo Jan,</p><p>Er is een nieuw wachtwoord aangevraagd");
+    // The given name, not the full name, even where `name` holds one.
+    expect(resetPasswordMail({ email: "jan@example.test", name: "Jan Jansen", givenName: " Jan " }, URL_IN_MAIL).text).toStartWith("Hallo Jan,\n\n");
+    expect(resetPasswordMail({ email: "w@example.test", name: null, givenName: "Wilhelmina Alexandra" }, URL_IN_MAIL).text).toStartWith(
+      "Hallo Wilhelmina Alexandra,\n\n",
+    );
+  });
+
+  test("without a given name it is as before: `name` when it is a name, else no name", () => {
+    for (const givenName of [null, undefined, "", "  ", "jan@example.test"]) {
+      expect(resetPasswordMail({ email: "jan@example.test", name: "Jan Jansen", givenName }, URL_IN_MAIL).text).toStartWith("Hallo Jan Jansen,\n\n");
+      const mail = resetPasswordMail({ email: "jan@example.test", name: "jan@example.test", givenName }, URL_IN_MAIL);
+      expect(mail.text).toStartWith("Hallo,\n\n");
+      expect(mail.text).not.toContain("@");
+    }
+  });
+
+  test("the HTML version escapes the given name", () => {
+    expect(resetPasswordMail({ email: "x@example.test", name: null, givenName: "Jan & <Piet>" }, URL_IN_MAIL).html).toContain("<p>Hallo Jan &amp; &lt;Piet&gt;,</p>");
+  });
+
   test("a name is used as it is stored, without the spaces around it", () => {
     expect(resetPasswordMail({ email: "jan@example.test", name: " Jan Jansen " }, URL_IN_MAIL).text).toStartWith("Hallo Jan Jansen,\n\n");
     expect(resetPasswordMail({ email: "an@example.test", name: "An" }, URL_IN_MAIL).html).toContain("<p>Hallo An,</p>");
