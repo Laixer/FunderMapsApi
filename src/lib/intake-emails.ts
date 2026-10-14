@@ -177,7 +177,7 @@ const FIELD_LABEL: Record<string, string> = {
   crack_facade_back_type: "Scheurvorming achtergevel",
   crack_indoor_type: "Scheurvorming binnen",
   skewed_parallel: "Lintvoegmeting",
-  skewed_perpendicular: "Scheefstand haaks op de gevel",
+  skewed_perpendicular: "Loodmeting",
   threshold_front_level: "Drempelniveau voorzijde",
   threshold_back_level: "Drempelniveau achterzijde",
   settlement_speed: "Zakkingssnelheid",

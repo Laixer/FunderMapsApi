@@ -406,6 +406,29 @@ describe("buildClosedEmail", () => {
     expect(mail.text).toContain("Beantwoord deze e-mail.");
   });
 
+  // The Studio form, the map app and the PDF report call skewed_perpendicular "Loodmeting".
+  test("a loodmeting is named as in the Studio, the map and the PDF", () => {
+    const mail = buildClosedEmail({
+      ...base,
+      outcome: "accepted",
+      note: null,
+      hasInquiry: true,
+      addresses: [
+        {
+          address: "Jollenpad 13, 1081 KC Amsterdam",
+          fields: [
+            { field: "skewed_parallel", value: "300", registered: null, comparison: "none" },
+            { field: "skewed_perpendicular", value: "275.5", registered: null, comparison: "none" },
+          ],
+          risk: null,
+        },
+      ],
+    });
+    expect(mail.text).toContain("- Lintvoegmeting: 1:300\n- Loodmeting: 1:276\n");
+    expect(mail.html).toContain("<li>Loodmeting: 1:276</li>");
+    expect(mail.text).not.toContain("Scheefstand");
+  });
+
   test("accepted with nothing differing says the risk is not expected to change", () => {
     const mail = buildClosedEmail({
       ...base,
