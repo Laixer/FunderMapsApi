@@ -215,8 +215,6 @@ const UNIT: Record<string, string> = {
   pile_diameter_bottom: "mm",
   pile_distance_length: "m",
   wood_penetration_depth: "mm",
-  skewed_parallel: "mm/m",
-  skewed_perpendicular: "mm/m",
   settlement_speed: "mm per jaar",
 };
 
@@ -358,6 +356,13 @@ export function formatFieldValue(field: string, value: string): string {
       return value;
     case "contractor":
       return value;
+    case "skewed_parallel":
+    case "skewed_perpendicular": {
+      // Stored as the n of a 1:n ratio: 300 is 1:300, as the Studio, the map app and the PDF report show it
+      // (the n a whole number, as the map and the PDF print it). Anything but a bare number stays as recorded.
+      const n = value.trim();
+      return /^\d+([.,]\d+)?$/.test(n) ? `1:${parseFloat(n.replace(",", ".")).toFixed(0)}` : value;
+    }
     default:
       if (NAP_FIELDS.has(field) && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} m NAP`;
       if (UNIT[field] && Number.isFinite(parseFloat(value))) return `${decimalComma(value)} ${UNIT[field]}`;

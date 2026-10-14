@@ -24,6 +24,7 @@ import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import { queueScopeOf } from "../lib/queue-scope.ts";
 import { existingRapportages } from "../lib/existing-rapportages.ts";
+import { personName } from "../lib/person-name.ts";
 import { createFollowUpDossier, finishFollowUp, isClosed, loadFollowUpSource } from "../lib/follow-up-dossier.ts";
 import type { AppEnv } from "../types/context.ts";
 
@@ -1026,7 +1027,7 @@ dataops.post("/dossier/:id/assign", async (c) => {
       .where(eq(appUser.id, userId))
       .limit(1);
     if (!m) throw new ValidationError(["userId is not a staff member"]);
-    name = m.name?.trim() || [m.givenName, m.lastName].filter(Boolean).join(" ").trim() || m.email;
+    name = personName(m);
   }
   if ((head.assignedTo ?? null) === userId) return c.json({ ok: true, unchanged: true });
 
