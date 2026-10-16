@@ -306,6 +306,19 @@ export function riskChangedLine(changes: RiskChange[]): string {
   );
 }
 
+/**
+ * Whether the model took the pand's risk from its QuickScan. A QuickScan class on the pand is not enough:
+ * since model-2026.3 (Worker #283) a QuickScan counts for three years, a funderingsonderzoek from the
+ * last five years leads, and an executed herstel goes first. When the model follows the QuickScan it
+ * sets every risk to the QuickScan class, so that is the test; in model-2024.1 the QuickScan always
+ * sets them, so the test holds there too. Pure, for the tests.
+ */
+export function modelFollowsQuickScan(quickScanRisk: string | null, risks: (string | null)[]): boolean {
+  if (!quickScanRisk) return false;
+  const given = risks.filter((r): r is string => r != null);
+  return given.length > 0 && given.every((r) => r.toLowerCase() === quickScanRisk.toLowerCase());
+}
+
 export async function currentBasis(buildingIds: string[]): Promise<Map<string, RiskBasis>> {
   if (buildingIds.length === 0) return new Map();
   const rows = await db
@@ -320,6 +333,7 @@ export async function currentBasis(buildingIds: string[]): Promise<Map<string, R
       dewateringDepthRisk: model_risk_static.dewatering_depth_risk,
       dewateringDepth: model_risk_static.dewatering_depth,
       bioInfectionRisk: model_risk_static.bio_infection_risk,
+      unclassifiedRisk: model_risk_static.unclassified_risk,
     })
     .from(model_risk_static)
     .where(inArray(model_risk_static.building_id, buildingIds));
@@ -354,7 +368,14 @@ export async function currentBasis(buildingIds: string[]): Promise<Map<string, R
       dewateringDepthRisk: r.dewateringDepthRisk ?? null,
       dewateringDepth: num(r.dewateringDepth),
       bioInfectionRisk: r.bioInfectionRisk ?? null,
-      quickScanRisk: quickScan.get(r.buildingId) ?? null,
+      quickScanRisk: modelFollowsQuickScan(quickScan.get(r.buildingId) ?? null, [
+        r.drystandRisk ?? null,
+        r.dewateringDepthRisk ?? null,
+        r.bioInfectionRisk ?? null,
+        r.unclassifiedRisk ?? null,
+      ])
+        ? (quickScan.get(r.buildingId) ?? null)
+        : null,
     });
   }
   return out;
