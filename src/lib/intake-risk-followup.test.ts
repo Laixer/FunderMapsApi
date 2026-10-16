@@ -4,7 +4,7 @@ process.env.DATABASE_URL ??= "postgres://localhost:5432/test";
 process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
-const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail, riskChangedLine, riskUnchangedLine } = await import("./intake-risk-followup.ts");
+const { compareRisk, buildRiskChangedEmail, explainBasis, buildRiskConfirmedEmail, riskChangedLine, riskUnchangedLine, modelFollowsQuickScan } = await import("./intake-risk-followup.ts");
 const emails = await import("./intake-emails.ts");
 
 const snapshot = {
@@ -243,6 +243,22 @@ describe("explainBasis: risk from a QuickScan (Don, 2026-10-02)", () => {
     expect(lines[0]).toContain("Verkennend Funderingsonderzoek (QuickScan)");
     expect(lines[0]).toContain("B");
     expect(lines.join(" ")).not.toContain("Funderingstype:");
+  });
+});
+
+describe("modelFollowsQuickScan: only when the model took the risk from the QuickScan (model-2026.3)", () => {
+  test("a valid QuickScan sets every risk to its class", () => {
+    expect(modelFollowsQuickScan("c", ["c", "c", "c", "c"])).toBe(true);
+  });
+  test("an expired QuickScan, or a recent onderzoek that leads: the risks are not its class", () => {
+    expect(modelFollowsQuickScan("b", ["d", "c", null, null])).toBe(false);
+  });
+  test("an executed herstel goes first: a, whatever the QuickScan said", () => {
+    expect(modelFollowsQuickScan("e", ["a", "a", "a", "a"])).toBe(false);
+  });
+  test("no QuickScan, or no risk at all", () => {
+    expect(modelFollowsQuickScan(null, ["c", "c", "c", "c"])).toBe(false);
+    expect(modelFollowsQuickScan("c", [null, null, null, null])).toBe(false);
   });
 });
 
