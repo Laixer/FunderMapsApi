@@ -35,3 +35,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Local secrets / credentials (never committed)
 .secrets/
+
+# Typst PDF: the binary + converted fonts (scripts/build-pdf.ts) and per-request work folders
+pdf/.build/
+pdf/.work/

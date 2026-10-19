@@ -70,6 +70,11 @@ const envSchema = z.object({
   // Data Studio base URL, used for deep links in workflow emails.
   STUDIO_URL: z.url().default("https://studio.fundermaps.com"),
 
+  // PDF engine of POST /api/pdf/:id. "typst" (the default) makes the report in-process with Typst
+  // (src/lib/report-pdf/); "gotenberg" sends it through the report front-end and Gotenberg as before.
+  // A request picks the other one with ?engine=gotenberg | ?engine=typst.
+  PDF_ENGINE: z.enum(["typst", "gotenberg"]).default("typst"),
+
   // PDF renderer (Gotenberg, self-hosted; replaces pdf.co).
   // GOTENBERG_URL is the base URL of the Gotenberg HTTP API — for prod that's
   // the in-VPC service URL, for local dev the rootless podman container on the

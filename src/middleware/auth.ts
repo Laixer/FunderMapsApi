@@ -14,7 +14,7 @@ import { matchReportRoute, verifyReportToken } from "../lib/report-token.ts";
 import { resolveToBuildingId } from "../services/geocoder.ts";
 import type { AppEnv, AuthUser } from "../types/context.ts";
 
-async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
+export async function loadUserWithOrgs(userId: string): Promise<AuthUser | null> {
   // Run user + orgs lookups in parallel — they're independent and this
   // halves the auth-middleware DB latency.
   const [rows, orgs] = await Promise.all([

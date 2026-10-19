@@ -32,7 +32,7 @@ Database schema is **not** managed from this repo — `FunderMapsWorker` owns th
 - `src/db/client.ts` — Drizzle + postgres.js pool
 - `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `staff.ts` (platform-org membership via `isPlatformMember`, gates `/api/dataops/*`), `tracker.ts` (product-tracker billing), `error-handler.ts`
 - `src/routes/` — HTTP handlers organized by domain; `management/` subdir for `/api/management/*` (admin-only)
-- `src/services/` — `geocoder` and `mail` (Resend). The other integrations live in `src/lib/`: `s3.ts` (Spaces), `windmill.ts` (kicks the document reader for one dossier), and the Gotenberg call sits in `routes/pdf.ts`
+- `src/services/` — `geocoder` and `mail` (Resend). The other integrations live in `src/lib/`: `s3.ts` (Spaces), `windmill.ts` (kicks the document reader for one dossier), and `report-pdf/` (the PDF report made with Typst: its data SQL, the print maps, the render); the Gotenberg call sits in `routes/pdf.ts`
 - `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set — and `legacy-password.ts` for the PBKDF2 verify hook)
 - `src/types/context.ts` — Hono `AppEnv` type
 
@@ -78,7 +78,7 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (reviewer / approved / declined, see `src/lib/report-emails.ts`)
 - `/api/recovery`, `/api/recovery/:recovery_id/sample` — same shape as inquiry
 - `/api/incident` — read-only listing by building (no submission surface — incidents reach `report.incident` via other channels)
-- `/api/pdf` — PDF rendering: Gotenberg renders the report front-end and the bytes come back inline
+- `/api/pdf` — the PDF report, bytes inline. Default engine Typst (`src/lib/report-pdf/`, template in `pdf/`, binary and fonts from `bun run build` into `pdf/.build`); `?engine=gotenberg` (or env `PDF_ENGINE=gotenberg`) renders the report front-end through Gotenberg as before, and a Typst failure falls back to Gotenberg. Both write the same two billing rows (analysis, statistics) for the report service account
 
 Platform staff only (`/api/dataops/*` — gated by `staffMiddleware`):
 - the review lane: queue and its count, dossier, verdicts, outcome, questions to the melder, hand-over, commit (one or several rapportages), upload, addresses, values, contractor, recovery, work packages
