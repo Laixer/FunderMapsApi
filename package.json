@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "echo 'No build step required'",
+    "build": "bun scripts/build-pdf.ts",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "test": "bun test",
@@ -25,11 +25,15 @@
     "@better-auth/core": "~1.7.10",
     "@better-auth/passkey": "~1.7.10",
     "@hono/zod-validator": "^0.9.1",
+    "@mapbox/vector-tile": "^3.0.0",
     "better-auth": "~1.7.10",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
+    "pbf": "^5.1.2",
     "pdf-lib": "^1.17.1",
     "postgres": "^3.4.9",
+    "wawoff2": "^2.0.1",
+    "xz-decompress": "^0.2.3",
     "zod": "^4.6.7"
   }
 }
