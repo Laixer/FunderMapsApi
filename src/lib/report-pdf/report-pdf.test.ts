@@ -6,7 +6,7 @@ process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
 const { bindPand } = await import("./data.ts");
-const { renderMap } = await import("./map.ts");
+const { borderLines, renderMap } = await import("./map.ts");
 const { amsterdamDate } = await import("./render.ts");
 
 const PAND = "NL.IMBAG.PAND.0363100012066783";
@@ -28,6 +28,35 @@ describe("report data: the pand id is a bound parameter", () => {
       expect(q.params.length).toBeGreaterThan(0);
       expect(new Set(q.params)).toEqual(new Set([PAND]));
     }
+  });
+});
+
+describe("report data: only tables the API's database role may read", () => {
+  test("no maplayer table (the Incidenten districts come from the tiles)", async () => {
+    for (const name of ["front", "back"]) {
+      const text = await Bun.file(new URL(`./sql/${name}.sql`, import.meta.url)).text();
+      const code = text.split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+      expect(code).not.toMatch(/\bmaplayer\./);
+    }
+  });
+});
+
+describe("Incidenten districts: the border without the tiles' cut lines", () => {
+  const P = (x: number, y: number) => ({ x, y });
+  test("a polygon inside the tile keeps its whole ring as one line", () => {
+    const ring = [P(10, 10), P(100, 10), P(100, 100), P(10, 100), P(10, 10)];
+    expect(borderLines([ring], 4096)).toEqual([ring]);
+  });
+
+  test("the sides along the clip line past the tile edge are left out", () => {
+    // a district running out of the tile on the right: ST_AsMVTGeom cut it at x = 4096 + 64
+    const ring = [P(4000, 10), P(4160, 10), P(4160, 200), P(4000, 200), P(4000, 10)];
+    expect(borderLines([ring], 4096)).toEqual([[P(4160, 200), P(4000, 200), P(4000, 10), P(4160, 10)]]);
+  });
+
+  test("a corner piece loses both cut sides and keeps its real border as one line", () => {
+    const ring = [P(-64, -64), P(50, -64), P(50, 0), P(0, 50), P(-64, 50), P(-64, -64)];
+    expect(borderLines([ring], 4096)).toEqual([[P(50, -64), P(50, 0), P(0, 50), P(-64, 50)]]);
   });
 });
 

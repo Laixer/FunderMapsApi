@@ -9,8 +9,9 @@
 --   subsidence_historic GET /api/product/:id/subsidence/historic src/routes/product.ts:30-42
 --   report              GET /api/report/:id                      src/routes/report.ts:14-119
 --   building_info       GET /api/geocoder/building-info/:id      src/routes/geocoder.ts:28-88 (map centre only)
---   incident_district   Martin tile source maplayer.incident_district(z,x,y) (FunderMapsWorker schema.sql),
---                       the districts of the Incidenten map at zoom 10 around the pand
+--   incident_map        the Incidenten map's centre and view; its districts come from the tileserver's
+--                       incident_district tiles (report-pdf/map.ts incidentDistricts): the API's role
+--                       reads no maplayer table
 -- The two /product routes also write a billing row (product_tracker, via middleware/tracker.ts);
 -- this file does not: it only SELECTs.
 --
@@ -188,9 +189,8 @@ select json_build_object(
       from report.recovery_sample s
       where s.building_id = (select building_id from p)), '[]')),
 
-  -- The Incidenten map: its centre and the districts the zoom-10 view shows, as
-  -- maplayer.incident_district(z, x, y) serves them below zoom 12 (geom_simple). Geometry in
-  -- EPSG:3857, whole metres. px = (x - bbox[0]) / 76.437, py = (bbox[3] - y) / 76.437.
+  -- The Incidenten map: its centre and the zoom-10 view in EPSG:3857 (px = (x - bbox[0]) / 76.437,
+  -- py = (bbox[3] - y) / 76.437). render.ts adds the districts from the tiles.
   'incident_map', (
     select json_build_object(
       'center_lon', ST_X(ST_Transform(v.c, 4326)), 'center_lat', ST_Y(ST_Transform(v.c, 4326)),
@@ -199,13 +199,6 @@ select json_build_object(
                           else 'fallback_amsterdam' end,
       'zoom', 10, 'width_px', 716.16, 'height_px', 318.29, 'm_per_px', 76.43702828517626,
       'bbox_3857', json_build_array(round(ST_XMin(v.env)::numeric, 1), round(ST_YMin(v.env)::numeric, 1),
-                                    round(ST_XMax(v.env)::numeric, 1), round(ST_YMax(v.env)::numeric, 1)),
-      'districts', coalesce((
-        select json_agg(json_build_object('district_id', t.district_id, 'municipality_id', t.municipality_id,
-                                          'incident_count', t.incident_count,
-                                          'geometry', ST_AsGeoJSON(t.geom_simple, 0)::json)
-                        order by t.incident_count, t.district_id)
-        from maplayer.incident_district_tiles t
-        where t.geom_simple && ST_Expand(v.env, 64 * 76.43702828517626 / 8)), '[]'))
+                                    round(ST_XMax(v.env)::numeric, 1), round(ST_YMax(v.env)::numeric, 1)))
     from view v)
 );
