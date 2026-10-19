@@ -1,4 +1,4 @@
-import { VectorTile } from "@mapbox/vector-tile";
+import { classifyRings, VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
 
 // A print map of a pand's surroundings, without a browser: the OpenFreeMap vector tiles the FunderMaps basemap
@@ -28,6 +28,7 @@ export interface MapLabels {
 
 const BASEMAP_TILEJSON = "https://tiles.openfreemap.org/planet";
 const BUILDINGS_TILEJSON = "https://tiles.fundermaps.com/buildings";
+const INCIDENT_DISTRICT_TILEJSON = "https://tiles.fundermaps.com/incident_district";
 const YEAR_LAYER = new URL("../../../pdf/assets/front/construction-year.layer.json", import.meta.url);
 
 // ---- colours and widths from the basemap style (layer id in the comment)
@@ -59,8 +60,8 @@ async function getTileJson(url: string) {
 }
 const tiles = new Map<string, Uint8Array>();
 const TILE_CACHE = 256;
-async function getTile(url: string): Promise<Uint8Array | null> {
-  const hit = tiles.get(url);
+async function getTile(url: string, cache = true): Promise<Uint8Array | null> {
+  const hit = cache ? tiles.get(url) : undefined;
   if (hit) {
     tiles.delete(url);
     tiles.set(url, hit);
@@ -70,6 +71,7 @@ async function getTile(url: string): Promise<Uint8Array | null> {
   if (r.status === 404 || r.status === 204) return null;
   if (!r.ok) throw new Error(`map: tile ${url} answered ${r.status}`);
   const buf = new Uint8Array(await r.arrayBuffer());
+  if (!cache) return buf;
   tiles.set(url, buf);
   if (tiles.size > TILE_CACHE) tiles.delete(tiles.keys().next().value!);
   return buf;
@@ -252,4 +254,91 @@ export async function renderMap(o: MapOptions): Promise<{ svg: string; labels: M
       labels: placed.map((l) => ({ x: r1(l.x), y: r1(l.y), angle: r1(l.angle), text: l.text })),
     },
   };
+}
+
+// ---- the districts of the Incidenten map, from the tileserver's incident_district source at zoom 10: the
+// rows of maplayer.incident_district_tiles (geom_simple below zoom 12) that the old report's map showed. The
+// API's database role reads no maplayer table, the tileserver's does. Geometry in EPSG:3857, whole metres.
+export interface IncidentDistrict {
+  district_id: string;
+  municipality_id: string | null;
+  incident_count: number;
+  geometry: { type: "MultiPolygon"; coordinates: number[][][][] }; // the fill, one polygon per tile piece
+  edges: { type: "MultiLineString"; coordinates: number[][][] }; // the border, without the tiles' cut lines
+}
+
+const MERCATOR = 20037508.342789244;
+export async function incidentDistricts(bbox: [number, number, number, number]): Promise<IncidentDistrict[]> {
+  const z = 10;
+  const size = (2 * MERCATOR) / 2 ** z; // one tile in metres
+  const [x0, y0, x1, y1] = bbox;
+  const list: [number, number][] = [];
+  for (let ty = Math.floor((MERCATOR - y1) / size); ty <= Math.floor((MERCATOR - y0) / size); ty++) {
+    for (let tx = Math.floor((x0 + MERCATOR) / size); tx <= Math.floor((x1 + MERCATOR) / size); tx++) list.push([tx, ty]);
+  }
+  const tj = await getTileJson(INCIDENT_DISTRICT_TILEJSON);
+  const byId = new Map<string, IncidentDistrict>();
+  await Promise.all(list.map(async ([tx, ty]) => {
+    const url = tj.tiles[0]!.replace("{z}", String(z)).replace("{x}", String(tx)).replace("{y}", String(ty));
+    const buf = await getTile(url, false); // not cached: the counts change with every tile refresh
+    if (!buf || !buf.length) return;
+    const layer = new VectorTile(new PbfReader(buf)).layers.incident_district;
+    if (!layer) return;
+    for (let k = 0; k < layer.length; k++) {
+      const f = layer.feature(k);
+      if (f.type !== 3) continue;
+      const p = f.properties as Record<string, string | number>;
+      const at = (q: Pt) => [
+        Math.round(-MERCATOR + (tx + q.x / f.extent) * size),
+        Math.round(MERCATOR - (ty + q.y / f.extent) * size),
+      ];
+      const rings = f.loadGeometry();
+      const id = String(p.district_id);
+      let d = byId.get(id);
+      if (!d) {
+        d = {
+          district_id: id,
+          municipality_id: p.municipality_id === undefined ? null : String(p.municipality_id),
+          incident_count: Number(p.incident_count),
+          geometry: { type: "MultiPolygon", coordinates: [] },
+          edges: { type: "MultiLineString", coordinates: [] },
+        };
+        byId.set(id, d);
+      }
+      for (const poly of classifyRings(rings)) d.geometry.coordinates.push(poly.map((ring) => ring.map(at)));
+      for (const line of borderLines(rings, f.extent)) d.edges.coordinates.push(line.map(at));
+    }
+  }));
+  // drawn from the fewest meldingen up, as the old query ordered them
+  return [...byId.values()].sort((a, b) => a.incident_count - b.incident_count || (a.district_id < b.district_id ? -1 : 1));
+}
+
+// A tile polygon's own border as lines. ST_AsMVTGeom (clip_geom, buffer 64 in maplayer.incident_district()) cuts
+// each polygon 64 units past the tile edge; a segment along that cut is no border, and stroked it would draw a
+// seam where two tiles meet. Rings are closed (the last point repeats the first).
+export function borderLines(rings: Pt[][], extent: number, buffer = 64): Pt[][] {
+  const lo = -buffer, hi = extent + buffer;
+  const cut = (a: Pt, b: Pt) => (a.x === b.x && (a.x <= lo || a.x >= hi)) || (a.y === b.y && (a.y <= lo || a.y >= hi));
+  const out: Pt[][] = [];
+  for (const ring of rings) {
+    const n = ring.length - 1;
+    if (n < 1) continue;
+    // start right after a cut, so a border that runs through the ring's first point stays one line
+    let start = 0;
+    for (let i = 0; i < n; i++) if (cut(ring[i]!, ring[i + 1]!)) { start = i + 1; break; }
+    let line: Pt[] = [];
+    for (let k = 0; k < n; k++) {
+      const i = (start + k) % n;
+      const a = ring[i]!, b = ring[i + 1]!;
+      if (cut(a, b)) {
+        if (line.length > 1) out.push(line);
+        line = [];
+        continue;
+      }
+      if (line.length === 0) line.push(a);
+      line.push(b);
+    }
+    if (line.length > 1) out.push(line);
+  }
+  return out;
 }

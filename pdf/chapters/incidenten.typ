@@ -1,6 +1,6 @@
 // Chapter "Incidenten" (IncidentsChapter.vue).
 // Per-pand meldingen (report.incident) are loaded by the old report but printed nowhere; the map colours the
-// districts by the number of panden with an intake dossier (maplayer.incident_district_tiles).
+// districts by the number of panden with an intake dossier (the tileserver's incident_district tiles).
 #import "../lib-back.typ": *
 
 #let legend-colors = (rgb("#c1d4e6"), rgb("#91bad6"), rgb("#528aad"), rgb("#38658a"), rgb("#1e3f67"))

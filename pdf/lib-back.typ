@@ -556,7 +556,7 @@
 }
 
 // ---- the Incidenten map (incidenten.md §4): map.ts's base map (prefix.svg + prefix.labels.json, 717 x 319 map
-// px at zoom 10, drawn by src/lib/report-pdf/map.ts in overview mode), the districts with meldingen from data (incident_map), the
+// px at zoom 10, drawn by src/lib/report-pdf/map.ts in overview mode), the districts with meldingen (incident_map, from the incident_district tiles), the
 // pand as Mapbox's double ring. Shown like the old snapshot: object-fit cover in a 495:220 box.
 #let district-colors = ((1, rgb("#c1d4e6")), (3, rgb("#91bad6")), (5, rgb("#528aad")), (10, rgb("#1e3f67")))
 #let district-color(n) = {
@@ -588,18 +588,22 @@
       let k = s / m.m_per_px
       let pt(c) = ((c.at(0) - cx) * k + width / 2, (cy - c.at(1)) * k + H * s / 2)
       for dist in m.districts {
-        let g = dist.geometry
-        let polys = if g.type == "MultiPolygon" { g.coordinates } else { (g.coordinates,) }
-        let parts = ()
-        for poly in polys {
+        // the fill, one shape per polygon: a district's pieces from two tiles overlap along the tile edge, and
+        // even-odd over all of them would cut the overlap out
+        for poly in dist.geometry.coordinates {
+          let parts = ()
           for ring in poly {
             parts.push(curve.move(pt(ring.first())))
             for c in ring.slice(1) { parts.push(curve.line(pt(c))) }
             parts.push(curve.close())
           }
+          place(dy: dy, curve(fill: district-color(dist.incident_count), fill-rule: "even-odd", stroke: none, ..parts))
         }
-        place(dy: dy, curve(fill: district-color(dist.incident_count), fill-rule: "even-odd",
-          stroke: 0.5pt + white, ..parts))
+        // the white border, without the lines where a tile cut the district (map.ts borderLines)
+        for line in dist.edges.coordinates {
+          place(dy: dy, curve(stroke: 0.5pt + white, curve.move(pt(line.first())),
+            ..line.slice(1).map(c => curve.line(pt(c)))))
+        }
       }
     }
     // street names from map.ts (none at zoom 10 with the zoom-14 data), as lib.typ's map-box draws them
