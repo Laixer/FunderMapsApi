@@ -1,5 +1,6 @@
 // Chapter "Rapportage" (ReportingChapter.vue). The bar chart's counts come from
-// data.statistics_product_inquiries, as in the Vue report.
+// data.statistics_product_inquiries, as in the Vue report: sample rows per year. With the "reports-distinct" fix,
+// reports per year (back.sql total_report_count_distinct).
 #import "../lib-back.typ": *
 
 #let rapportage-shown(d) = (arr(d.back.report.at("inquiries", default: none)).len() > 0
@@ -33,7 +34,8 @@
 
 #let rapportage(d) = {
   let reports = sorted-inquiries(d.back.report)
-  let trc = arr(d.back.statistics.at("total_report_count", default: none))
+  let trc = arr(d.back.statistics.at(
+    if fixed("reports-distinct") { "total_report_count_distinct" } else { "total_report_count" }, default: none))
   let content = {
     back-header("Rapportage", icon: "file-report")
     para("Onder de risicobeoordelingen in dit rapport liggen onderzoeksrapportages voor uw pand of voor panden in de directe omgeving. Hieronder vindt u welke rapportages zijn meegenomen, en hoeveel onderzoeken er per jaar in uw wijk zijn uitgevoerd – meer onderzoeken in uw buurt geven over het algemeen een betrouwbaardere modelinschatting.")

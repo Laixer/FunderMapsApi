@@ -21,8 +21,9 @@
 #import "chapters/incidenten.typ": incidenten
 #import "chapters/slot.typ": aanvullend-onderzoek, disclaimer
 
-// Gevelscan is off, as in the Vue report; end-back(d, show-gevelscan: true) renders it.
-#let show-gevelscan = false
+// Gevelscan is off, as in the Vue report, unless the "gevelscan" fix is on (lib-back.typ `fixes`).
+#import "lib-back.typ": fixed
+#let show-gevelscan = fixed("gevelscan")
 
 #let middle-back(d) = back-type({
   fundering(d)
