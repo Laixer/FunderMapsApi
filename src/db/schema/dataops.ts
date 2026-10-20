@@ -135,7 +135,12 @@ export const extractionField = dataopsSchema.table("extraction_field", {
   /** Page (1-based) and character offset of the citation in the pdftotext output, located at ingest. The document-order key; null = not found / no text. */
   evidencePage: integer("evidence_page"),
   evidenceOffset: integer("evidence_offset"),
-  /** pending · auto_accepted · confirmed · corrected · rejected · superseded */
+  /**
+   * pending · auto_accepted · confirmed · corrected · rejected · superseded. Still open for the reviewer:
+   * pending, auto_accepted, rejected. `auto_accepted` is legacy: the Worker's confidence gate was removed on
+   * 2026-08-26 (100% of intake is reviewed by a person), but rows written before that still carry the value,
+   * and they were never looked at either.
+   */
   state: text().notNull(),
   /** Per-address values (phase B): the address as the report wrote it, and the geocoder row it resolved to. Null = document-level. */
   addressText: text("address_text"),

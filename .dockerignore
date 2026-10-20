@@ -5,9 +5,7 @@ node_modules
 .env.*
 !.env.example
 docs
-sql
 scripts
-drizzle.config.ts
 CLAUDE.md
 *.md
 **/*.test.ts

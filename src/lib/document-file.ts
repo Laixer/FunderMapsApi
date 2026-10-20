@@ -29,23 +29,6 @@ export interface DocumentFileInfo {
   sizeBytes: number | null;
 }
 
-/**
- * Media types the upload whitelist accepts that a browser can display inline.
- * `image/tiff` is deliberately absent: it is on the whitelist but no major
- * browser renders it, so previewing it would show a broken image.
- */
-const PREVIEWABLE_IMAGE_MIMES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/bmp",
-  "image/webp",
-]);
-
-export function isPreviewableImage(mimeType: string | null): boolean {
-  return mimeType !== null && PREVIEWABLE_IMAGE_MIMES.has(mimeType);
-}
-
 export async function describeDocumentFile(
   folder: "inquiry-report" | "recovery-report",
   documentFile: string,

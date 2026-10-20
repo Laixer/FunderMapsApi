@@ -13,7 +13,7 @@ import { incidentDistricts, renderMap } from "./map.ts";
 // The template, its assets and the chart package live in pdf/; `bun run build` puts the pinned typst binary and the
 // fonts (converted from the report's Greycliff web fonts) in pdf/.build (scripts/build-pdf.ts).
 
-export const PDF_ROOT = fileURLToPath(new URL("../../../pdf/", import.meta.url));
+const PDF_ROOT = fileURLToPath(new URL("../../../pdf/", import.meta.url));
 const TYPST = process.env.PDF_TYPST_BIN ?? `${PDF_ROOT}.build/typst`;
 const FONTS = `${PDF_ROOT}.build/fonts`;
 const TIMEOUT_MS = 90_000;

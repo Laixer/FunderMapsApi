@@ -30,4 +30,4 @@ export function listPage(
 }
 
 /** The largest value an `integer` column, a LIMIT or an OFFSET takes without a second look. */
-export const MAX_INT4 = 2_147_483_647;
+const MAX_INT4 = 2_147_483_647;

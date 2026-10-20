@@ -22,7 +22,7 @@ bun run --bun tsc --noEmit    # Type check
 bun test                      # Run tests
 ```
 
-Database schema is **not** managed from this repo — `FunderMapsWorker` owns the migrations and `schema.sql`. The `drizzle-kit` devDep is present for Drizzle's type generation, not for `push`/`migrate`. To bootstrap a fresh DB, run `FunderMapsWorker/sql/init_db.sh`.
+Database schema is **not** managed from this repo — `FunderMapsWorker` owns the migrations and `schema.sql`. To bootstrap a fresh DB, run `FunderMapsWorker/sql/init_db.sh`.
 
 ## Architecture
 

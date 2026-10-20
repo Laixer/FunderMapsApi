@@ -1,7 +1,7 @@
 import { ValidationError } from "./errors.ts";
 
 /** How a dossier can be closed; the values `outcome=` accepts on the queue. */
-export const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
+const CLOSED_OUTCOMES = new Set(["rejected", "duplicate", "no_data", "accepted"]);
 
 export type QueueScope = { kind: "desk" } | { kind: "all" } | { kind: "outcomes"; outcomes: string[] };
 

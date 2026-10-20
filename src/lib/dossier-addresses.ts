@@ -184,7 +184,7 @@ function toInfo(r: { externalId: string; buildingId: string | null; street: stri
 }
 
 /** geocoder.address rows for a set of nummeraanduidingen, keyed by that id. */
-export async function addressInfo(ids: string[]): Promise<Map<string, AddressInfo>> {
+async function addressInfo(ids: string[]): Promise<Map<string, AddressInfo>> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return new Map();
   const rows = await db

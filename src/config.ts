@@ -78,15 +78,8 @@ const envSchema = z.object({
   // presents; absent, the whole intake lane answers 503 rather than accepting
   // anonymous writes.
   INTAKE_TOKEN: z.string().optional(),
-  // Portal number baked into every meldcode: FIR<client><year>-<seq>. 01 is
-  // FunderMaps' own form; 10, 22-26 and 61-70 are the municipal portals that
-  // moved off our infrastructure in March 2026.
-  INTAKE_CLIENT_ID: z.coerce.number().int().min(0).max(99).default(1),
   // Where the melder follows their melding: `${INTAKE_URL}/melding/<meldcode>`.
   INTAKE_URL: z.url().default("https://melden.fundermaps.com"),
-  // Reply-To on melder-facing mail, and the address the copy tells them to
-  // write to. Defaults to the sender until an inbound (reply) route exists;
-  // tracker #1020 wants replies keyed on the meldcode back onto the dossier.
 
   // Windmill, for kicking the Data Ops pipeline the moment a staff member
   // uploads a document (the Studio's "Nieuwe rapportage"). Without a token the
@@ -94,13 +87,6 @@ const envSchema = z.object({
   WINDMILL_URL: z.url().default("https://windmill.fundermaps.com"),
   WINDMILL_WORKSPACE: z.string().default("fundermaps"),
   WINDMILL_TOKEN: z.string().optional(),
-
-  // Proxy
-  PROXY_ENABLED: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
-  PROXY_HEADER: z.string().default("X-Forwarded-For"),
 });
 
 export const env = envSchema.parse(process.env);

@@ -3,7 +3,6 @@ import {
   text,
   boolean,
   date,
-  varchar,
   doublePrecision,
 } from "drizzle-orm/pg-core";
 
@@ -14,19 +13,10 @@ export const geocoderSchema = pgSchema("geocoder");
 // unless the query wraps with ST_AsText/ST_AsGeoJSON. Treat the field
 // as opaque from Drizzle's perspective.
 
-export const country = geocoderSchema.table("country", {
-  id: text().primaryKey(),
-  externalId: text("external_id").notNull(),
-  name: text().notNull(),
-  geom: text().notNull(),
-});
-
 export const state = geocoderSchema.table("state", {
   id: text().primaryKey(),
   externalId: text("external_id").notNull(),
-  countryId: text("country_id")
-    .notNull()
-    .references(() => country.id),
+  countryId: text("country_id").notNull(),
   name: text().notNull(),
   water: boolean().notNull(),
   geom: text().notNull(),

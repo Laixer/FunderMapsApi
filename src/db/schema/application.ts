@@ -9,7 +9,6 @@ import {
   bigint,
   serial,
   primaryKey,
-  unique,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
