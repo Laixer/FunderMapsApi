@@ -166,8 +166,8 @@ if (import.meta.main) {
 export default {
   port: env.PORT,
   // Default 10s is too tight for /api/pdf/:id, which holds the request while
-  // Gotenberg renders the report SPA in headless Chromium (chart-heavy reports
-  // can take 30–60s+). Match the 5-minute AbortSignal in routes/pdf.ts.
+  // Typst makes the report (~10s on the 1-vCPU api-prod; its own limit is the
+  // 90s TIMEOUT_MS in lib/report-pdf/render.ts). 255s is Bun's maximum.
   idleTimeout: 255,
   fetch: app.fetch,
 };

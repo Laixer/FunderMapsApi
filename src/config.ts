@@ -70,31 +70,8 @@ const envSchema = z.object({
   // Data Studio base URL, used for deep links in workflow emails.
   STUDIO_URL: z.url().default("https://studio.fundermaps.com"),
 
-  // PDF engine of POST /api/pdf/:id. "typst" (the default) makes the report in-process with Typst
-  // (src/lib/report-pdf/); "gotenberg" sends it through the report front-end and Gotenberg as before.
-  // A request picks the other one with ?engine=gotenberg | ?engine=typst.
-  PDF_ENGINE: z.enum(["typst", "gotenberg"]).default("typst"),
-
-  // PDF renderer (Gotenberg, self-hosted; replaces pdf.co).
-  // GOTENBERG_URL is the base URL of the Gotenberg HTTP API — for prod that's
-  // the in-VPC service URL, for local dev the rootless podman container on the
-  // host. REPORT_RENDER_URL is the base URL of the report front-end that
-  // Gotenberg renders into a PDF (defaults to the existing whale-app DO
-  // instance).
-  GOTENBERG_URL: z.url().optional(),
-  // Optional HTTP basic auth for Gotenberg (`--api-enable-basic-auth`). Both
-  // must be set to send the header; either alone is treated as unset.
-  GOTENBERG_USERNAME: z.string().optional(),
-  GOTENBERG_PASSWORD: z.string().optional(),
-  REPORT_RENDER_URL: z
-    .string()
-    .default("https://whale-app-nm9uv.ondigitalocean.app"),
-  // Per-render tokens for the report front-end (lib/report-token.ts). With
-  // both set, /api/pdf/:id hands Gotenberg a 5-minute, one-pand, read-only
-  // token instead of relying on a key baked into the report bundle. The
-  // service user is the account the PDF reads as. Either unset: renders run
-  // as before and `fmrt.` tokens are refused.
-  REPORT_TOKEN_SECRET: z.string().min(32).optional(),
+  // The account a PDF report bills as (routes/pdf.ts): its analysis and statistics rows in
+  // product_tracker, the same two rows the old report page wrote. Unset: the report writes none.
   REPORT_SERVICE_USER_ID: z.string().optional(),
 
   // Public intake (the terugmeldformulier). The shared secret the intake app
