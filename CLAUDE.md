@@ -78,7 +78,7 @@ Auth-protected (session or `fmsk.` API key):
 - `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (reviewer / approved / declined, see `src/lib/report-emails.ts`)
 - `/api/recovery`, `/api/recovery/:recovery_id/sample` — same shape as inquiry
 - `/api/incident` — read-only listing by building (no submission surface — incidents reach `report.incident` via other channels)
-- `/api/pdf` — the PDF report, bytes inline. Default engine Typst (`src/lib/report-pdf/`, template in `pdf/`, binary and fonts from `bun run build` into `pdf/.build`); `?engine=gotenberg` (or env `PDF_ENGINE=gotenberg`) renders the report front-end through Gotenberg as before, and a Typst failure falls back to Gotenberg. Both write the same two billing rows (analysis, statistics) for the report service account
+- `/api/pdf` — the PDF report, bytes inline. Default engine Typst (`src/lib/report-pdf/`, template in `pdf/`, binary and fonts from `bun run build` into `pdf/.build`); `?engine=gotenberg` (or env `PDF_ENGINE=gotenberg`) renders the report front-end through Gotenberg as before, and a Typst failure falls back to Gotenberg. Both write the same two billing rows (analysis, statistics) for the report service account. Env `PDF_FIXES` (comma-separated) switches on fixes for defects of the old report, by name (`pdf/lib-back.typ` `fixes`: gevelscan, palen, risk-highest, reports-distinct, herstel-latest, meldingen); unset = the report as the Vue version printed it
 
 Platform staff only (`/api/dataops/*` — gated by `staffMiddleware`):
 - the review lane: queue and its count, dossier, verdicts, outcome, questions to the melder, hand-over, commit (one or several rapportages), upload, addresses, values, contractor, recovery, work packages

@@ -118,7 +118,29 @@ select json_build_object(
         from data.statistics_product_inquiries t where t.neighborhood_id = h.neighborhood_id), '[]'),
       'municipality_report_count', coalesce((
         select json_agg(json_build_object('year', t.year, 'count', t.count::text) order by t.year)
-        from data.statistics_product_inquiry_municipality t where t.municipality_id = h.municipality_id), '[]'))
+        from data.statistics_product_inquiry_municipality t where t.municipality_id = h.municipality_id), '[]'),
+      -- For the PDF's fixes (pdf/lib-back.typ `fixes`), not in the API: the two matviews above as their texts mean
+      -- them. statistics_product_foundation_risk keeps each pand's LOWEST class (ascending order, limit 1); this
+      -- takes the highest. statistics_product_inquiries counts sample rows (count(i.id) after the sample join);
+      -- this counts reports.
+      'foundation_risk_distribution_highest', coalesce((
+        select json_agg(json_build_object('foundation_risk', x.risk, 'percentage', round(x.pct, 2)::text))
+        from (select risk, count(*)::numeric / sum(count(*)) over () * 100 as pct
+              from (select (select r from unnest(array[m.drystand_risk, m.bio_infection_risk, m.dewatering_depth_risk,
+                                                       m.unclassified_risk]) r
+                            order by r desc nulls last limit 1) as risk
+                    from data.model_risk_static m where m.neighborhood_id = h.neighborhood_id) y
+              where risk is not null group by risk) x), '[]'),
+      'total_report_count_distinct', coalesce((
+        select json_agg(json_build_object('year', x.year, 'count', x.count::text) order by x.year)
+        from (select year.year, count(distinct i.id) as count
+              from report.inquiry i
+              join report.inquiry_sample s on s.inquiry_id = i.id
+              -- geocoder.building_active, spelled out: the API's role may not read that view
+              join geocoder.building ba on ba.external_id = s.building_id::text and ba.active = true and ba.geom is not null,
+              lateral cast(date_part('year', i.document_date)::int as int) year(year)
+              where ba.neighborhood_id = h.neighborhood_id
+              group by year.year) x), '[]'))
     from h),
 
   -- product.ts:33-37 (no ORDER BY in the API either)
@@ -136,6 +158,12 @@ select json_build_object(
                       order by i.create_date desc)
       from report.incident i
       where i.building_id = (select building_id from p)), '[]'),
+    -- For the "meldingen" fix: the topic of each intake dossier on this pand, newest first, and nothing else
+    -- (routes/incident.ts ?include=meldingen, Don's rule of 2026-09-18).
+    'melding_topics', coalesce((
+      select json_agg(coalesce(nullif(d.payload ->> 'topicLabel', ''), d.payload ->> 'topic') order by d.created_at desc)
+      from dataops.dossier d
+      where d.building_id = (select building_id from p) and d.payload ->> 'topic' is not null), '[]'),
     'inquiries', coalesce((
       select json_agg(json_build_object(
                'id', i.id, 'document_name', i.document_name, 'type', i.type, 'document_date', i.document_date,

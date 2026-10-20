@@ -1,11 +1,13 @@
 // The risk chapter's closing block "Risicoverdeling van de wijk" (FoundationRiskChapter.vue 341-366).
-// The pie draws data.statistics_product_foundation_risk, as the Vue report does.
+// The pie draws data.statistics_product_foundation_risk, as the Vue report does: each pand's lowest class. With
+// the "risk-highest" fix, its highest class (back.sql foundation_risk_distribution_highest), as the text says.
 #import "../lib-back.typ": *
 
 #let risk-colors = (rgb("#2E7D32"), rgb("#9E9D24"), rgb("#F9A825"), rgb("#EF6C00"), rgb("#C62828"))
 
 #let risk-pie-block(d) = {
-  let dist = arr(d.back.statistics.at("foundation_risk_distribution", default: none))
+  let key = if fixed("risk-highest") { "foundation_risk_distribution_highest" } else { "foundation_risk_distribution" }
+  let dist = arr(d.back.statistics.at(key, default: none))
   let values = ("a", "b", "c", "d", "e").map(k => {
     let r = dist.find(r => r.foundation_risk == k)
     if r == none { 0 } else { float(r.percentage) }

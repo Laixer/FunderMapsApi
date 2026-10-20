@@ -1,6 +1,9 @@
 // Chapter "Incidenten" (IncidentsChapter.vue).
 // Per-pand meldingen (report.incident) are loaded by the old report but printed nowhere; the map colours the
 // districts by the number of panden with an intake dossier (the tileserver's incident_district tiles).
+// With the "meldingen" fix, one line names the topics of the pand's own meldingen: the intake dossiers' topics
+// (back.sql report.melding_topics) and the old incidents' question types. Don's rule (2026-09-18, as the map's
+// pand panel): the pand and the topic, nothing else; no melder, date, status or number.
 #import "../lib-back.typ": *
 
 #let legend-colors = (rgb("#c1d4e6"), rgb("#91bad6"), rgb("#528aad"), rgb("#38658a"), rgb("#1e3f67"))
@@ -27,6 +30,20 @@
   block(breakable: false, {
     back-header("Incidenten", icon: "alert")
     para("In heel Nederland komen meldingen binnen van schade die mogelijk verband houdt met funderingsproblemen, zoals scheuren in gevels, verzakkingen of klemmende deuren en ramen. Deze signalen worden verzameld en geanalyseerd via het Landelijk Loket Funderingsproblematiek van het KCAF. De meldingen worden ontsloten op een gebiedsgerichte kaart, waarvan hieronder een uitsnede is weergegeven voor de omgeving van het pand.")
+    if fixed("meldingen") {
+      let report = d.back.report
+      let topics = arr(report.at("melding_topics", default: none)) + arr(report.at("incidents", default: none))
+        .map(i => question-type-label.at(str(i.at("question_type", default: "")), default: "Melding"))
+      // each topic once, with how often it was reported, in order of first appearance
+      let named = topics.dedup().map(t => {
+        let n = topics.filter(x => x == t).len()
+        if n > 1 { t + " (" + str(n) + "×)" } else { t }
+      })
+      gap(16)
+      para(if topics.len() == 0 { "Voor dit pand zelf zijn geen meldingen bekend." }
+        else if topics.len() == 1 { "Voor dit pand zelf is 1 melding bekend: " + named.first() + "." }
+        else { "Voor dit pand zelf zijn " + str(topics.len()) + " meldingen bekend: " + named.join(", ") + "." })
+    }
     gap(40)
     layout(size => incident-map(d.back.at("incident_map", default: none), base, size.width))
     gap(40)

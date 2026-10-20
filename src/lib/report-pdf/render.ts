@@ -43,7 +43,11 @@ export interface RenderedReport {
   ms: { data: number; maps: number; typst: number };
 }
 
-export async function renderReportPdf(id: string): Promise<RenderedReport> {
+// Fixes for defects of the old report, by name (pdf/lib-back.typ `fixes`): env PDF_FIXES, comma-separated. Unset =
+// the report as the Vue version printed it.
+const FIXES = process.env.PDF_FIXES ?? "";
+
+export async function renderReportPdf(id: string, opts: { fixes?: string } = {}): Promise<RenderedReport> {
   const buildingId = await resolveToBuildingId(id);
   const t0 = performance.now();
   const data = await loadReportData(buildingId);
@@ -92,6 +96,7 @@ export async function renderReportPdf(id: string): Promise<RenderedReport> {
         "--input", `map=/.work/${name}/map`,
         "--input", `incident-map=/.work/${name}/incidents`,
         "--input", `date=${amsterdamDate()}`,
+        "--input", `fixes=${opts.fixes ?? FIXES}`,
         `${PDF_ROOT}report.typ`, `${dir}/report.pdf`,
       ], { stdout: "ignore", stderr: "pipe", timeout: TIMEOUT_MS, killSignal: "SIGKILL" });
       const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);

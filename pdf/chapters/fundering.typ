@@ -135,6 +135,48 @@
   }
   gap(28)
 
+  // "Palen & Hout" and "Niveau & Kwaliteit" (the "palen" fix): the selected sample's fields that hold a value,
+  // labels and units as fieldLabels.ts / fieldFormatters.ts; the left column takes the first half.
+  if fixed("palen") and s != none {
+    let groups = (
+      ("Palen & Hout", (
+        ("Paalkop niveau", field(s, "pile_head_level", fmt: fmt-nap)),
+        ("Paalkop diameter", field(s, "pile_diameter_top", fmt: fmt-mm)),
+        ("Hart-op-hart afstand", field(s, "pile_distance_length", fmt: fmt-m)),
+        ("Paalpunt niveau", field(s, "pile_tip_level", fmt: fmt-nap)),
+        ("Paalpunt diameter", field(s, "pile_diameter_bottom", fmt: fmt-mm)),
+        ("Oplanger lengte", field(s, "concrete_charger_length", fmt: fmt-m)),
+        ("Houtsoort", field(s, "wood_type", labels: wood-type-label)),
+        ("Inslagdiepte", field(s, "wood_penetration_depth", fmt: fmt-mm)),
+        ("Houtkwaliteit paal", field(s, "wood_quality", labels: wood-quality-label)),
+        ("Resterende draagkracht paal", field(s, "carrying_capacity_quality", labels: quality-label)),
+        ("Houtaantasting", field(s, "wood_encroachment", labels: wood-encroachment-label)),
+        ("Kwaliteit draagkracht paal", field(s, "pile_wood_capacity_vertical_quality", labels: quality-label)),
+        ("Noodzaak houtonderzoek", field(s, "wood_quality_necessity")),
+        ("Horizontale draagkracht paal", field(s, "wood_capacity_horizontal_quality", labels: quality-label)),
+      )),
+      ("Niveau & Kwaliteit", (
+        ("Kwaliteit metselwerk", field(s, "mason_quality", labels: quality-label)),
+        ("Funderingsbalk", field(s, "construction_quality", labels: quality-label)),
+        ("Niveau onderkant funderingsbalk", field(s, "construction_level", fmt: fmt-nap)),
+      )),
+    )
+    for (title, rows) in groups {
+      let rows = rows.filter(((l, v)) => has-value(v))
+      if rows.len() > 0 {
+        let half = calc.ceil(rows.len() / 2)
+        block(breakable: false, highlight({
+          h3(title)
+          gap(12)
+          grid(columns: (1fr, 1fr), column-gutter: px(16),
+            rows.slice(0, half).map(((l, v)) => item-grid(l, v)).join(),
+            rows.slice(half).map(((l, v)) => item-grid(l, v)).join())
+        }))
+        gap(28)
+      }
+    }
+  }
+
   // neighbourhood pie + legend (grid-cols-12 items-center): pie col-span-5 (282 px tall), legend col-span-7
   let buckets = (0, 0, 0, 0, 0)
   for r in arr(b.statistics.at("foundation_type_distribution", default: none)) {

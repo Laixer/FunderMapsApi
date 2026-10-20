@@ -290,6 +290,27 @@
 
 // ---- report data as the store combines it (back-common.md §5)
 #let arr(v) = if v == none { () } else { v }
+
+// ---- fixes for defects of the old report, each switched on by name in the `fixes` input (comma-separated;
+// render.ts passes env PDF_FIXES). None named = the report as the Vue version printed it.
+//   gevelscan         the Gevelscan chapter, which never printed
+//   palen             Fundering's "Palen & Hout" and "Niveau & Kwaliteit" blocks, which never printed
+//   risk-highest      the neighbourhood pie by each pand's highest risk class, as its text says (was the lowest)
+//   reports-distinct  "Aantal rapportages in de wijk per jaar" counts reports, not their sample rows
+//   herstel-latest    Funderingsherstel shows the latest herstel, not the record edited last
+//   meldingen         Incidenten names the topics of the pand's own meldingen (Don's rule: pand and topic only)
+#let fixes = sys.inputs.at("fixes", default: "").split(",").map(s => s.trim()).filter(s => s != "")
+#let fixed(name) = name in fixes
+
+// enum maps for the fixes (FunderMapsReport src/datastructures/enums, FunderMapsWebFront EIncidentQuestionType)
+#let quality-label = (nil: "Slecht", small: "Redelijk", mediocre: "Goed", large: "Zeer goed")
+#let wood-type-label = (pine: "Grenen", spruce: "Vuren")
+#let wood-quality-label = (area1: "Gebied I", area2: "Gebied II", area3: "Gebied III", area4: "Gebied IV")
+#let wood-encroachment-label = (fungus_infection: "Schimmelaantasting",
+  bio_fungus_infection: "Bacteriële en schimmelaantasting", bio_infection: "Bacteriële aantasting")
+#let question-type-label = (buy_sell: "Kopen/verkopen", registration: "Registratie", legal: "Juridische vraag",
+  financial: "Financiële vraag", guidance: "Begeleiding", recovery: "Herstelvraag", research: "Onderzoeksvraag",
+  other: "Overig")
 // Reports newest document_date first (string compare, null last), ties by the higher id.
 #let sorted-inquiries(report) = arr(report.at("inquiries", default: none)).sorted(key: i => {
   let dd = i.at("document_date", default: none)
