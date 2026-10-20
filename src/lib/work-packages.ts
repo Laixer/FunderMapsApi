@@ -8,7 +8,7 @@
 // the same pattern the table's CHECK enforces, so a bad id is a 400 here
 // instead of a constraint violation (500) on insert.
 
-export const PACKAGE_ID = /^[a-z0-9-]{1,64}$/;
+const PACKAGE_ID = /^[a-z0-9-]{1,64}$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Far more than the Studio defines (11 on 2026-10-09); a bound, not a quota. */

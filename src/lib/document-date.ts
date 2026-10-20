@@ -13,7 +13,7 @@
  */
 
 /** Document kinds whose date, when unreadable, is best approximated by the construction year. */
-export const ARCHIVE_TYPES = new Set(["archive_research", "architectural_research"]);
+const ARCHIVE_TYPES = new Set(["archive_research", "architectural_research"]);
 
 export type DocumentDateSource = "explicit" | "document" | "built_year";
 
@@ -25,7 +25,7 @@ export interface DocumentDateChoice {
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** How far past today a document date may lie before it can only be a typo. */
-export const MAX_YEARS_AHEAD = 10;
+const MAX_YEARS_AHEAD = 10;
 
 /**
  * Why a document date cannot be right, as a sentence for the person who typed

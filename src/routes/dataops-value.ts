@@ -34,7 +34,7 @@ import type { AppEnv } from "../types/context.ts";
 const routes = new Hono<AppEnv>();
 
 /** Keys of the commit's applyField() switch: what can land on a sample. */
-export const SAMPLE_FIELDS = new Set([
+const SAMPLE_FIELDS = new Set([
   "built_year", "concrete_charger_length", "crack_facade_back_type", "crack_facade_front_type",
   "crack_indoor_type", "damage_cause", "damage_characteristics", "enforcement_term", "follow_up_note",
   "foundation_depth", "foundation_quality", "foundation_type", "groundlevel", "groundwater_level",

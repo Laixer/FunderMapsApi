@@ -7,7 +7,7 @@ import { inquirySample } from "../db/schema/report.ts";
  * so "filled" means the same thing on both sides: a non-null value; `false`
  * counts, the note counts as one more when it is not empty.
  */
-export const SAMPLE_FIELD_KEYS = [
+const SAMPLE_FIELD_KEYS = [
   "builtYear", "substructure", "cpt", "monitoringWell", "groundLevel", "groundwaterLevelTemp", "groundwaterLevelNet",
   "recoveryAdvised", "foundationType", "enforcementTerm", "damageCause", "damageCharacteristics", "constructionPile",
   "woodType", "woodEncroachment", "constructionLevel", "woodLevel", "foundationDepth", "masonLevel", "pileDiameterTop",

@@ -48,7 +48,7 @@ import { storeRiskSnapshot } from "./intake-risk-followup.ts";
 export const RESPONSE_BUSINESS_DAYS = 2;
 
 /** The mailbox every dossier mail is sent from; replies (plus-addressed with the reference) come back via the Resend webhook. */
-export const QUESTION_MAILBOX = "melding@funderdata.nl";
+const QUESTION_MAILBOX = "melding@funderdata.nl";
 
 const TZ = "Europe/Amsterdam";
 
@@ -318,7 +318,7 @@ function decimalComma(value: string): string {
   return value.replace(/(\d)\.(?=\d)/g, "$1,");
 }
 
-export function fieldLabel(field: string): string {
+function fieldLabel(field: string): string {
   return FIELD_LABEL[field] ?? field.replaceAll("_", " ");
 }
 
@@ -833,10 +833,9 @@ export interface PreparedMail {
 
 /**
  * Build the ontvangstbevestiging for a dossier without sending or logging
- * anything. Exported so the mail can be previewed (a smoke test, or later the
- * review screen's "stuur terugkoppeling" with editable text).
+ * anything.
  */
-export async function prepareReceivedMail(head: DossierHead): Promise<PreparedMail | null> {
+async function prepareReceivedMail(head: DossierHead): Promise<PreparedMail | null> {
   const to = recipientOf(head);
   if (!to) return null;
 
@@ -1068,7 +1067,7 @@ export async function sendDossierClosedMail(dossierIds: number[]): Promise<void>
 }
 
 /** The afronding for a closed dossier, built but not sent. Null when there is no outcome or nobody to tell. */
-export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail | null> {
+async function prepareClosedMail(head: DossierHead): Promise<PreparedMail | null> {
   const to = recipientOf(head);
   if (!to || !head.outcome) return null;
 
@@ -1087,11 +1086,6 @@ export async function prepareClosedMail(head: DossierHead): Promise<PreparedMail
     replyTo: questionReplyAddress(head.reference!),
   });
   return { head, to, mail, addresses };
-}
-
-/** Dossier heads by id, for callers that preview. */
-export async function loadDossierHeads(ids: number[]): Promise<DossierHead[]> {
-  return loadHeads(ids);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

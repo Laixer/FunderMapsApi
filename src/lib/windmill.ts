@@ -10,7 +10,7 @@ import { env } from "../config.ts";
  * sweep will read the dossier anyway, and an upload must never be lost
  * because the orchestrator was busy.
  */
-export async function runScript(path: string, args: Record<string, unknown>): Promise<string | null> {
+async function runScript(path: string, args: Record<string, unknown>): Promise<string | null> {
   if (!env.WINDMILL_TOKEN) return null;
   const url = `${env.WINDMILL_URL}/api/w/${env.WINDMILL_WORKSPACE}/jobs/run/p/${path}`;
   try {

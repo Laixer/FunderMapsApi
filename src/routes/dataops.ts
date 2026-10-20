@@ -41,15 +41,6 @@ import type { AppEnv } from "../types/context.ts";
  */
 const dataops = new Hono<AppEnv>();
 
-/**
- * States a reviewer still has to look at.
- *
- * `auto_accepted` is legacy: the Worker's confidence gate was removed on
- * 2026-08-26 (100% of intake is reviewed by a person), but rows written before
- * that still carry the value, and they were never looked at either.
- */
-const OPEN = ["pending", "auto_accepted", "rejected"] as const;
-
 /** A dossier still on the reviewer's desk: not committed, not closed out. */
 const onDesk = () => and(isNull(dossier.inquiryId), isNull(dossier.outcome));
 
@@ -119,7 +110,7 @@ const MELDCODE = /^FM\d{4}-\d{6}$/i;
  * invisible unless you first knew to switch to the Afgewezen view -- which
  * means you had to know the answer to find the question.
  */
-export function isPinpointQuery(q: string | undefined): boolean {
+function isPinpointQuery(q: string | undefined): boolean {
   if (!q) return false;
   return MELDCODE.test(q) || (/^\d+$/.test(q) && Number.isSafeInteger(Number(q)));
 }

@@ -85,7 +85,6 @@ type SampleValues = Partial<typeof inquirySample.$inferInsert>;
 function applyField(values: SampleValues, notes: string[], field: string, value: string) {
   // Drizzle types some numeric columns as number and others (numeric) as string.
   const numN = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : undefined);
-  const num = (v: string) => (Number.isFinite(parseFloat(v)) ? String(parseFloat(v)) : undefined);
   switch (field) {
     case "foundation_type": values.foundationType = value; break;
     case "built_year": if (/^\d{4}$/.test(value)) values.builtYear = `${value}-01-01`; break;
