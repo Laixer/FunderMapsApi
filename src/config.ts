@@ -70,10 +70,6 @@ const envSchema = z.object({
   // Data Studio base URL, used for deep links in workflow emails.
   STUDIO_URL: z.url().default("https://studio.fundermaps.com"),
 
-  // The account a PDF report bills as (routes/pdf.ts): its analysis and statistics rows in
-  // product_tracker, the same two rows the old report page wrote. Unset: the report writes none.
-  REPORT_SERVICE_USER_ID: z.string().optional(),
-
   // Public intake (the terugmeldformulier). The shared secret the intake app
   // presents; absent, the whole intake lane answers 503 rather than accepting
   // anonymous writes.

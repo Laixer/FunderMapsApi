@@ -10,8 +10,8 @@ const { errorHandler } = await import("../middleware/error-handler.ts");
 const { default: pdf, deps } = await import("./pdf.ts");
 
 // POST /api/pdf/:id makes the report with Typst; a Typst failure is a 502 (there is no second engine any more),
-// missing data a 404. The engine and the billing step are swapped on `deps` for one test and put back after;
-// nothing renders, connects or bills.
+// missing data a 404. The engine is swapped on `deps` for one test and put back after; nothing renders or
+// connects. A report writes no billing rows (dropped 2026-10-21: they only ever billed FunderMaps B.V. itself).
 
 const saved = { ...deps };
 afterEach(() => {
@@ -20,14 +20,11 @@ afterEach(() => {
 
 const PAND = "NL.IMBAG.PAND.0363100012066783";
 function setup(typst: (id: string) => Promise<unknown>) {
-  const calls = { typst: [] as string[], track: [] as string[] };
+  const calls = { typst: [] as string[] };
   deps.renderTypst = (async (id: string) => {
     calls.typst.push(id);
     return typst(id);
   }) as typeof deps.renderTypst;
-  deps.track = async (buildingId: string) => {
-    calls.track.push(buildingId);
-  };
   const app = new Hono();
   app.onError(errorHandler);
   app.use(async (c, next) => {
@@ -44,32 +41,30 @@ const typstReport = async () => ({
 });
 
 describe("POST /api/pdf/:id", () => {
-  test("makes the report with Typst and writes its billing rows", async () => {
+  test("makes the report with Typst", async () => {
     const { app, calls } = setup(typstReport);
     const res = await app.request(`/${PAND}`, { method: "POST" });
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Pdf-Engine")).toBe("typst");
     expect(res.headers.get("Content-Type")).toBe("application/pdf");
     expect(await res.text()).toBe("%PDF-typst");
-    expect(calls).toEqual({ typst: [PAND], track: [PAND] });
+    expect(calls).toEqual({ typst: [PAND] });
   });
 
-  test("a Typst failure is a 502 and bills nothing", async () => {
-    const { app, calls } = setup(async () => {
+  test("a Typst failure is a 502", async () => {
+    const { app } = setup(async () => {
       throw new Error("typst exited with 1");
     });
     const res = await app.request(`/${PAND}`, { method: "POST" });
     expect(res.status).toBe(502);
-    expect(calls.track).toEqual([]);
   });
 
   test("missing report data is a 404", async () => {
-    const { app, calls } = setup(async () => {
+    const { app } = setup(async () => {
       throw new NotFoundError("No report data");
     });
     const res = await app.request(`/${PAND}`, { method: "POST" });
     expect(res.status).toBe(404);
-    expect(calls.track).toEqual([]);
   });
 
   test("the old ?engine=gotenberg is ignored: Typst makes the report", async () => {
