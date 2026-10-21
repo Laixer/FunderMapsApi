@@ -33,7 +33,7 @@ Database schema is **not** managed from this repo — `FunderMapsWorker` owns th
 - `src/middleware/` — `auth.ts` (session + dual-stack API key), `admin.ts` (4-line literal check on `role === "administrator"`), `staff.ts` (platform-org membership via `isPlatformMember`, gates `/api/dataops/*`), `tracker.ts` (product-tracker billing), `error-handler.ts`
 - `src/routes/` — HTTP handlers organized by domain; `management/` subdir for `/api/management/*` (admin-only)
 - `src/services/` — `geocoder` and `mail` (Resend). The other integrations live in `src/lib/`: `s3.ts` (Spaces), `windmill.ts` (kicks the document reader for one dossier), and `report-pdf/` (the PDF report made with Typst: its data SQL, the print maps, the render)
-- `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set — and `legacy-password.ts` for the PBKDF2 verify hook)
+- `src/lib/` — Shared utilities and BA wiring (notably `auth.ts` — BA plugin set; passwords use BA's default scrypt)
 - `src/types/context.ts` — Hono `AppEnv` type
 
 ## Database Schemas
@@ -92,7 +92,6 @@ Nothing runs on a timer in this process. Scheduled work lives in Windmill (the m
 Pending items here are **load-bearing, not aspirational**. Speculative parity gaps against the long-retired C# WebApi (e.g. `IncidentController`, `PDOKLocationService` exposure, `VersionController`) have been removed — re-add only with a concrete consumer.
 
 **Auth migration (Better Auth, see `~/.claude/projects/-home-eve/memory/project_better_auth_migration.md`):**
-- **Legacy PBKDF2 verify hook removal** (Phase 1, step 1, finish). Auto-upgrade is live (`src/lib/auth.ts` + `src/lib/legacy-password.ts`). When `SELECT count(*) FROM application.account WHERE provider_id='credential' AND password NOT LIKE '%:%'` reaches 0, the legacy verify hook + helper become dead code and should be deleted.
 - **apiKey Phase C drain** (operational, customer-paced). New keys go through BA; legacy `application.auth_key` rows are only validated, never rotated server-side. Monitor with the query pinned in the migration plan memory. Phase D (legacy fallback + table drop) lands once the legacy keys have drained; the C# Webservice is gone since 2026-08-29.
 - **Better Auth `organization` plugin** (Phase 2). Biggest blast radius — BA's org/member tables don't match `application.organization` + `organization_user`; preferred shape is per-plugin schema override so C# joins keep compiling until retirement.
 

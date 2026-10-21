@@ -11,42 +11,12 @@ import { bearer } from "better-auth/plugins/bearer";
 import { passkey } from "@better-auth/passkey";
 import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import {
-  hashPassword as baHashPassword,
-  verifyPassword as baVerifyPassword,
-} from "better-auth/crypto";
-import { eq } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { env } from "../config.ts";
 import * as schema from "../db/schema/index.ts";
-import { account } from "../db/schema/application.ts";
-import {
-  looksLikeDotnetIdentity,
-  looksLikeFunderMapsCustom,
-  verifyDotnetIdentityV3,
-  verifyFunderMapsCustom,
-} from "./legacy-password.ts";
 import { sendMail } from "../services/mail.ts";
 import { resetPasswordMail } from "./account-emails.ts";
 import { ac as orgAc, roles as orgRoles } from "./permissions.ts";
-
-// Fire-and-forget rehash: when a legacy PBKDF2 hash verifies, swap it for
-// BA scrypt so the next login takes the native path. Account.password is
-// unique per user (16-byte salt), so WHERE password = oldHash is exact.
-function upgradeLegacyHash(oldHash: string, password: string): void {
-  void (async () => {
-    try {
-      const newHash = await baHashPassword(password);
-      await db
-        .update(account)
-        .set({ password: newHash, updatedAt: new Date() })
-        .where(eq(account.password, oldHash));
-    } catch (error) {
-      // Non-fatal: next login will retry the upgrade.
-      console.warn("Failed to upgrade legacy password hash", error);
-    }
-  })();
-}
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -60,28 +30,9 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,
-    password: {
-      hash: baHashPassword,
-      verify: async ({ hash, password }) => {
-        // FunderMaps custom PBKDF2 format (272 migrated users from C# era).
-        // Fixed-size 49-byte payload — try this first since it's the
-        // dominant legacy format.
-        if (looksLikeFunderMapsCustom(hash)) {
-          const ok = verifyFunderMapsCustom(hash, password);
-          if (ok) upgradeLegacyHash(hash, password);
-          return ok;
-        }
-        // Standard .NET Identity v3 (variable-size); kept for completeness.
-        if (looksLikeDotnetIdentity(hash)) {
-          const ok = verifyDotnetIdentityV3(hash, password);
-          if (ok) upgradeLegacyHash(hash, password);
-          return ok;
-        }
-        // Anything else is treated as Better Auth's native scrypt format
-        // ("salt:hex(key)"). New users land here from day 1.
-        return baVerifyPassword({ hash, password });
-      },
-    },
+    // Passwords use Better Auth's own scrypt hash + verify. The C#-era PBKDF2
+    // hashes were cleared on 2026-10-21 (accounts that never logged in again
+    // since the cut-over); those users set a new password via the reset mail.
     // Password reset email. The frontend POSTs /api/auth/request-password-reset
     // with { email, redirectTo: "<frontend>/reset-password" }; Better Auth
     // generates a one-time token, embeds it in `url`, and invokes this hook.
