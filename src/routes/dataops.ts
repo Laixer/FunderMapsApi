@@ -255,6 +255,8 @@ const KINDS = new Set([
   "facade_scan",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A municipality by its CBS code (GM0363 = Amsterdam). */
+const MUNICIPALITY = /^GM\d{4}$/i;
 const csv = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -317,6 +319,22 @@ function queueFilters(c: Context<AppEnv>): SQL[] {
     const bad = kinds.filter((x) => !KINDS.has(x));
     if (bad.length) throw new ValidationError([`unknown kind: ${bad.join(", ")}`]);
     where.push(inArray(readKind, kinds));
+  }
+
+  // The dossiers of one municipality, by CBS code (2026-10-22): a click on the
+  // Datastroom's map. Through the pand, so a dossier without one is not in it.
+  const municipality = c.req.query("municipality");
+  if (municipality && !MUNICIPALITY.test(municipality)) {
+    throw new ValidationError(["municipality must be a CBS code like GM0363"]);
+  }
+  if (municipality) {
+    where.push(sql`exists (
+      select 1 from geocoder.building b
+      join geocoder.neighborhood n on n.id = b.neighborhood_id
+      join geocoder.district di on di.id = n.district_id
+      join geocoder.municipality m on m.id = di.municipality_id
+      where b.external_id = ${dossier.buildingId} and m.external_id = ${municipality.toUpperCase()}
+    )`);
   }
 
   return where;
