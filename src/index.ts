@@ -46,6 +46,7 @@ import dataopsTodayRoutes from "./routes/dataops-today.ts";
 import dataopsBuildingsRoutes from "./routes/dataops-buildings.ts";
 import dataopsReaderOpsRoutes from "./routes/dataops-reader-ops.ts";
 import dataopsFeedbackRoutes from "./routes/dataops-feedback.ts";
+import dataopsDataQualityRoutes from "./routes/dataops-data-quality.ts";
 import dataopsMapRoutes from "./routes/dataops-map.ts";
 import pdfRoutes from "./routes/pdf.ts";
 import managementRoutes from "./routes/management/index.ts";
@@ -165,6 +166,7 @@ app.route("/api/dataops", dataopsTodayRoutes);
 app.route("/api/dataops", dataopsBuildingsRoutes);
 app.route("/api/dataops", dataopsReaderOpsRoutes);
 app.route("/api/dataops", dataopsFeedbackRoutes);
+app.route("/api/dataops", dataopsDataQualityRoutes);
 
 app.use("/api/pdf/*", authMiddleware);
 app.route("/api/pdf", pdfRoutes);
