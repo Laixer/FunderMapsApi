@@ -11,7 +11,8 @@ import type { AppEnv } from "../types/context.ts";
  * Same definitions as that board:
  *
  * - per day: reads by lane, failed reads, spend (USD) and k tokens, read
- *   duration p50/p95 (seconds, finished reads without an error), mails by kind;
+ *   duration p50/p95 (seconds, finished reads without an error), mails by kind
+ *   (every kind found: the four known ones always, zero when quiet);
  * - totals: reads, failed, spend, the share of judged values confirmed rather
  *   than rejected, the median hours from receipt to an outcome;
  * - review effort per person (verdicts, median seconds per verdict, hours);
@@ -27,7 +28,8 @@ const iso = (col: SQL) => sql`to_json(${col}) #>> '{}'`;
 const SINCE = sql`((date_trunc('day', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam') - make_interval(days => ${DAYS - 1}))`;
 const DAY = (col: string) => sql.raw(`to_char(${col} AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD')`);
 const LANES = ["document", "text", "vision"] as const;
-const MAIL_KINDS = ["received", "closed", "question"] as const;
+/** The kinds always present (zero when quiet); any other kind found is added, never dropped (risk_changed was, in #289). */
+const MAIL_KINDS = ["received", "question", "closed", "risk_changed"] as const;
 
 routes.get("/reader-ops", async (c) => {
   const [days, lanes, perDay, mails, totals, effort, failures] = await Promise.all([
@@ -93,6 +95,7 @@ routes.get("/reader-ops", async (c) => {
   const flat = (key: keyof Omit<Day, "day">): DayValue[] => per.map((d) => ({ day: d.day, key, value: d[key] }));
   type Person = { name: string | null; givenName: string | null; lastName: string | null; email: string | null; verdicts: number; medianSeconds: number; hours: number };
   const t = rows<Record<string, number | null>>(totals)[0] ?? {};
+  const mailRows = rows<DayValue>(mails);
 
   return c.json({
     generatedAt: new Date().toISOString(),
@@ -101,7 +104,7 @@ routes.get("/reader-ops", async (c) => {
       readsByLane: seriesByKey(dayList, rows<DayValue>(lanes), LANES, 0),
       ...seriesByKey(dayList, [...flat("failed"), ...flat("usd"), ...flat("ktokens")], ["failed", "usd", "ktokens"], 0),
       ...seriesByKey(dayList, [...flat("p50"), ...flat("p95")], ["p50", "p95"], null),
-      mailsByKind: seriesByKey(dayList, rows<DayValue>(mails), MAIL_KINDS, 0),
+      mailsByKind: seriesByKey(dayList, mailRows, [...new Set([...MAIL_KINDS, ...mailRows.map((m) => m.key)])], 0),
     },
     totals: {
       reads: t.reads ?? 0,
