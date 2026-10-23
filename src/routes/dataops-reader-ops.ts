@@ -15,7 +15,10 @@ import type { AppEnv } from "../types/context.ts";
  *   (every kind found: the four known ones always, zero when quiet);
  * - totals: reads, failed, spend, the share of judged values confirmed rather
  *   than rejected, the median hours from receipt to an outcome;
- * - review effort per person (verdicts, median seconds per verdict, hours);
+ * - review effort per person (verdicts, median seconds per verdict, hours) —
+ *   administrators only (2026-10-23): in Grafana only its few logins saw who did
+ *   how much; every staff member sees the Studio, so the rest get `effort: null`
+ *   and the query is not run;
  * - the last 20 failed reads.
  *
  * "Day" is the Amsterdam day. Read-only, staff-only like the rest of /api/dataops.
@@ -32,6 +35,7 @@ const LANES = ["document", "text", "vision"] as const;
 const MAIL_KINDS = ["received", "question", "closed", "risk_changed"] as const;
 
 routes.get("/reader-ops", async (c) => {
+  const seesPeople = c.get("user")?.role === "administrator";
   const [days, lanes, perDay, mails, totals, effort, failures] = await Promise.all([
     db.execute(sql`
       SELECT to_char(d, 'YYYY-MM-DD') AS day
@@ -70,7 +74,7 @@ routes.get("/reader-ops", async (c) => {
         (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM outcome_at - received_at) / 3600)::numeric, 1)::float
            FROM dataops.dossier WHERE outcome_at >= ${SINCE} AND received_at IS NOT NULL) AS "medianDecisionHours"
     `),
-    db.execute(sql`
+    !seesPeople ? Promise.resolve([]) : db.execute(sql`
       SELECT u.name, u.given_name AS "givenName", u.last_name AS "lastName", u.email,
         count(*)::int AS verdicts,
         round(percentile_cont(0.5) WITHIN GROUP (ORDER BY v.review_seconds))::int AS "medianSeconds",
@@ -114,7 +118,7 @@ routes.get("/reader-ops", async (c) => {
       confirmed: t.confirmed ?? 0,
       medianDecisionHours: t.medianDecisionHours ?? null,
     },
-    effort: rows<Person>(effort).map((p) => ({ person: personLabel(p), verdicts: p.verdicts, medianSeconds: p.medianSeconds, hours: p.hours })),
+    effort: !seesPeople ? null : rows<Person>(effort).map((p) => ({ person: personLabel(p), verdicts: p.verdicts, medianSeconds: p.medianSeconds, hours: p.hours })),
     failures: rows(failures),
   });
 });
