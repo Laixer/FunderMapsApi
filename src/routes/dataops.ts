@@ -23,6 +23,7 @@ import { organizationUser, user as appUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
 import { queueScopeOf } from "../lib/queue-scope.ts";
+import { nowOnlyFilters, TREND_DAYS } from "../lib/queue-trend.ts";
 import { existingRapportages } from "../lib/existing-rapportages.ts";
 import { personName } from "../lib/person-name.ts";
 import { createFollowUpDossier, finishFollowUp, isClosed, loadFollowUpSource } from "../lib/follow-up-dossier.ts";
@@ -413,6 +414,73 @@ dataops.get("/queue/stats", async (c) => {
     .from(dossier)
     .where(and(...where));
   return c.json({ count: row?.count ?? 0 });
+});
+
+/**
+ * The same slice over the last 30 Amsterdam days (2026-10-23): how many were
+ * open at the end of each day, how many got an outcome that day, and now the
+ * oldest open one and how many wait longer than a week. The Grafana board
+ * "Operations" (work packages over time), moved into the Studio's Vandaag.
+ *
+ * "Open at the end of day d" = received before the next midnight and without an
+ * outcome yet then. A dossier leaves the desk with an outcome (onDesk also asks
+ * for no rapportage, and on 2026-10-23 no dossier had one without an outcome),
+ * so the last point is the desk count of /queue/stats with the same filters.
+ * A reopened dossier counts as open since its receipt; a closed one without a
+ * recorded moment never counts as open.
+ *
+ * Takes the filters on a dossier's own facts only; one that describes now
+ * (state, age, assignedTo, outcome, scope) is a 400 — see lib/queue-trend.ts.
+ */
+dataops.get("/queue/trend", async (c) => {
+  const refused = nowOnlyFilters(c.req.query());
+  if (refused.length) {
+    throw new ValidationError([`a trend cannot filter on how a dossier stands now: ${refused.join(", ")}`]);
+  }
+  const q = c.req.query("q")?.trim();
+  const where: SQL[] = [...queueFilters(c)];
+  if (q) where.push(buildQueueSearchPredicate(q));
+
+  const [days, now] = await Promise.all([
+    db.execute(sql`
+      WITH x AS (
+        SELECT coalesce(received_at, created_at) AS rcv, outcome, outcome_at, inquiry_id
+        FROM ${dossier} WHERE ${where.length ? and(...where) : sql`true`}
+      ),
+      days AS (
+        SELECT d::date AS day,
+          d AT TIME ZONE 'Europe/Amsterdam' AS start,
+          (d + interval '1 day') AT TIME ZONE 'Europe/Amsterdam' AS next
+        FROM generate_series(
+          (now() AT TIME ZONE 'Europe/Amsterdam')::date - ${TREND_DAYS - 1}::int,
+          (now() AT TIME ZONE 'Europe/Amsterdam')::date,
+          interval '1 day') AS d
+      )
+      SELECT to_char(days.day, 'YYYY-MM-DD') AS day,
+        count(x.rcv) FILTER (WHERE x.rcv < days.next
+          AND (x.outcome IS NULL OR x.outcome_at >= days.next)
+          AND (x.inquiry_id IS NULL OR x.outcome IS NOT NULL))::int AS open,
+        count(x.rcv) FILTER (WHERE x.outcome_at >= days.start AND x.outcome_at < days.next)::int AS handled
+      FROM days LEFT JOIN x ON true
+      GROUP BY days.day ORDER BY days.day
+    `),
+    db.execute(sql`
+      SELECT count(*)::int AS open,
+        ((now() AT TIME ZONE 'Europe/Amsterdam')::date
+          - (min(coalesce(received_at, created_at)) AT TIME ZONE 'Europe/Amsterdam')::date)::int AS "oldestDays",
+        count(*) FILTER (WHERE coalesce(received_at, created_at) < now() - interval '7 days')::int AS "overWeek"
+      FROM ${dossier} WHERE ${and(onDesk()!, ...where)}
+    `),
+  ]);
+
+  const series = days as unknown as { day: string; open: number; handled: number }[];
+  const n = (now as unknown as { open: number; oldestDays: number | null; overWeek: number }[])[0];
+  return c.json({
+    days: series.map((d) => d.day),
+    open: series.map((d) => d.open),
+    handled: series.map((d) => d.handled),
+    now: { open: n?.open ?? 0, oldestDays: n?.oldestDays ?? null, overWeek: n?.overWeek ?? 0 },
+  });
 });
 
 /**
