@@ -8,27 +8,26 @@ const COLLEAGUE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 describe("assertReviewerAllowed", () => {
   test("a third colleague may review", () => {
-    expect(() => assertReviewerAllowed(COLLEAGUE, CREATOR, CREATOR)).not.toThrow();
-    expect(() => assertReviewerAllowed(COLLEAGUE, CREATOR, EDITOR)).not.toThrow();
+    expect(() => assertReviewerAllowed(COLLEAGUE, CREATOR)).not.toThrow();
   });
 
   test("create: the caller is the creator and may not review their own report", () => {
-    expect(() => assertReviewerAllowed(CREATOR, CREATOR, CREATOR)).toThrow("Reviewer must differ from creator");
+    expect(() => assertReviewerAllowed(CREATOR, CREATOR)).toThrow("Reviewer must differ from creator");
   });
 
   test("update by a colleague: the stored creator may still not review", () => {
-    // What the database refuses (creator_reviewer_chk): the editor is someone
-    // else, so a caller-only check lets this through to a 500.
-    expect(() => assertReviewerAllowed(CREATOR, CREATOR, EDITOR)).toThrow("Reviewer must differ from creator");
+    // What the database refuses (creator_reviewer_chk).
+    expect(() => assertReviewerAllowed(CREATOR, CREATOR)).toThrow("Reviewer must differ from creator");
   });
 
-  test("update by a colleague: the editor may not name themselves either", () => {
-    expect(() => assertReviewerAllowed(EDITOR, CREATOR, EDITOR)).toThrow("Reviewer must differ from the user making the change");
+  test("update: the stored reviewer may save their own edit (API #245)", () => {
+    // The editor is the reviewer, not the creator: allowed since 2026-10-26.
+    expect(() => assertReviewerAllowed(EDITOR, CREATOR)).not.toThrow();
   });
 
   test("refusals are a 403, not a 500", () => {
     try {
-      assertReviewerAllowed(CREATOR, CREATOR, EDITOR);
+      assertReviewerAllowed(CREATOR, CREATOR);
       throw new Error("expected a refusal");
     } catch (err) {
       expect(err).toBeInstanceOf(ForbiddenError);
@@ -37,7 +36,6 @@ describe("assertReviewerAllowed", () => {
   });
 
   test("an uppercase id in the body is the same user", () => {
-    expect(() => assertReviewerAllowed(CREATOR.toUpperCase(), CREATOR, EDITOR)).toThrow(ForbiddenError);
-    expect(() => assertReviewerAllowed(EDITOR.toUpperCase(), CREATOR, EDITOR)).toThrow(ForbiddenError);
+    expect(() => assertReviewerAllowed(CREATOR.toUpperCase(), CREATOR)).toThrow(ForbiddenError);
   });
 });

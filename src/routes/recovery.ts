@@ -340,7 +340,7 @@ recoveries.post("/", zValidator("json", recoveryBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "recovery", "write");
 
-  assertReviewerAllowed(data.attribution.reviewer, u.id, u.id);
+  assertReviewerAllowed(data.attribution.reviewer, u.id);
 
   const typeStr = intToEnum("recovery_document_type", data.type)!;
   const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
@@ -392,8 +392,9 @@ recoveries.put("/:id{[0-9]{1,9}}", zValidator("json", recoveryBodySchema), async
   const typeStr = intToEnum("recovery_document_type", data.type)!;
   const { row, attr } = await loadRecoveryScoped(id, dataScope(c));
 
-  // Against the stored creator: the editor need not be the one who made it.
-  assertReviewerAllowed(data.attribution.reviewer, attr.creator, u.id);
+  // Against the stored creator: the editor need not be the one who made it,
+  // and may be the reviewer (API #245).
+  assertReviewerAllowed(data.attribution.reviewer, attr.creator);
 
   await db.transaction(async (tx) => {
     await tx
