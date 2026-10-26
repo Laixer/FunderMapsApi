@@ -50,19 +50,6 @@ contractors.post("/", zValidator("json", createContractorSchema), async (c) => {
   return c.json(created, 201);
 });
 
-contractors.get("/:contractor_id", async (c) => {
-  const contractorId = parseInt(c.req.param("contractor_id"));
-
-  const rows = await db
-    .select()
-    .from(contractor)
-    .where(eq(contractor.id, contractorId))
-    .limit(1);
-
-  if (rows.length === 0) throw new NotFoundError("Contractor not found");
-  return c.json(rows[0]);
-});
-
 const updateContractorSchema = z.object({ name: z.string().min(1).optional() });
 
 contractors.put(

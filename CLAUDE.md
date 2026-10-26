@@ -69,10 +69,9 @@ Machine callers (their own secret, no user):
 - `POST /api/webhooks/resend` — a melder's reply by e-mail, verified by Resend's signature
 
 Auth-protected (session or `fmsk.` API key):
-- `/api/user` — profile, metadata, account self-service
-- `/api/organization` — session org + members + by-id (membership-checked)
+- `/api/user/me`, `/api/user/metadata` — profile, metadata, account self-service
 - `/api/reviewer` — users with `verifier`/`superuser` role in the session org
-- `/api/product/:building_id` — analysis/statistics/subsidence (billable, runs through `trackerMiddleware`)
+- `/api/product/:building_id` — analysis/statistics/subsidence history (billable, runs through `trackerMiddleware`)
 - `/api/report/:building_id` — building report bundle
 - `/api/inquiry`, `/api/inquiry/:inquiry_id/sample` — full CRUD + audit workflow + status emails (reviewer / approved / declined, see `src/lib/report-emails.ts`)
 - `/api/recovery`, `/api/recovery/:recovery_id/sample` — same shape as inquiry

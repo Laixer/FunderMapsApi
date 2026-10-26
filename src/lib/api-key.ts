@@ -11,7 +11,3 @@ export async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
-
-export function generateApiKey(): string {
-  return `fmsk.${crypto.randomUUID().replaceAll("-", "")}`;
-}

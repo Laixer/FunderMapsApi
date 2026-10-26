@@ -71,13 +71,6 @@ interface LegacyAuthKeyCreated extends LegacyAuthKey {
   key: string;
 }
 
-export function toLegacyAuthKeyCreated(
-  k: AuthKeyRow,
-  plaintextKey: string,
-): LegacyAuthKeyCreated {
-  return { ...toLegacyAuthKey(k), key: plaintextKey };
-}
-
 // Mappers for the Better Auth `apikey` row shape onto the same legacy
 // wire shape the management routes used to return for legacy auth_key
 // rows. ManagementFront treats both indistinguishably; the wire format

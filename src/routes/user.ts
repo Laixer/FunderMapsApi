@@ -23,7 +23,6 @@ const getSelf = (c: Context<AppEnv>) => {
   });
 };
 
-users.get("/", getSelf);
 users.get("/me", getSelf);
 
 const updateUserSchema = z.object({
@@ -70,12 +69,6 @@ async function applySelfUpdate(
 
   return updated!;
 }
-
-users.put("/", zValidator("json", updateUserSchema), async (c) => {
-  const currentUser = c.get("user");
-  const updated = await applySelfUpdate(currentUser.id, c.req.valid("json"));
-  return c.json(toLegacyUser(updated, currentUser.organizations));
-});
 
 users.put("/me", zValidator("json", updateUserSchema), async (c) => {
   const currentUser = c.get("user");
