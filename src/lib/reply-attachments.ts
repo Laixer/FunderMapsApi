@@ -70,6 +70,41 @@ export function attachmentLines(stored: { name?: string }[], skipped: { name?: s
   ].filter(Boolean).join("\n");
 }
 
+export interface FetchedAttachment { name?: string; key: string; mime: string; size: number }
+
+/**
+ * Fetch each kept attachment and store its bytes. One that cannot be fetched
+ * or stored (an HTTP error, a timeout, a storage error) is left out with the
+ * reason and the rest go on: before, a throw here ended the whole reply, and
+ * the files already stored got no row on any dossier. `io` is for the tests.
+ */
+export async function fetchAttachments(
+  keep: ResendAttachment[],
+  skipped: { name?: string; why: string }[],
+  io: {
+    get: (url: string) => Promise<Response>;
+    put: (key: string, bytes: Uint8Array, mime: string) => Promise<unknown>;
+  } = { get: (url) => fetch(url, { signal: AbortSignal.timeout(120_000) }), put: putObject },
+): Promise<FetchedAttachment[]> {
+  const fetched: FetchedAttachment[] = [];
+  for (const a of keep) {
+    if (!a.download_url) { skipped.push({ name: a.filename, why: "geen downloadlink" }); continue; }
+    try {
+      const file = await io.get(a.download_url);
+      if (!file.ok) { skipped.push({ name: a.filename, why: `ophalen mislukt (HTTP ${file.status})` }); continue; }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const mime = a.content_type.split(";")[0]!.trim().toLowerCase();
+      const key = `dataops/${uniqueFileName(a.filename, mime)}`;
+      await io.put(key, bytes, mime);
+      fetched.push({ name: a.filename, key, mime, size: bytes.byteLength });
+    } catch (err) {
+      console.error(`reply attachment ${a.filename ?? a.id} not stored:`, err);
+      skipped.push({ name: a.filename, why: "ophalen of opslaan mislukt" });
+    }
+  }
+  return fetched;
+}
+
 async function resend<T>(path: string): Promise<T> {
   const r = await fetch(`https://api.resend.com/${path}`, {
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
@@ -97,17 +132,7 @@ export async function storeReplyAttachments(dossierId: number, emailId: string, 
     const { keep, skipped } = sortAttachments(list);
     // Bytes first, rows after: the target dossier is only known once there
     // is something to put in it.
-    const fetched: { name?: string; key: string; mime: string; size: number }[] = [];
-    for (const a of keep) {
-      if (!a.download_url) { skipped.push({ name: a.filename, why: "geen downloadlink" }); continue; }
-      const file = await fetch(a.download_url, { signal: AbortSignal.timeout(120_000) });
-      if (!file.ok) { skipped.push({ name: a.filename, why: `ophalen mislukt (HTTP ${file.status})` }); continue; }
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const mime = a.content_type.split(";")[0]!.trim().toLowerCase();
-      const key = `dataops/${uniqueFileName(a.filename, mime)}`;
-      await putObject(key, bytes, mime);
-      fetched.push({ name: a.filename, key, mime, size: bytes.byteLength });
-    }
+    const fetched = await fetchAttachments(keep, skipped);
 
     const closed = isClosed(source);
     const { stored, followUp } = await db.transaction(async (tx) => {

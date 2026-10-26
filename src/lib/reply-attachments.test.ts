@@ -4,7 +4,7 @@ process.env.DATABASE_URL ??= "postgres://localhost:5432/test";
 process.env.APP_ID ??= "test";
 process.env.AUTH_SECRET ??= "test-secret";
 
-const { attachmentLines, sortAttachments } = await import("./reply-attachments.ts");
+const { attachmentLines, fetchAttachments, sortAttachments } = await import("./reply-attachments.ts");
 
 const a = (filename: string, content_type: string, size: number, content_disposition = "attachment") => ({ id: filename, filename, content_type, size, content_disposition });
 
@@ -64,5 +64,36 @@ describe("attachmentLines", () => {
       "Bijlagen uit het antwoord opgeslagen: a.pdf, b.pdf\nNiet opgeslagen: c.eml (te groot)",
     );
     expect(attachmentLines([{ name: "a.pdf" }], [])).toBe("Bijlage uit het antwoord opgeslagen: a.pdf");
+  });
+});
+
+describe("fetchAttachments", () => {
+  const withUrl = (filename: string) => ({ ...a(filename, "application/pdf", 100_000), download_url: `https://files.test/${filename}` });
+
+  test("one attachment that throws is left out with its reason; the ones before and after are kept", async () => {
+    const stored: string[] = [];
+    const skipped: { name?: string; why: string }[] = [];
+    const fetched = await fetchAttachments([withUrl("een.pdf"), withUrl("twee.pdf"), withUrl("drie.pdf")], skipped, {
+      get: async (url) => {
+        if (url.endsWith("twee.pdf")) throw new Error("timeout");
+        return new Response(new Uint8Array([1, 2, 3]));
+      },
+      put: async (key) => { stored.push(key); },
+    });
+    expect(fetched.map((f) => f.name)).toEqual(["een.pdf", "drie.pdf"]);
+    expect(stored).toHaveLength(2);
+    expect(skipped).toEqual([{ name: "twee.pdf", why: "ophalen of opslaan mislukt" }]);
+  });
+
+  test("a storage error is left out the same way; an HTTP error keeps its status", async () => {
+    const skipped: { name?: string; why: string }[] = [];
+    let puts = 0;
+    const fetched = await fetchAttachments([withUrl("weg.pdf"), withUrl("vol.pdf"), withUrl("goed.pdf")], skipped, {
+      get: async (url) => (url.endsWith("weg.pdf") ? new Response("gone", { status: 410 }) : new Response(new Uint8Array([1]))),
+      // storage keys are random names, so the first store (vol.pdf) is the one that fails
+      put: async () => { if (++puts === 1) throw new Error("bucket full"); },
+    });
+    expect(fetched.map((f) => f.name)).toEqual(["goed.pdf"]);
+    expect(skipped.map((s) => s.why)).toEqual(["ophalen mislukt (HTTP 410)", "ophalen of opslaan mislukt"]);
   });
 });
