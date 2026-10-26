@@ -414,7 +414,7 @@ inquiries.post("/", zValidator("json", inquiryBodySchema), async (c) => {
   const orgId = activeOrgId(c);
   await assertOrgPermission(u.id, orgId, "inquiry", "write");
 
-  assertReviewerAllowed(data.attribution.reviewer, u.id, u.id);
+  assertReviewerAllowed(data.attribution.reviewer, u.id);
 
   const typeStr = intToEnum("inquiry_type", data.type)!;
   const dataOwner = await resolveDataOwner(u, orgId, data.dataOwnerOrganizationId);
@@ -471,8 +471,9 @@ inquiries.put("/:id{[0-9]{1,9}}", zValidator("json", inquiryBodySchema), async (
   const typeStr = intToEnum("inquiry_type", data.type)!;
   const { row, attr } = await loadInquiryScoped(id, dataScope(c));
 
-  // Against the stored creator: the editor need not be the one who made it.
-  assertReviewerAllowed(data.attribution.reviewer, attr.creator, u.id);
+  // Against the stored creator: the editor need not be the one who made it,
+  // and may be the reviewer (API #245).
+  assertReviewerAllowed(data.attribution.reviewer, attr.creator);
 
   await db.transaction(async (tx) => {
     await tx

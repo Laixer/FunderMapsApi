@@ -9,18 +9,18 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
  * The reviewer is never the report's creator — that is `creator_reviewer_chk`
- * on `application.attribution` — and never the user making the change.
+ * on `application.attribution`. Checked here so it is a 403, not a 500.
  *
- * On a create the creator IS the caller, so the two rules are one. On an
- * update they are not: a colleague may edit a report somebody else made, and
- * naming that somebody as reviewer passes a caller-only check and then dies on
- * the constraint as a 500. Pass the stored creator there.
+ * On a create the creator IS the caller, so nobody names themselves reviewer
+ * of a report they make. On an update the stored creator counts: a colleague
+ * may edit a report somebody else made, and naming that somebody as reviewer
+ * would die on the constraint. The editor may be the reviewer: until
+ * 2026-10-26 they could not, so the reviewer of a rapportage (whoever
+ * committed it in the review lane) could not save an edit of it, not even one
+ * that changed nothing (API #245; Yorick 2026-10-26).
  */
-export function assertReviewerAllowed(reviewer: string, creator: string, caller: string): void {
+export function assertReviewerAllowed(reviewer: string, creator: string): void {
   if (same(reviewer, creator)) {
     throw new ForbiddenError("Reviewer must differ from creator");
-  }
-  if (same(reviewer, caller)) {
-    throw new ForbiddenError("Reviewer must differ from the user making the change");
   }
 }
