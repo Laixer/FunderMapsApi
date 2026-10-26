@@ -9,7 +9,7 @@ import type { AppEnv } from "../types/context.ts";
 const mapset = new Hono<AppEnv>();
 
 // List the user's org's private mapsets, with geofence external_ids joined
-// in. The frontend uses fence_* arrays as Mapbox layer filters so the user
+// in. The frontend uses fence_* arrays as map layer filters so the user
 // only sees buildings within their org's geolocked area. Auth-only.
 mapset.get("/", authMiddleware, async (c) => {
   const currentUser = c.get("user");
@@ -62,7 +62,7 @@ mapset.get("/", authMiddleware, async (c) => {
       ) u
     )
     SELECT
-      c.id, c.name, c.slug, c.style, c.metadata, c.public, c.consent,
+      c.id, c.name, c.slug, c.metadata, c.public, c.consent,
       c.note, c.icon, c."order", c.layerset,
       f.fence_neighborhood, f.fence_district, f.fence_municipality
     FROM application.mapset_collection c

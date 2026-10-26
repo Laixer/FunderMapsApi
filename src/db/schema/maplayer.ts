@@ -24,5 +24,5 @@ export const bundle = maplayerSchema.table("bundle", {
 //   incident, incident_district, incident_municipality, incident_neighborhood
 //   statistics_foundation_risk
 // All are tile-source views consumed by the worker's tile-generation
-// pipeline and Mapbox vector tile rendering. Not queried via Drizzle;
+// pipeline and the tileserver's vector tiles. Not queried via Drizzle;
 // add a table declaration here if the API ever needs typed reads.

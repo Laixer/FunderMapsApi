@@ -578,7 +578,7 @@
 
 // ---- the Incidenten map (incidenten.md §4): map.ts's base map (prefix.svg + prefix.labels.json, 717 x 319 map
 // px at zoom 10, drawn by src/lib/report-pdf/map.ts in overview mode), the districts with meldingen (incident_map, from the incident_district tiles), the
-// pand as Mapbox's double ring. Shown like the old snapshot: object-fit cover in a 495:220 box.
+// pand as the old map's double ring. Shown like the old snapshot: object-fit cover in a 495:220 box.
 #let district-colors = ((1, rgb("#c1d4e6")), (3, rgb("#91bad6")), (5, rgb("#528aad")), (10, rgb("#1e3f67")))
 #let district-color(n) = {
   let st = district-colors

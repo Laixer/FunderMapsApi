@@ -55,7 +55,7 @@ info as (  -- geocoder.ts:32-82, only the columns the maps use
 -- (_adapters.ts adaptGeoLocationData), else [4.897, 52.377]; zoom 10. The map is drawn at the
 -- SCREEN layout size, 716.16 x 318.29 CSS px (7.46in column x aspect 495/220; canvas 717 x 319),
 -- and the snapshot is then scaled into the 700 x 311 px print column (x 0.9775).
--- Mapbox GL: 512 px tiles, so 1 px = 40075016.686 / 2^19 m = 76.4370 m (EPSG:3857) at zoom 10.
+-- Web map tiles of 512 px, so 1 px = 40075016.686 / 2^19 m = 76.4370 m (EPSG:3857) at zoom 10.
 view as (
   select c, ST_MakeEnvelope(ST_X(c) - 358.08 * 76.43702828517626, ST_Y(c) - 159.145 * 76.43702828517626,
                             ST_X(c) + 358.08 * 76.43702828517626, ST_Y(c) + 159.145 * 76.43702828517626, 3857) as env
