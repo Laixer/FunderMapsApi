@@ -84,18 +84,6 @@ orgs.post("/", zValidator("json", createOrgSchema), async (c) => {
   return c.json(created, 201);
 });
 
-orgs.get("/:org_id", async (c) => {
-  const orgId = c.req.param("org_id");
-  const rows = await db
-    .select()
-    .from(organization)
-    .where(eq(organization.id, orgId))
-    .limit(1);
-
-  if (rows.length === 0) throw new NotFoundError("Organization not found");
-  return c.json(rows[0]);
-});
-
 const updateOrgSchema = z.object({ name: z.string().min(1).optional() });
 
 orgs.put("/:org_id", zValidator("json", updateOrgSchema), async (c) => {

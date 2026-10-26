@@ -8,25 +8,6 @@ import type { AppEnv } from "../types/context.ts";
 
 const product = new Hono<AppEnv>();
 
-product.get("/subsidence", async (c) => {
-  // Any id the other product routes take (a pand, or an address of it), not only
-  // the pand's own: the map opens a pand found by address search under its
-  // address id, and then got no subsidence data although the pand has it.
-  const buildingId = await resolveToBuildingId(c.req.param("building_id")!);
-
-  const result = await db.execute(sql`
-    SELECT building_id, velocity
-    FROM data.building_subsidence
-    WHERE building_id = ${buildingId}
-    LIMIT 1
-  `);
-
-  if (result.length === 0)
-    throw new NotFoundError("Subsidence data not found");
-
-  return c.json(result[0]);
-});
-
 product.get("/subsidence/historic", async (c) => {
   const buildingId = await resolveToBuildingId(c.req.param("building_id")!);
 
