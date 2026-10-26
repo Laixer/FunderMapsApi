@@ -309,7 +309,6 @@ export const contractor = applicationSchema.table("contractor", {
 export const mapset = applicationSchema.table("mapset", {
   id: text().primaryKey(),
   name: text(),
-  style: text().notNull(),
   layers: text().array(),
   public: boolean().default(false).notNull(),
   consent: text(),
@@ -333,7 +332,6 @@ export const mapsetCollection = applicationSchema.table("mapset_collection", {
   id: text().primaryKey(),
   name: text(),
   slug: text(),
-  style: text().notNull(),
   metadata: jsonb().$type<Record<string, unknown>>(),
   public: boolean().default(false),
   consent: text(),
