@@ -10,6 +10,7 @@ import {
   extractionField,
   verdict,
 } from "../db/schema/dataops.ts";
+import { inquiry } from "../db/schema/report.ts";
 import { getDownloadUrl } from "../lib/s3.ts";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "../lib/errors.ts";
 import {
@@ -836,9 +837,10 @@ async function closeDossiers(
   outcome: DossierOutcome,
   note: string | null,
   actor: string,
+  inquiryId: number | null = null,
 ) {
   const heads = await db
-    .select({ id: dossier.id, outcome: dossier.outcome })
+    .select({ id: dossier.id, outcome: dossier.outcome, inquiryId: dossier.inquiryId })
     .from(dossier)
     .where(inArray(dossier.id, ids));
   const missing = ids.filter((id) => !heads.some((h) => h.id === id));
@@ -847,11 +849,22 @@ async function closeDossiers(
   if (closed.length) {
     throw new ValidationError(closed.map((h) => `dossier ${h.id} already closed as ${h.outcome}`));
   }
+  if (inquiryId !== null) {
+    const linkedElsewhere = heads.filter((h) => h.inquiryId !== null && h.inquiryId !== inquiryId);
+    if (linkedElsewhere.length) {
+      throw new ValidationError(linkedElsewhere.map((h) => `dossier ${h.id} is already linked to rapportage ${h.inquiryId}`));
+    }
+    const [found] = await db
+      .select({ id: inquiry.id })
+      .from(inquiry)
+      .where(and(eq(inquiry.id, inquiryId), isNull(inquiry.deleteDate)));
+    if (!found) throw new NotFoundError(`rapportage not found: ${inquiryId}`);
+  }
 
   await db.transaction(async (tx) => {
     await tx
       .update(dossier)
-      .set({ outcome, outcomeNote: note, outcomeAt: new Date() })
+      .set({ outcome, outcomeNote: note, outcomeAt: new Date(), ...(inquiryId !== null ? { inquiryId } : {}) })
       .where(inArray(dossier.id, ids));
     // Only values nobody judged. 'rejected' is also what a reviewer's Afkeuren
     // sets, and the first version of this relabelled 16 of Don's rejections
@@ -895,11 +908,26 @@ function parseOutcome(body: { outcome?: string; note?: string | null }) {
   return { outcome, note };
 }
 
+/**
+ * The rapportage an accepted dossier became, when it was entered outside the
+ * commit path (Studio editor or API, then approved in Controle). Without the
+ * link the melder is told nothing follows and gets no risk follow-up mail:
+ * 52 of 89 accepted meldingen in two weeks to 2026-10-27.
+ */
+function parseInquiryId(body: { inquiryId?: unknown }, outcome: DossierOutcome): number | null {
+  if (body.inquiryId === undefined || body.inquiryId === null) return null;
+  const inquiryId = Number(body.inquiryId);
+  if (!Number.isInteger(inquiryId) || inquiryId <= 0) throw new ValidationError(["inquiryId must be a rapportage id"]);
+  if (outcome !== "accepted") throw new ValidationError(["inquiryId only goes with outcome accepted"]);
+  return inquiryId;
+}
+
 dataops.post("/dossier/:id/outcome", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) throw new ValidationError(["dossier id must be a number"]);
-  const { outcome, note } = parseOutcome(await c.req.json());
-  await closeDossiers([id], outcome, note, c.get("user").id);
+  const body = await c.req.json<{ outcome?: string; note?: string | null; inquiryId?: unknown }>();
+  const { outcome, note } = parseOutcome(body);
+  await closeDossiers([id], outcome, note, c.get("user").id, parseInquiryId(body, outcome));
   return c.json({ ok: true });
 });
 

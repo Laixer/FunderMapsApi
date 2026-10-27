@@ -19,6 +19,8 @@ const {
   formatFieldValue,
   localDay,
   RESPONSE_BUSINESS_DAYS,
+  RISK_FOLLOWUP_LINE,
+  riskFollowupPromised,
 } = await import("./intake-emails.ts");
 
 const { nummeraanduidingOf } = await import("./geocoder-id.ts");
@@ -467,6 +469,26 @@ describe("buildClosedEmail", () => {
     const dup = buildClosedEmail({ ...base, outcome: "duplicate", note: "Al bekend.", hasInquiry: false, addresses: [] });
     expect(dup.subject).toContain("is verwerkt");
     expect(dup.text).toContain("Al bekend.");
+  });
+
+  test("announces the risk follow-up mail whenever one is coming", () => {
+    const withInquiry = buildClosedEmail({ ...base, outcome: "accepted", note: "Overgenomen.", hasInquiry: true, addresses: [] });
+    expect(withInquiry.text).toContain(RISK_FOLLOWUP_LINE);
+    const dup = buildClosedEmail({ ...base, outcome: "duplicate", note: "Al bekend.", hasInquiry: false, addresses: [] });
+    expect(dup.text).toContain(RISK_FOLLOWUP_LINE);
+    const withoutInquiry = buildClosedEmail({ ...base, outcome: "accepted", note: null, hasInquiry: false, addresses: [] });
+    expect(withoutInquiry.text).not.toContain(RISK_FOLLOWUP_LINE);
+  });
+});
+
+describe("riskFollowupPromised", () => {
+  test("every closed outcome except accepted without a rapportage", () => {
+    expect(riskFollowupPromised("accepted", true)).toBe(true);
+    expect(riskFollowupPromised("accepted", false)).toBe(false);
+    expect(riskFollowupPromised("duplicate", false)).toBe(true);
+    expect(riskFollowupPromised("rejected", false)).toBe(true);
+    expect(riskFollowupPromised("no_data", false)).toBe(true);
+    expect(riskFollowupPromised(null, true)).toBe(false);
   });
 });
 

@@ -575,6 +575,18 @@ function describeRisk(r: RegisteredRisk): string {
   return `Funderingsrisico zoals nu bij ons geregistreerd: ${parts.join(", ")}.`;
 }
 
+export const RISK_FOLLOWUP_LINE =
+  "Na de volgende herberekening van het funderingsrisico (meestal dezelfde dag) ontvangt u een aparte e-mail met het risico per adres.";
+
+/**
+ * Whether a risk follow-up mail comes after this closure: every outcome except
+ * a melding closed without a rapportage, whose mail promises nothing follows.
+ * sendDossierClosedMail keeps a risk snapshot on exactly the same condition.
+ */
+export function riskFollowupPromised(outcome: string | null, hasInquiry: boolean): boolean {
+  return outcome !== null && !(outcome === "accepted" && !hasInquiry);
+}
+
 export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
   const { state, explanation } = describeOutcome(input.outcome, input.note, input.hasInquiry);
 
@@ -619,6 +631,10 @@ export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
           : `. Het risico verandert daardoor naar verwachting niet.`),
     });
   }
+
+  // Say that the risk mail follows, and when: "waar zie ik het nieuwe risico"
+  // was 8 of 19 melder replies in two weeks (Don, 2026-10-27).
+  if (riskFollowupPromised(input.outcome, input.hasInquiry)) blocks.push({ p: RISK_FOLLOWUP_LINE });
 
   blocks.push(
     { p: "De status van uw melding kunt u teruglezen via:" },
@@ -1057,7 +1073,7 @@ export async function sendDossierClosedMail(dossierIds: number[]): Promise<void>
       // #143, moment 3 second half: remember what the melder was told, so the
       // run after the next model refresh can say whether it changed. Not for a
       // melding closed without a rapportage: its mail promises nothing follows.
-      if (!(head.outcome === "accepted" && head.inquiryId === null)) {
+      if (riskFollowupPromised(head.outcome, head.inquiryId !== null)) {
         await storeRiskSnapshot(head, prepared.addresses ?? []);
       }
     } catch (err) {
