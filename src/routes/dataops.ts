@@ -19,6 +19,7 @@ import {
   sendDossierQuestionMail,
 } from "../lib/intake-emails.ts";
 import { addEntry } from "../lib/dossier-entries.ts";
+import { fileCount, KINDS, melderRepliedLast, onDesk, readKind } from "../lib/queue-sql.ts";
 import { organizationUser, user as appUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
 import { loadDossierAddresses } from "../lib/dossier-addresses.ts";
@@ -43,7 +44,6 @@ import type { AppEnv } from "../types/context.ts";
 const dataops = new Hono<AppEnv>();
 
 /** A dossier still on the reviewer's desk: not committed, not closed out. */
-const onDesk = () => and(isNull(dossier.inquiryId), isNull(dossier.outcome));
 
 /**
  * Open-field count per dossier, as a correlated subquery so the queue can be
@@ -77,10 +77,6 @@ const foundFields = sql<number>`(
   join ${artifact} a on a.id = e.artifact_id
   where a.dossier_id = "dataops"."dossier"."id"
     and f.state <> 'superseded'
-)`;
-
-const fileCount = sql<number>`(
-  select count(*)::int from ${artifact} a where a.dossier_id = "dataops"."dossier"."id"
 )`;
 
 /** Whether the pipeline has read the dossier at all. False = ingest not run yet. */
@@ -140,22 +136,6 @@ function buildQueueSearchPredicate(q: string): SQL {
   )!;
 }
 
-/**
- * What kind of document the pipeline read this to be -- the `inquiry_type`
- * proposal (vision.DOCUMENT_FIELDS, 2026-09-07), latest reading first. Null
- * until read, or when the model could not tell. The queue's "Soort" column and
- * its `kind` filter: "toon alle QuickScans" is a question a reviewer asks.
- */
-const readKind = sql<string | null>`(
-  select f.value
-  from ${extractionField} f
-  join ${extraction} e on e.id = f.extraction_id
-  join ${artifact} a on a.id = e.artifact_id
-  where a.dossier_id = "dataops"."dossier"."id"
-    and f.field = 'inquiry_type' and f.state <> 'superseded'
-  order by f.id desc
-  limit 1
-)`;
 
 /**
  * The display name of whoever holds the dossier, by the rule of lib/person-name.ts:
@@ -229,32 +209,6 @@ const queueSelector = () =>
 const CHANNELS = new Set(["upload", "email", "bulk_drop", "api", "invoer_app", "audit"]);
 const STATES = new Set(["unread", "empty", "proposals", "replied", "question"]);
 
-/**
- * The melder had the last word: a 'reply' entry newer than anything we did
- * on the dossier since -- a question or afronding sent, a status, or a
- * reviewer's notitie. The notitie counts on purpose (Don, 2026-09-16): a
- * reply answered from someone's own mailbox leaves no mail on the dossier,
- * and "per mail beantwoord" as a notitie is how that gets recorded. Open or
- * closed -- a reply after the afronding is exactly the case nobody saw
- * (FM2026-000107).
- */
-const melderRepliedLast = sql<boolean>`exists (
-  select 1 from ${dossierEntry} r
-  where r.dossier_id = "dataops"."dossier"."id" and r.kind = 'reply'
-    and r.at > coalesce((
-      select max(o.at) from ${dossierEntry} o
-      where o.dossier_id = "dataops"."dossier"."id"
-        and o.kind in ('question', 'status', 'remark') and o.actor_kind in ('reviewer', 'system')
-        -- A hand-over (API #222) is not an answer to the melder.
-        and o.body -> 'assignment' is null), '-infinity'::timestamptz))`;
-const KINDS = new Set([
-  "monitoring", "note", "quickscan", "unknown", "demolition_research", "second_opinion",
-  "archive_research", "architectural_research", "foundation_advice", "inspectionpit",
-  "foundation_research", "additional_research", "ground_water_level_research", "soil_investigation",
-  // The current QuickScan (the Studio offers it as "QuickScan (addendum)"). Missing
-  // here, that filter answered 400 "unknown kind" and the list showed an error.
-  "facade_scan",
-]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A municipality by its CBS code (GM0363 = Amsterdam). */
 const MUNICIPALITY = /^GM\d{4}$/i;

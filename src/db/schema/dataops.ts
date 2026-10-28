@@ -4,6 +4,7 @@ import {
   integer,
   bigint,
   numeric,
+  smallint,
   boolean,
   timestamp,
   uuid,
@@ -277,3 +278,22 @@ export const workPackageAssignment = dataopsSchema.table(
   },
   (table) => [primaryKey({ columns: [table.userId, table.packageId] })],
 );
+
+/**
+ * How much review-queue work a colleague takes, for the dispatcher (#277;
+ * Worker migration 20261028_001). No row, or active = false: the dispatcher
+ * assigns this person nothing. Edited by the admin through
+ * /api/management/capacity; read by lib/dispatch-run.ts.
+ */
+export const staffCapacity = dataopsSchema.table("staff_capacity", {
+  userId: uuid("user_id").primaryKey(),
+  /** numeric(4,1), 0–60; postgres-js returns it as a string. */
+  hoursPerWeek: numeric("hours_per_week", { precision: 4, scale: 1 }).notNull(),
+  /** ISO weekdays, 1 = Monday … 7 = Sunday. */
+  workingDays: smallint("working_days").array().notNull(),
+  /** report.inquiry_type codes as the reader reads them; empty = no preference. */
+  preferredKinds: text("preferred_kinds").array().notNull(),
+  active: boolean().notNull(),
+  updatedBy: uuid("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
