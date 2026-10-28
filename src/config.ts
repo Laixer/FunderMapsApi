@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { withOwnOrigin } from "./lib/trusted-origins.ts";
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -85,4 +86,6 @@ const envSchema = z.object({
   WINDMILL_TOKEN: z.string().optional(),
 });
 
-export const env = envSchema.parse(process.env);
+const parsed = envSchema.parse(process.env);
+// The app's own origin is always trusted (lib/trusted-origins.ts says why).
+export const env = { ...parsed, TRUSTED_ORIGINS: withOwnOrigin(parsed.TRUSTED_ORIGINS, parsed.BASE_URL) };
