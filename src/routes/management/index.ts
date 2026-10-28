@@ -9,6 +9,7 @@ import contractors from "./contractor.ts";
 import permission from "./permission.ts";
 import workPackages from "./work-package.ts";
 import usage from "./usage.ts";
+import capacity from "./capacity.ts";
 import type { AppEnv } from "../../types/context.ts";
 
 const management = new Hono<AppEnv>();
@@ -23,5 +24,6 @@ management.route("/contractor", contractors);
 management.route("/permission", permission);
 management.route("/work-packages", workPackages);
 management.route("/usage", usage);
+management.route("/capacity", capacity);
 
 export default management;
