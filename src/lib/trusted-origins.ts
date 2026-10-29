@@ -6,6 +6,11 @@
  * answered 403 to all of them (studio.funderdata.nl, 2026-10-28, ~5.5 h). The app's own origin is never cross-site, so
  * it is always in the list, whatever the setting says.
  */
+/** A comma-separated setting as a list of origins: trimmed, empty parts dropped. */
+export function originList(v: string): string[] {
+  return v.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
 export function withOwnOrigin(origins: readonly string[], baseUrl: string | undefined): string[] {
   if (!baseUrl) return [...origins];
   const own = new URL(baseUrl).origin;

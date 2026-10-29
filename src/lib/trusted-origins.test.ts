@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { withOwnOrigin } from "./trusted-origins.ts";
+import { originList, withOwnOrigin } from "./trusted-origins.ts";
 import { isCrossSiteWithSession } from "../middleware/csrf.ts";
+
+describe("originList", () => {
+  test("a comma-separated setting, trimmed, empty parts dropped (PASSKEY_ORIGIN)", () => {
+    expect(originList("https://maps.fundermaps.com, https://auth.fundermaps.com,")).toEqual(["https://maps.fundermaps.com", "https://auth.fundermaps.com"]);
+    expect(originList("https://studio.funderdata.nl")).toEqual(["https://studio.funderdata.nl"]);
+    expect(originList("")).toEqual([]);
+  });
+});
 
 describe("withOwnOrigin", () => {
   test("the app's own origin is added when the setting is empty (the Studio app, 2026-10-28)", () => {
