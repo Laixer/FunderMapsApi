@@ -20,14 +20,14 @@ const envSchema = z.object({
   BASE_URL: z.url().optional(),
   // WebAuthn relying party. rpID is the registrable domain, so one passkey
   // serves every *.fundermaps.com page. PASSKEY_ORIGIN lists the pages where
-  // the WebAuthn ceremony runs (comma-separated): since 2026-10-29 the map's
-  // own login pages, and the old login app (auth.fundermaps.com) until it goes;
-  // a passkey made on either works on both.
+  // the WebAuthn ceremony runs (comma-separated): the map's own login pages
+  // (since 2026-10-29; the old login app auth.fundermaps.com is gone and
+  // redirects there). A passkey made on the old login app works on the map.
   PASSKEY_RP_ID: z.string().default("fundermaps.com"),
   PASSKEY_RP_NAME: z.string().default("FunderMaps"),
   PASSKEY_ORIGIN: z
     .string()
-    .default("https://maps.fundermaps.com,https://auth.fundermaps.com")
+    .default("https://maps.fundermaps.com")
     .transform(originList)
     .pipe(z.array(z.url()).min(1)),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
