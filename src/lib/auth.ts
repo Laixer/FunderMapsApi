@@ -139,7 +139,7 @@ export const auth = betterAuth({
   plugins: [
     bearer(),
     // Passkeys (WebAuthn). Optional next to the password; registered and
-    // managed in the auth SPA. Schema: application.passkey (Worker migration
+    // managed on the map's account page (until 2026-10-29: the auth SPA). Schema: application.passkey (Worker migration
     // create_passkey_table.sql).
     passkey({
       rpID: env.PASSKEY_RP_ID,

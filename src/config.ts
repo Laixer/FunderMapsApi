@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { withOwnOrigin } from "./lib/trusted-origins.ts";
+import { originList, withOwnOrigin } from "./lib/trusted-origins.ts";
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -19,11 +19,17 @@ const envSchema = z.object({
   AUTH_SECRET: z.string(),
   BASE_URL: z.url().optional(),
   // WebAuthn relying party. rpID is the registrable domain, so one passkey
-  // serves auth/maps/studio/admin today and the single 5.0 app later. origin
-  // is where the WebAuthn ceremony runs: the auth SPA.
+  // serves every *.fundermaps.com page. PASSKEY_ORIGIN lists the pages where
+  // the WebAuthn ceremony runs (comma-separated): since 2026-10-29 the map's
+  // own login pages, and the old login app (auth.fundermaps.com) until it goes;
+  // a passkey made on either works on both.
   PASSKEY_RP_ID: z.string().default("fundermaps.com"),
   PASSKEY_RP_NAME: z.string().default("FunderMaps"),
-  PASSKEY_ORIGIN: z.url().default("https://auth.fundermaps.com"),
+  PASSKEY_ORIGIN: z
+    .string()
+    .default("https://maps.fundermaps.com,https://auth.fundermaps.com")
+    .transform(originList)
+    .pipe(z.array(z.url()).min(1)),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
   // Required when the frontend is on a different domain than BASE_URL,
   // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.
