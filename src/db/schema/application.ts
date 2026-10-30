@@ -341,7 +341,7 @@ export const mapsetCollection = applicationSchema.table("mapset_collection", {
   layerset: jsonb().$type<unknown[]>(),
 });
 
-export const fileResource = applicationSchema.table("file_resources", {
+export const fileResource = applicationSchema.table("file_resource", {
   id: uuid().primaryKey().defaultRandom(),
   key: text().notNull().unique(),
   originalFilename: text("original_filename").notNull(),

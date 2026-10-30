@@ -27,7 +27,7 @@ routes.get("/rapportage/:id/origin", async (c) => {
         ${iso(sql`d.received_at`)} AS "receivedAt", ${iso(sql`d.outcome_at`)} AS "outcomeAt"
       FROM dataops.dossier d
       WHERE (d.inquiry_id = ${id}
-        OR EXISTS (SELECT 1 FROM dataops.dossier_rapportage r WHERE r.dossier_id = d.id AND r.inquiry_id = ${id}))
+        OR EXISTS (SELECT 1 FROM dataops.dossier_inquiry r WHERE r.dossier_id = d.id AND r.inquiry_id = ${id}))
         -- A nalezing of this rapportage is listed under audits, also when its values went into it.
         AND d.audit_inquiry_id IS DISTINCT FROM ${id}
       ORDER BY d.received_at, d.id

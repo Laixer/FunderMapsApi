@@ -6,7 +6,7 @@
  * an extension — so the record knows where the file is and nothing about what it
  * is called. That is why the UI could offer no better label than "Document".
  *
- * The real name is in `application.file_resources`, keyed by the full S3 object
+ * The real name is in `application.file_resource`, keyed by the full S3 object
  * key, along with the media type and size. Uploads that predate that table
  * (Laixer/FunderMaps#861) have no row, so every field here is nullable and
  * callers fall back to the storage name.

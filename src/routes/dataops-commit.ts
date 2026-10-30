@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "../db/client.ts";
-import { dossier, artifact, dossierRapportage, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
+import { dossier, artifact, dossierInquiry, extraction, extractionField, verdict } from "../db/schema/dataops.ts";
 import { inquiry, inquirySample } from "../db/schema/report.ts";
 import { attribution, contractor as contractorTable, fileResource, user as userTable } from "../db/schema/application.ts";
 import { address as geocoderAddress, building as geocoderBuilding } from "../db/schema/geocoder.ts";
@@ -253,7 +253,7 @@ commit.post("/dossier/:id/commit", async (c) => {
   // as rejected with the answers, and the melder gets the one closing mail.
   if (acceptedPlans.length === 0) {
     await db.transaction(async (tx) => {
-      await tx.insert(dossierRapportage).values(rapportageRows([]));
+      await tx.insert(dossierInquiry).values(rapportageRows([]));
       await tx
         .update(dossier)
         .set({ outcome: "rejected", outcomeNote: answers ?? head.outcomeNote, outcomeAt: new Date() })
@@ -624,7 +624,7 @@ commit.post("/dossier/:id/commit", async (c) => {
     if (body.rapportages) {
       const inquiryIds: number[] = made.map((m) => m.inquiryId as number);
       const byPlan = new Map(acceptedPlans.map((p, i) => [p, inquiryIds[i]!] as const));
-      await tx.insert(dossierRapportage).values(rapportageRows(plans.map((p) => byPlan.get(p) ?? null)));
+      await tx.insert(dossierInquiry).values(rapportageRows(plans.map((p) => byPlan.get(p) ?? null)));
     }
 
     const ids = made.map((m) => `#${m.inquiryId}`).join(", ");

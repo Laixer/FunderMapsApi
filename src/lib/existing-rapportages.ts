@@ -14,9 +14,9 @@ import { db } from "../db/client.ts";
  *
  * "Same file" compares byte size with the dossier's own documents. The commit
  * copies a document into inquiry-report/ unchanged and records its size in
- * application.file_resources, so a recommitted file matches exactly. A
+ * application.file_resource, so a recommitted file matches exactly. A
  * re-compressed copy of the same report does not; that is what the type and
- * date in the Studio are for. Rapportages from before file_resources existed
+ * date in the Studio are for. Rapportages from before file_resource existed
  * (Laixer/FunderMaps#861) have no size and never count as the same file.
  */
 export interface ExistingRapportage {
@@ -78,7 +78,7 @@ export async function existingRapportages(
            (SELECT count(DISTINCT x.address) FROM report.inquiry_sample x WHERE x.inquiry_id = i.id AND x.delete_date IS NULL) AS addresses,
            (SELECT count(*) FROM report.inquiry_sample x WHERE x.inquiry_id = i.id AND x.delete_date IS NULL) AS samples
       FROM report.inquiry i
-      LEFT JOIN application.file_resources f ON f.key = 'inquiry-report/' || i.document_file
+      LEFT JOIN application.file_resource f ON f.key = 'inquiry-report/' || i.document_file
      WHERE i.delete_date IS NULL
        AND i.id IS DISTINCT FROM ${exceptInquiryId}
        AND EXISTS (SELECT 1 FROM report.inquiry_sample s
