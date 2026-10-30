@@ -30,6 +30,17 @@ const envSchema = z.object({
     .default("https://maps.fundermaps.com")
     .transform(originList)
     .pipe(z.array(z.url()).min(1)),
+  // The map's host when this app serves a second one (lib/host-profile.ts; the Studio app, FunderMapsStudio #18):
+  // requests to MAP_BASE_URL's host get these instead of BASE_URL, PASSKEY_* and APP_ID. The defaults are api-prod's.
+  MAP_BASE_URL: z.url().optional(),
+  MAP_PASSKEY_RP_ID: z.string().default("fundermaps.com"),
+  MAP_PASSKEY_RP_NAME: z.string().default("FunderMaps"),
+  MAP_PASSKEY_ORIGIN: z
+    .string()
+    .default("https://maps.fundermaps.com")
+    .transform(originList)
+    .pipe(z.array(z.url()).min(1)),
+  MAP_APP_ID: z.string().default("app-default"),
   // Comma-separated list of frontend origins allowed to talk to /api/auth/*.
   // Required when the frontend is on a different domain than BASE_URL,
   // otherwise Better Auth's CSRF check returns 403 INVALID_ORIGIN.
@@ -96,5 +107,8 @@ const envSchema = z.object({
 });
 
 const parsed = envSchema.parse(process.env);
-// The app's own origin is always trusted (lib/trusted-origins.ts says why).
-export const env = { ...parsed, TRUSTED_ORIGINS: withOwnOrigin(parsed.TRUSTED_ORIGINS, parsed.BASE_URL) };
+// The app's own origins are always trusted (lib/trusted-origins.ts says why): BASE_URL's, and the map host's.
+export const env = {
+  ...parsed,
+  TRUSTED_ORIGINS: withOwnOrigin(withOwnOrigin(parsed.TRUSTED_ORIGINS, parsed.BASE_URL), parsed.MAP_BASE_URL),
+};

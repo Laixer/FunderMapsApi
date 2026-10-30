@@ -13,214 +13,247 @@ import { createAccessControl } from "better-auth/plugins/access";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "../db/client.ts";
 import { env } from "../config.ts";
+import { isOnHost } from "./host-profile.ts";
 import * as schema from "../db/schema/index.ts";
 import { sendMail } from "../services/mail.ts";
 import { resetPasswordMail } from "./account-emails.ts";
 import { ac as orgAc, roles as orgRoles } from "./permissions.ts";
 
-export const auth = betterAuth({
-  database: drizzleAdapter(db, {
-    provider: "pg",
-    schema,
-  }),
-  baseURL: env.BASE_URL,
-  basePath: "/api/auth",
-  secret: env.AUTH_SECRET,
-  trustedOrigins: env.TRUSTED_ORIGINS,
-  emailAndPassword: {
-    enabled: true,
-    disableSignUp: true,
-    // Passwords use Better Auth's own scrypt hash + verify. The C#-era PBKDF2
-    // hashes were cleared on 2026-10-21 (accounts that never logged in again
-    // since the cut-over); those users set a new password via the reset mail.
-    // Password reset email. The frontend POSTs /api/auth/request-password-reset
-    // with { email, redirectTo: "<frontend>/reset-password" }; Better Auth
-    // generates a one-time token, embeds it in `url`, and invokes this hook.
-    // The link sends the user to <baseURL>/api/auth/reset-password/<token>?
-    // callbackURL=<frontend>, which validates and redirects to the frontend
-    // with ?token=<valid_token> in the query.
-    sendResetPassword: async ({ user, url }) => {
-      await sendMail({ to: [user.email], ...resetPasswordMail(user, url) });
-    },
-    // Wipe all active sessions when a user resets their password — defensive
-    // against stolen-credential scenarios where the attacker still has a
-    // valid bearer token from before the reset.
-    revokeSessionsOnPasswordReset: true,
-  },
-  user: {
-    modelName: "user",
-    fields: {
-      image: "avatar",
-    },
-    additionalFields: {
-      // No `fieldName` here on purpose. The Drizzle adapter addresses columns
-      // by the Drizzle *property* name (givenName), and Drizzle itself maps
-      // that to the given_name column. A snake_case fieldName made Better Auth
-      // look for a `given_name` property that does not exist; 1.7.3 refuses
-      // to start on exactly that mismatch.
-      givenName: {
-        type: "string",
-        required: false,
-      },
-      lastName: {
-        type: "string",
-        required: false,
-      },
-      jobTitle: {
-        type: "string",
-        required: false,
-      },
-      phoneNumber: {
-        type: "string",
-        required: false,
-      },
-      role: {
-        type: "string",
-        required: false,
-        defaultValue: "user",
-        input: false,
-      },
-    },
-  },
-  session: {
-    modelName: "session",
-    // Every API request from the frontends now authenticates with the
-    // session cookie, so getSession() would hit the database on each call.
-    // The cookie cache carries a signed copy of the session for 5 minutes;
-    // a revoked or banned session lingers at most that long. That matches
-    // the "no extra component" answer to Valkey in the 5.0 review.
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60,
-    },
-  },
-  account: {
-    modelName: "account",
-  },
-  // Better Auth only turns its limiter on by default when NODE_ENV is
-  // "production", and the DO buildpack doesn't set NODE_ENV — so don't rely
-  // on the env: switch it on here. BA's defaults apply:
-  // sign-in/sign-up/change-password 3 per 10 s, password-reset and
-  // verification mail 3 per 60 s, everything else under /api/auth 100 per
-  // 10 s — all per client IP (do-connecting-ip, see advanced.ipAddress).
-  // Counters live in process memory: fine for one instance, they reset on
-  // deploy. API-key verification is a server-side auth.api call and never
-  // passes through this limiter (the apiKey plugin's own limit stays off).
-  rateLimit: {
-    enabled: true,
-  },
-  advanced: {
-    database: {
-      // BA's default ids are 32-char alnum strings; the org-plugin tables
-      // (organization_user.id, invitation, organization_custom_role) are
-      // uuid-typed like the rest of the application schema, so generate
-      // uuids everywhere. Text-typed id columns (session, apikey) accept
-      // them too — only the format of NEW rows changes, and nothing parses
-      // those ids.
-      generateId: () => crypto.randomUUID(),
-    },
-    ipAddress: {
-      // DO App Platform fronts the app with a Cloudflare-based edge, so
-      // `x-forwarded-for` arrives as "<client>, <edge>" — and a client can
-      // prepend anything it likes ("9.9.9.9, <client>, <edge>"). BA only
-      // trusts a SINGLE-valued x-forwarded-for when no trustedProxies are
-      // configured, so from the 2026-07-19 deploy onward every session was
-      // written with ip_address = "" (getIp -> null -> "").
-      //
-      // `do-connecting-ip` is set by the edge and *overwritten* on every
-      // request (verified: sending our own value is discarded), so it is the
-      // one unspoofable single-value client IP available here. x-real-ip and
-      // cf-connecting-ip are stripped/rejected at the edge — don't add them.
-      //
-      // DO-specific: revisit if we ever move off App Platform.
-      ipAddressHeaders: ["do-connecting-ip"],
-    },
-  },
-  plugins: [
-    bearer(),
-    // Passkeys (WebAuthn). Optional next to the password; registered and
-    // managed on the map's account page (until 2026-10-29: the auth SPA). Schema: application.passkey (Worker migration
-    // create_passkey_table.sql).
-    passkey({
-      rpID: env.PASSKEY_RP_ID,
-      rpName: env.PASSKEY_RP_NAME,
-      origin: env.PASSKEY_ORIGIN,
-      authenticatorSelection: {
-        residentKey: "preferred",
-        userVerification: "preferred",
-      },
+/** What differs per host (lib/host-profile.ts): the base URL and the passkey relying party. */
+interface HostAuth {
+  baseURL: string | undefined;
+  rpID: string;
+  rpName: string;
+  origin: string[];
+}
+
+function createAuth(host: HostAuth) {
+  return betterAuth({
+    database: drizzleAdapter(db, {
+      provider: "pg",
+      schema,
     }),
-    // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
-    // via schema overrides onto the EXISTING application.organization +
-    // organization_user tables — BA reads/writes the same rows the API
-    // already uses, so there is no dual-write phase (the C# Webservice that
-    // shared these columns was retired 2026-08-29).
-    //
-    // Roles keep the exact names stored in organization_user.role (reader/
-    // writer/verifier/superuser — see permissions.ts), so zero data
-    // migration. dynamicAccessControl lets org admins define custom roles
-    // with a JSON permission map (application.organization_custom_role);
-    // the management portal surfaces that later.
-    //
-    // NOTE: route-level permission checks do NOT go through BA's
-    // hasPermission endpoint — it requires a BA session, which API-key
-    // callers don't have. src/lib/auth-helpers.ts authorizes against the
-    // same permission map in-process for both auth paths.
-    organization({
-      ac: orgAc,
-      roles: orgRoles,
-      creatorRole: "superuser",
-      allowUserToCreateOrganization: false,
-      dynamicAccessControl: {
-        enabled: true,
+    baseURL: host.baseURL,
+    basePath: "/api/auth",
+    secret: env.AUTH_SECRET,
+    trustedOrigins: env.TRUSTED_ORIGINS,
+    emailAndPassword: {
+      enabled: true,
+      disableSignUp: true,
+      // Passwords use Better Auth's own scrypt hash + verify. The C#-era PBKDF2
+      // hashes were cleared on 2026-10-21 (accounts that never logged in again
+      // since the cut-over); those users set a new password via the reset mail.
+      // Password reset email. The frontend POSTs /api/auth/request-password-reset
+      // with { email, redirectTo: "<frontend>/reset-password" }; Better Auth
+      // generates a one-time token, embeds it in `url`, and invokes this hook.
+      // The link sends the user to <baseURL>/api/auth/reset-password/<token>?
+      // callbackURL=<frontend>, which validates and redirects to the frontend
+      // with ?token=<valid_token> in the query.
+      sendResetPassword: async ({ user, url }) => {
+        await sendMail({ to: [user.email], ...resetPasswordMail(user, url) });
       },
-      schema: {
-        member: {
-          modelName: "organizationUser",
+      // Wipe all active sessions when a user resets their password — defensive
+      // against stolen-credential scenarios where the attacker still has a
+      // valid bearer token from before the reset.
+      revokeSessionsOnPasswordReset: true,
+    },
+    user: {
+      modelName: "user",
+      fields: {
+        image: "avatar",
+      },
+      additionalFields: {
+        // No `fieldName` here on purpose. The Drizzle adapter addresses columns
+        // by the Drizzle *property* name (givenName), and Drizzle itself maps
+        // that to the given_name column. A snake_case fieldName made Better Auth
+        // look for a `given_name` property that does not exist; 1.7.3 refuses
+        // to start on exactly that mismatch.
+        givenName: {
+          type: "string",
+          required: false,
+        },
+        lastName: {
+          type: "string",
+          required: false,
+        },
+        jobTitle: {
+          type: "string",
+          required: false,
+        },
+        phoneNumber: {
+          type: "string",
+          required: false,
+        },
+        role: {
+          type: "string",
+          required: false,
+          defaultValue: "user",
+          input: false,
         },
       },
-    }),
-    // Admin plugin — adopted in *supplementing* mode. The existing
-    // /api/management/* surface (gated by src/middleware/admin.ts) stays
-    // as-is; the plugin layers on top to provide server-side ban
-    // enforcement (user.banned / ban_reason / ban_expires), session
-    // impersonation (session.impersonated_by), and a standard
-    // setRole/listUserSessions/banUser surface under /api/auth/admin/*.
-    //
-    // The plugin's built-in role names are `admin` and `user`; we keep
-    // the existing FunderMaps `administrator` literal by aliasing
-    // adminAc's permission set under that name via the access-control
-    // system. No data migration on application.user.role is needed.
-    admin({
-      ac: createAccessControl(defaultStatements),
-      roles: {
-        administrator: adminAc,
-        user: userAc,
+    },
+    session: {
+      modelName: "session",
+      // Every API request from the frontends now authenticates with the
+      // session cookie, so getSession() would hit the database on each call.
+      // The cookie cache carries a signed copy of the session for 5 minutes;
+      // a revoked or banned session lingers at most that long. That matches
+      // the "no extra component" answer to Valkey in the 5.0 review.
+      cookieCache: {
+        enabled: true,
+        maxAge: 5 * 60,
       },
-      adminRoles: ["administrator"],
-      defaultRole: "user",
-    }),
-    // API-key plugin — the primary key-validation path. `fmsk.`-prefixed
-    // keys are written into application.apikey via the plugin's
-    // /api/auth/api-key/* endpoints, and src/middleware/auth.ts validates
-    // incoming keys with `auth.api.verifyApiKey()` first, falling back to a
-    // SHA-256 lookup against the legacy application.auth_key table for
-    // unrotated keys (drained in Phase D, post-Dec-2026; see
-    // project_better_auth_migration.md). The `fmsk.` prefix matches our
-    // existing keys' visual format; BA's docs recommend an underscore
-    // suffix but the literal stays as-is for customer continuity.
-    //
-    // Rate-limit is OFF at the plugin level: BA's default is 10
-    // requests/day, which would lock out paying billable customers
-    // instantly. The TS Webservice serves >>10 calls/day per key by
-    // design (every request is a billable product call). If we ever
-    // want per-key throttling, it's an opt-in at key-creation time, not
-    // a global default.
-    apiKey({
-      defaultPrefix: "fmsk.",
-      rateLimit: {
-        enabled: false,
+    },
+    account: {
+      modelName: "account",
+    },
+    // Better Auth only turns its limiter on by default when NODE_ENV is
+    // "production", and the DO buildpack doesn't set NODE_ENV — so don't rely
+    // on the env: switch it on here. BA's defaults apply:
+    // sign-in/sign-up/change-password 3 per 10 s, password-reset and
+    // verification mail 3 per 60 s, everything else under /api/auth 100 per
+    // 10 s — all per client IP (do-connecting-ip, see advanced.ipAddress).
+    // Counters live in process memory: fine for one instance, they reset on
+    // deploy. API-key verification is a server-side auth.api call and never
+    // passes through this limiter (the apiKey plugin's own limit stays off).
+    rateLimit: {
+      enabled: true,
+    },
+    advanced: {
+      database: {
+        // BA's default ids are 32-char alnum strings; the org-plugin tables
+        // (organization_user.id, invitation, organization_custom_role) are
+        // uuid-typed like the rest of the application schema, so generate
+        // uuids everywhere. Text-typed id columns (session, apikey) accept
+        // them too — only the format of NEW rows changes, and nothing parses
+        // those ids.
+        generateId: () => crypto.randomUUID(),
       },
-    }),
-  ],
+      ipAddress: {
+        // DO App Platform fronts the app with a Cloudflare-based edge, so
+        // `x-forwarded-for` arrives as "<client>, <edge>" — and a client can
+        // prepend anything it likes ("9.9.9.9, <client>, <edge>"). BA only
+        // trusts a SINGLE-valued x-forwarded-for when no trustedProxies are
+        // configured, so from the 2026-07-19 deploy onward every session was
+        // written with ip_address = "" (getIp -> null -> "").
+        //
+        // `do-connecting-ip` is set by the edge and *overwritten* on every
+        // request (verified: sending our own value is discarded), so it is the
+        // one unspoofable single-value client IP available here. x-real-ip and
+        // cf-connecting-ip are stripped/rejected at the edge — don't add them.
+        //
+        // DO-specific: revisit if we ever move off App Platform.
+        ipAddressHeaders: ["do-connecting-ip"],
+      },
+    },
+    plugins: [
+      bearer(),
+      // Passkeys (WebAuthn). Optional next to the password; registered and
+      // managed on the map's account page (until 2026-10-29: the auth SPA). Schema: application.passkey (Worker migration
+      // create_passkey_table.sql).
+      passkey({
+        rpID: host.rpID,
+        rpName: host.rpName,
+        origin: host.origin,
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred",
+        },
+      }),
+      // Organization plugin (auth-migration Phase 2, FunderMaps#1006). Mapped
+      // via schema overrides onto the EXISTING application.organization +
+      // organization_user tables — BA reads/writes the same rows the API
+      // already uses, so there is no dual-write phase (the C# Webservice that
+      // shared these columns was retired 2026-08-29).
+      //
+      // Roles keep the exact names stored in organization_user.role (reader/
+      // writer/verifier/superuser — see permissions.ts), so zero data
+      // migration. dynamicAccessControl lets org admins define custom roles
+      // with a JSON permission map (application.organization_custom_role);
+      // the management portal surfaces that later.
+      //
+      // NOTE: route-level permission checks do NOT go through BA's
+      // hasPermission endpoint — it requires a BA session, which API-key
+      // callers don't have. src/lib/auth-helpers.ts authorizes against the
+      // same permission map in-process for both auth paths.
+      organization({
+        ac: orgAc,
+        roles: orgRoles,
+        creatorRole: "superuser",
+        allowUserToCreateOrganization: false,
+        dynamicAccessControl: {
+          enabled: true,
+        },
+        schema: {
+          member: {
+            modelName: "organizationUser",
+          },
+        },
+      }),
+      // Admin plugin — adopted in *supplementing* mode. The existing
+      // /api/management/* surface (gated by src/middleware/admin.ts) stays
+      // as-is; the plugin layers on top to provide server-side ban
+      // enforcement (user.banned / ban_reason / ban_expires), session
+      // impersonation (session.impersonated_by), and a standard
+      // setRole/listUserSessions/banUser surface under /api/auth/admin/*.
+      //
+      // The plugin's built-in role names are `admin` and `user`; we keep
+      // the existing FunderMaps `administrator` literal by aliasing
+      // adminAc's permission set under that name via the access-control
+      // system. No data migration on application.user.role is needed.
+      admin({
+        ac: createAccessControl(defaultStatements),
+        roles: {
+          administrator: adminAc,
+          user: userAc,
+        },
+        adminRoles: ["administrator"],
+        defaultRole: "user",
+      }),
+      // API-key plugin — the primary key-validation path. `fmsk.`-prefixed
+      // keys are written into application.apikey via the plugin's
+      // /api/auth/api-key/* endpoints, and src/middleware/auth.ts validates
+      // incoming keys with `auth.api.verifyApiKey()` first, falling back to a
+      // SHA-256 lookup against the legacy application.auth_key table for
+      // unrotated keys (drained in Phase D, post-Dec-2026; see
+      // project_better_auth_migration.md). The `fmsk.` prefix matches our
+      // existing keys' visual format; BA's docs recommend an underscore
+      // suffix but the literal stays as-is for customer continuity.
+      //
+      // Rate-limit is OFF at the plugin level: BA's default is 10
+      // requests/day, which would lock out paying billable customers
+      // instantly. The TS Webservice serves >>10 calls/day per key by
+      // design (every request is a billable product call). If we ever
+      // want per-key throttling, it's an opt-in at key-creation time, not
+      // a global default.
+      apiKey({
+        defaultPrefix: "fmsk.",
+        rateLimit: {
+          enabled: false,
+        },
+      }),
+    ],
+  });
+}
+
+/** The API's own host (BASE_URL); server-side calls (sessions, API keys, users) use this one. */
+export const auth = createAuth({
+  baseURL: env.BASE_URL,
+  rpID: env.PASSKEY_RP_ID,
+  rpName: env.PASSKEY_RP_NAME,
+  origin: env.PASSKEY_ORIGIN,
 });
+
+const mapAuth = env.MAP_BASE_URL
+  ? createAuth({
+      baseURL: env.MAP_BASE_URL,
+      rpID: env.MAP_PASSKEY_RP_ID,
+      rpName: env.MAP_PASSKEY_RP_NAME,
+      origin: env.MAP_PASSKEY_ORIGIN,
+    })
+  : undefined;
+
+/** The instance for the host a request came in on: the map's when it is MAP_BASE_URL's host. */
+export function authFor(requestUrl: string) {
+  return mapAuth && isOnHost(requestUrl, env.MAP_BASE_URL) ? mapAuth : auth;
+}
