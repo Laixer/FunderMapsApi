@@ -93,6 +93,9 @@ export function toDossierInput(body: unknown, source: SubmissionSource): Dossier
       name: String(a?.name ?? "").slice(0, 255),
       size: Math.max(0, Math.trunc(Number(a?.size ?? 0)) || 0),
       category: String(a?.category ?? "overig").slice(0, 64),
+      // The file's type as the browser named it, when it is one we accept: the
+      // old app's server dropped it, so artifact.mime_type stayed empty.
+      mime: UPLOAD_TYPES.has(String(a?.mime ?? "")) ? String(a.mime) : null,
     };
   });
 

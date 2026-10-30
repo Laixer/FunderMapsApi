@@ -42,8 +42,13 @@ describe("toDossierInput", () => {
     expect(d.building).toBe("0363200000123456");
     expect(d.contact.email).toBe("piet@example.test");
     expect(d.answers).toEqual({ since: "2020", count: "3" });
-    expect(d.attachments).toEqual([{ key: "intake/aaa.pdf", name: "rapport.pdf", size: 1234, category: "foundation_research" }]);
+    expect(d.attachments).toEqual([{ key: "intake/aaa.pdf", name: "rapport.pdf", size: 1234, category: "foundation_research", mime: null }]);
     expect(d.source).toMatchObject({ submission: "sub-1", address: "Damrak 1, Amsterdam", ip: "1.2.3.4" });
+  });
+  test("the file's type is kept when it is one we accept, dropped otherwise", () => {
+    const at = (mime: string) => toDossierInput(form({ attachments: [{ key: "intake/a.pdf", mime }] }), SOURCE).attachments[0]?.mime;
+    expect(at("application/pdf")).toBe("application/pdf");
+    expect(at("text/html")).toBeNull();
   });
   test("both BAG id formats are accepted", () => {
     expect(code(() => toDossierInput(form({ address: { bagId: "NL.IMBAG.NUMMERAANDUIDING.0363200000123456" } }), SOURCE))).toBe(200);
