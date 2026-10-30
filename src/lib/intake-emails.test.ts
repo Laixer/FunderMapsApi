@@ -477,14 +477,14 @@ describe("buildClosedEmail", () => {
     const dup = buildClosedEmail({ ...base, outcome: "duplicate", note: "Al bekend.", hasInquiry: false, addresses: [] });
     expect(dup.text).toContain(RISK_FOLLOWUP_LINE);
     const withoutInquiry = buildClosedEmail({ ...base, outcome: "accepted", note: null, hasInquiry: false, addresses: [] });
-    expect(withoutInquiry.text).not.toContain(RISK_FOLLOWUP_LINE);
+    expect(withoutInquiry.text).toContain(RISK_FOLLOWUP_LINE);
   });
 });
 
 describe("riskFollowupPromised", () => {
-  test("every closed outcome except accepted without a rapportage", () => {
+  test("every closed outcome, also accepted without a rapportage", () => {
     expect(riskFollowupPromised("accepted", true)).toBe(true);
-    expect(riskFollowupPromised("accepted", false)).toBe(false);
+    expect(riskFollowupPromised("accepted", false)).toBe(true);
     expect(riskFollowupPromised("duplicate", false)).toBe(true);
     expect(riskFollowupPromised("rejected", false)).toBe(true);
     expect(riskFollowupPromised("no_data", false)).toBe(true);
@@ -526,18 +526,18 @@ describe("describeOutcome hides the commit's internal note", () => {
 });
 
 describe("describeOutcome: closed without a rapportage", () => {
-  test("says nothing changed and nothing follows", async () => {
-    const { describeOutcome, CLOSED_FOR_GOOD } = await import("./intake-outcome.ts");
+  test("says nothing changed, and no longer that nothing follows", async () => {
+    const { describeOutcome } = await import("./intake-outcome.ts");
     const d = describeOutcome("accepted", null, false);
     expect(d.state).toBe("afgehandeld en gesloten");
-    expect(d.explanation).toContain("Er is niets gewijzigd in de Funderingsdatabase.");
-    expect(d.explanation.endsWith(CLOSED_FOR_GOOD)).toBe(true);
+    expect(d.explanation).toBe("Wij hebben uw melding bekeken. Er is niets gewijzigd in de Funderingsdatabase.");
+    expect(d.explanation).not.toContain("geen verder bericht");
   });
 
-  test("keeps the reviewer's reason and adds the closing line", async () => {
-    const { describeOutcome, CLOSED_FOR_GOOD } = await import("./intake-outcome.ts");
+  test("keeps the reviewer's reason as is", async () => {
+    const { describeOutcome } = await import("./intake-outcome.ts");
     const d = describeOutcome("accepted", "Uw pand staat al goed geregistreerd.", false);
-    expect(d.explanation).toBe(`Uw pand staat al goed geregistreerd.\n\n${CLOSED_FOR_GOOD}`);
+    expect(d.explanation).toBe("Uw pand staat al goed geregistreerd.");
   });
 
   test("a committed melding is still 'verwerkt'", async () => {

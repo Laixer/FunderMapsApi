@@ -579,12 +579,13 @@ export const RISK_FOLLOWUP_LINE =
   "Na de volgende herberekening van het funderingsrisico (meestal dezelfde dag) ontvangt u een aparte e-mail met het risico per adres.";
 
 /**
- * Whether a risk follow-up mail comes after this closure: every outcome except
- * a melding closed without a rapportage, whose mail promises nothing follows.
+ * Whether a risk follow-up mail comes after this closure: every closed
+ * outcome, with or without a rapportage (Don, 2026-10-30: the melder always
+ * hears the current risk, also when nothing changed).
  * sendDossierClosedMail keeps a risk snapshot on exactly the same condition.
  */
-export function riskFollowupPromised(outcome: string | null, hasInquiry: boolean): boolean {
-  return outcome !== null && !(outcome === "accepted" && !hasInquiry);
+export function riskFollowupPromised(outcome: string | null, _hasInquiry: boolean): boolean {
+  return outcome !== null;
 }
 
 export function buildClosedEmail(input: ClosedEmailInput): RenderedMail {
