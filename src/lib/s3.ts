@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config.ts";
 
@@ -104,4 +104,37 @@ export async function getDownloadUrl(
     }) as never,
     { expiresIn: hoursValid * 3600 },
   );
+}
+
+/**
+ * Presigned PUT for one key, its type and size fixed in the signature: the
+ * melden portal's uploads (routes/submission.ts). The browser sends the file
+ * straight to Spaces; the API never holds it.
+ */
+export async function getUploadUrl(
+  key: string,
+  contentType: string,
+  size: number,
+  secondsValid = 900,
+): Promise<string> {
+  return await getSignedUrl(
+    client() as never,
+    new PutObjectCommand({
+      Bucket: env.S3_BUCKET!,
+      Key: key,
+      ContentType: contentType,
+      ContentLength: size,
+    }) as never,
+    { expiresIn: secondsValid },
+  );
+}
+
+/** Whether the object is there (a HEAD); false on any error, a missing key included. */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await client().send(new HeadObjectCommand({ Bucket: env.S3_BUCKET!, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
 }

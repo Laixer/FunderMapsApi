@@ -81,6 +81,9 @@ const envSchema = z.object({
   // presents; absent, the whole intake lane answers 503 rather than accepting
   // anonymous writes.
   INTAKE_TOKEN: z.string().optional(),
+  // Cloudflare Turnstile secret for the melden portal's public routes
+  // (routes/submission.ts). Unset = the check is off, as in the old app.
+  TURNSTILE_SECRET: z.string().optional(),
   // Where the melder follows their melding: `${INTAKE_URL}/melding/<meldcode>`.
   INTAKE_URL: z.url().default("https://melden.fundermaps.com"),
 
