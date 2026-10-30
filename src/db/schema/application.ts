@@ -427,8 +427,3 @@ export const organizationMapset = applicationSchema.table(
     primaryKey({ columns: [table.organizationId, table.mapsetId] }),
   ],
 );
-
-// Other views in the application schema not modeled here:
-//   file_resources_orphaned (VIEW) — maintenance/cleanup view over
-//     file_resources rows whose key has no S3 object behind it.
-//     Not queried via Drizzle; add a table declaration if needed.

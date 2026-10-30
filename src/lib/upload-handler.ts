@@ -57,9 +57,9 @@ export async function handleDocumentUpload(
 
   // Register the upload in the resource table (Laixer/FunderMaps#861) so user
   // uploads are tracked in the database. `key` is the full S3 object key
-  // (folder + unique name): unique, and enough to locate the stored object,
-  // which the application.file_resources_orphaned sweep relies on. Status stays
-  // 'uploaded' until the file is attached to an inquiry/recovery record.
+  // (folder + unique name): unique, and enough to locate the stored object.
+  // Status stays 'uploaded' until the file is attached to an inquiry/recovery
+  // record.
   await db.insert(fileResource).values({
     key,
     originalFilename: file.name,
@@ -72,7 +72,7 @@ export async function handleDocumentUpload(
 }
 
 // Attach-time lifecycle transition: a record referencing the upload moves it
-// 'uploaded' → 'active' (out of the file_resources_orphaned sweep); replacing
+// 'uploaded' → 'active'; replacing
 // or deleting the record moves the old object to 'archived'. `key` is the
 // full S3 object key. Uploads that predate the resource table produce no row
 // here, so a miss is a silent no-op by design.
