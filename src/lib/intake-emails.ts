@@ -20,7 +20,7 @@ import {
   artifact,
   dossier,
   dossierMail,
-  dossierRapportage,
+  dossierInquiry,
   extraction,
   extractionField,
   verdict,
@@ -912,9 +912,9 @@ async function summarizeTaken(head: DossierHead): Promise<TakenSummary> {
   // documents of an accepted rapportage was taken over. A document in a
   // rejected rapportage, or in none ('Geen inquiry'), is not claimed.
   const groupsOfDossier = await db
-    .select({ verdict: dossierRapportage.verdict, artifactIds: dossierRapportage.artifactIds })
-    .from(dossierRapportage)
-    .where(eq(dossierRapportage.dossierId, head.id));
+    .select({ verdict: dossierInquiry.verdict, artifactIds: dossierInquiry.artifactIds })
+    .from(dossierInquiry)
+    .where(eq(dossierInquiry.dossierId, head.id));
   const takenDocuments = groupsOfDossier.length
     ? new Set(groupsOfDossier.filter((g) => g.verdict === "accepted").flatMap((g) => g.artifactIds))
     : null;

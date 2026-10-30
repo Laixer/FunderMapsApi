@@ -28,7 +28,7 @@ describe("markSameFile", () => {
     expect(markSameFile([row(1, "9299866")], [9299866])[0]!.sameFile).toBe(true);
   });
 
-  test("no size (an upload from before file_resources) is never the same file", () => {
+  test("no size (an upload from before file_resource) is never the same file", () => {
     expect(markSameFile([row(1, null)], [9299866])[0]!.sameFile).toBe(false);
   });
 

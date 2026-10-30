@@ -223,7 +223,7 @@ export const dossierAddress = dataopsSchema.table("dossier_address", {
  * 20261011_001). One row per group of documents formed at commit; the closing
  * mail combines the answers into one message to the melder.
  */
-export const dossierRapportage = dataopsSchema.table("dossier_rapportage", {
+export const dossierInquiry = dataopsSchema.table("dossier_inquiry", {
   id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   dossierId: bigint("dossier_id", { mode: "number" }).notNull(),
   /** Inquiry 1, Inquiry 2, ... as the Studio numbers the groups. */
