@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { user, applicationUser } from "../db/schema/application.ts";
 import { env } from "../config.ts";
+import { isOnHost } from "../lib/host-profile.ts";
 import { toLegacyUser } from "../lib/user-serializer.ts";
 import { isPlatformMember } from "../lib/auth-helpers.ts";
 import type { AppEnv } from "../types/context.ts";
@@ -76,9 +77,14 @@ users.put("/me", zValidator("json", updateUserSchema), async (c) => {
   return c.json(toLegacyUser(updated, currentUser.organizations));
 });
 
+/** The app id a request's saved state is filed under when it names none: the map's on the map's host. */
+function defaultAppId(requestUrl: string): string {
+  return isOnHost(requestUrl, env.MAP_BASE_URL) ? env.MAP_APP_ID : env.APP_ID;
+}
+
 users.get("/metadata", async (c) => {
   const currentUser = c.get("user");
-  const appId = c.req.query("app_id") ?? env.APP_ID;
+  const appId = c.req.query("app_id") ?? defaultAppId(c.req.url);
 
   const rows = await db
     .select()
@@ -101,7 +107,7 @@ const updateMetadataSchema = z.object({
 users.put("/metadata", zValidator("json", updateMetadataSchema), async (c) => {
   const { metadata } = c.req.valid("json");
   const currentUser = c.get("user");
-  const appId = c.req.query("app_id") ?? env.APP_ID;
+  const appId = c.req.query("app_id") ?? defaultAppId(c.req.url);
 
   const existing = await db
     .select()

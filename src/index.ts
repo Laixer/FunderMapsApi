@@ -3,7 +3,7 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { cors } from "hono/cors";
 import { env } from "./config.ts";
-import { auth } from "./lib/auth.ts";
+import { authFor } from "./lib/auth.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { handleUnhandledRejection } from "./lib/db-errors.ts";
 import { authMiddleware } from "./middleware/auth.ts";
@@ -88,9 +88,9 @@ app.onError(errorHandler);
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// Better Auth routes (sign-up, sign-in, sign-out, session, etc.)
+// Better Auth routes (sign-up, sign-in, sign-out, session, etc.), as the host the request came in on
 app.on(["POST", "GET"], "/api/auth/*", (c) => {
-  return auth.handler(c.req.raw);
+  return authFor(c.req.url).handler(c.req.raw);
 });
 
 // Public routes
